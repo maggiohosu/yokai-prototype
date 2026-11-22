@@ -1,5 +1,6 @@
 import { pixelRatio } from '../game/camera.js';
 import { stageOf } from '../systems/rules.js';
+import { CONFIG } from '../config.js';
 
 // 한 프레임의 적들이 Graphics를 공유한다. 지우기는 호출자가 프레임 시작 때 한 번만 한다.
 export function drawStageMark(g, actor, playerStage, _t) {
@@ -9,7 +10,7 @@ export function drawStageMark(g, actor, playerStage, _t) {
   const stage = stageOf(actor);
   const spacing = 2 * radius + 2.5 * unit;
   const halfSpan = ((stage - 1) * spacing) / 2;
-  const y = actor.y - actor.size * 1.7 * (actor.punch || 1) - radius - 2 * unit;
+  const y = actor.y - actor.size * CONFIG.render.stageMarkLift[stage] * (actor.punch || 1) - radius - 2 * unit;
   const view = camera.worldView;
   if (y + radius < view.top || y - radius > view.bottom ||
       actor.x + halfSpan + radius < view.left || actor.x - halfSpan - radius > view.right) return;

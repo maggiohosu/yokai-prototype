@@ -357,9 +357,20 @@ body:has(.script-required) #loading { display: none; }
 .card { min-width: 0; border-top: 2px solid var(--ink); }
 .specimen {
   display: grid; place-items: center; grid-template-columns: minmax(0, 1fr);
-  height: 144px; background: color-mix(in srgb, var(--tint) 55%, var(--paper));
+  width: 100%; height: 144px; padding: 0; border: 0; cursor: zoom-in;
+  background: color-mix(in srgb, var(--tint) 55%, var(--paper));
 }
-.specimen img { display: block; width: 100%; height: 100%; min-height: 0; object-fit: contain; }
+.specimen img { display: block; width: 100%; height: calc(100% * var(--art-ratio)); min-height: 0; object-fit: contain; }
+.specimen img:not([src]) { visibility: hidden; }
+.card.undiscovered img, #specimen-dialog.undiscovered img { filter: brightness(0); }
+#specimen-dialog {
+  width: min(360px, 90vw); max-height: 90dvh; padding: 14px; overflow: auto;
+  color: var(--ink); background: var(--paper); border: 2px solid var(--ink);
+}
+#specimen-dialog::backdrop { background: #26352bcc; }
+#specimen-dialog form { display: flex; justify-content: flex-end; }
+#specimen-dialog button { min-height: 44px; padding: 0 12px; color: var(--ink); background: none; border: 0; cursor: pointer; }
+#specimen-dialog img { display: block; width: 100%; height: min(44dvh, 350px); object-fit: contain; background: var(--tint); }
 .entry { display: grid; gap: 4px; padding: 8px 0 4px; }
 .entry h3 { grid-row: 1; margin: 0; color: var(--ink); font: 600 20px/1.3 var(--serif); }
 .entry small { font-size: 12px; color: var(--muted); }

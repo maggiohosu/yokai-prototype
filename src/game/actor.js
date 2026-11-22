@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
-import { drawCreature } from '../art/creature.js';
+import { artUnitsFor, drawCreature } from '../art/creature.js';
+import { FORM_BY_ID } from '../data/forms.js';
 import { clamp } from './world.js';
 import { eatPair } from '../systems/rules.js';
 
@@ -18,7 +19,7 @@ export class Actor {
   }
   setSize(size) {
     this.size = size;
-    const width = (size * CONFIG.render.artUnits) / CONFIG.render.bodyRadius;
+    const width = size * artUnitsFor(FORM_BY_ID[this.formId]?.stage) / CONFIG.render.bodyRadius;
     this.sprite.setDisplaySize(width, width);
     this.baseScale = this.sprite.scaleX;
     this.move(0, 0);
