@@ -29,16 +29,18 @@ export function colorPicker() {
 }
 
 // 초반(시작 크기~earlyUntilSize)엔 큰 적 비중을 높이고 커질수록 기존 분포로 선형 전환한다.
-export function sizeWeights(playerSize) {
-  const { sizes, earlyWeights, earlyUntilSize } = CONFIG.enemy;
+// playerStage가 nearSpawn.fromStage 이상이면 큰 적의 비율이 높은 hardSizeWeights를 쓴다(3단계 이후 난이도).
+export function sizeWeights(playerSize, playerStage = 1) {
+  const { sizes, earlyWeights, earlyUntilSize, hardSizeWeights, nearSpawn } = CONFIG.enemy;
+  const normal = playerStage >= nearSpawn.fromStage ? hardSizeWeights : sizes.map((band) => band.weight);
   const start = CONFIG.player.startSize;
   const t = clamp((playerSize - start) / Math.max(1e-6, earlyUntilSize - start), 0, 1);
-  return sizes.map((band, i) => earlyWeights[i] * (1 - t) + band.weight * t);
+  return normal.map((weight, i) => earlyWeights[i] * (1 - t) + weight * t);
 }
 
-export function spawnSize(playerSize) {
+export function spawnSize(playerSize, playerStage = 1) {
   const bands = CONFIG.enemy.sizes;
-  const weights = sizeWeights(playerSize);
+  const weights = sizeWeights(playerSize, playerStage);
   let draw = Math.random() * weights.reduce((a, b) => a + b, 0);
   let band = bands.at(-1);
   for (let i = 0; i < bands.length; i++) {
@@ -49,7 +51,12 @@ export function spawnSize(playerSize) {
       break;
     }
   }
-  return Math.min(CONFIG.enemy.maxSpawnSize, playerSize * between([band.min, band.max]));
+  const raw = playerSize * between([band.min, band.max]);
+  // 3단계 이후에는 상한을 플레이어 크기에 맞춰 올려, 커져도 '나보다 큰 적'이 계속 나온다(절대 상한은 growthCap.maxSize).
+  const cap = playerStage >= CONFIG.enemy.nearSpawn.fromStage
+    ? Math.min(Math.max(CONFIG.enemy.maxSpawnSize, playerSize * band.max), CONFIG.enemy.growthCap.maxSize)
+    : CONFIG.enemy.maxSpawnSize;
+  return Math.min(cap, raw);
 }
 
 // 플레이어 단계(1~5)별 가중치(config.enemy.stageWeights)로 새 적의 단계(1~5)를 고른다.
@@ -65,6 +72,45 @@ export function spawnStage(playerStage = 1, rng = Math.random) {
     if (draw < 0) return last;
   }
   return last;
+}
+
+// 판을 처음 시작할 때의 적 단계. 플레이어 1·2단계는 예전처럼 모두 1단계, 3단계부터는 config.enemy.startStageWeights로 높은 단계가 나온다.
+export function startStage(playerStage = 1, rng = Math.random) {
+  const weights = CONFIG.enemy.startStageWeights[clamp(Math.round(playerStage) || 1, 1, CONFIG.pace.maxStage)];
+  if (!weights) return 1;
+  let draw = rng() * weights.reduce((a, b) => a + b, 0);
+  let last = 1;
+  for (let i = 0; i < weights.length; i++) {
+    if (weights[i] <= 0) continue;
+    last = i + 1;
+    draw -= weights[i];
+    if (draw < 0) return last;
+  }
+  return last;
+}
+
+// 3단계 이후 적을 시작 장소(플레이어) 근처에 모으는 계획: { count: 시작 때 근처에 둘 적 수(initialNeighbors 제외), startRing, refillRing }. 1·2단계는 null(예전처럼 월드 전체).
+export function nearSpawnPlan(playerStage, population) {
+  const cfg = CONFIG.enemy.nearSpawn;
+  if (!(playerStage >= cfg.fromStage)) return null;
+  const rest = Math.max(0, population - CONFIG.world.initialNeighbors);
+  return { count: Math.round(rest * cfg.share), startRing: cfg.startRing, preyRing: [cfg.preyInner, cfg.startRing[1]], refillRing: cfg.refillRing };
+}
+
+// 보충·맞수가 나오는 고리: 안쪽 반지름을 화면 크기에 맞춘다(화면이 커도 고리가 화면에 가려 자리를 못 찾는 일이 없게). view = 카메라 worldView({ width, height }).
+export function refillRingFor(view, ring = CONFIG.enemy.nearSpawn.refillRing) {
+  const half = view && Number.isFinite(view.width) && Number.isFinite(view.height) ? Math.hypot(view.width, view.height) / 2 : 0;
+  const inner = Math.max(ring[0], half + CONFIG.enemy.nearSpawn.refillPad);
+  return [inner, inner + (ring[1] - ring[0])];
+}
+
+// 판 안 진화로 3단계 이상이 될 때 이 적을 지울까: 맞수·같거나 높은 단계·가까운(refillRing[0] 안) 적은 지우지 않고,
+// 멀리 흩어진 낮은 단계 적을 evolveCull 비율만큼 지운다. 빈자리는 보충이 stageWeights대로 채운다.
+export function shouldCullOnEvolve(enemy, player, playerStage, rng = Math.random) {
+  const cfg = CONFIG.enemy.nearSpawn;
+  if (!(playerStage >= cfg.fromStage) || enemy.rival || (enemy.stage ?? 1) >= playerStage) return false;
+  if (Math.hypot(enemy.x - player.x, enemy.y - player.y) < cfg.refillRing[0]) return false;
+  return rng() < cfg.evolveCull;
 }
 
 // stage를 넘기면 시작 직후 플레이어를 먹을 수 있는 적(단계 규칙 포함)을 멀리 둔다. 안 넘기면 크기만 본다.

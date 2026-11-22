@@ -49,6 +49,11 @@ export function carryDecay(carry, dtSim) {
   return value * Math.exp(-dt / cfg().evolveSlow.tauSec);
 }
 
+// 처음 시작 화면의 템포(1단계). 진화하는 순간과 새 판을 시작할 때 이 값에서 시작해 그 단계의 템포까지 올라간다(easePace).
+export function startPace() {
+  return cfg().pace.stageMult[1];
+}
+
 // 진화로 단계 템포(pace)가 바뀌면 곧바로 뛰지 않고 새 값으로 서서히 다가간다(시정수 evolveSlow.paceTauSec, 실제 초 dt).
 export function easePace(pace, target, dt) {
   const p = finite(pace, target);

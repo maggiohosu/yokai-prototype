@@ -12,11 +12,11 @@ test.afterEach(() => {
   applyWorldScale(1); // 다른 시험에 월드 크기가 남지 않게 되돌린다
 });
 
-test('단계마다 맵이 커진다: 월드 크기 4000 → 6000 → 8000 → 10400 → 13200, 적 72 → 108 → 144 → 187 → 238', () => {
+test('단계마다 맵이 커진다: 월드 크기 4000 → 6000 → 8000 → 10400 → 13200, 적 72 → 115 → 160 → 216 → 284', () => {
   const sizes = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).size);
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.deepEqual(sizes, [4000, 6000, 8000, 10400, 13200]);
-  assert.deepEqual(pops, [72, 108, 144, 187, 238]);
+  assert.deepEqual(pops, [72, 115, 160, 216, 284]);
   for (let i = 1; i < 5; i++) assert.ok(sizes[i] > sizes[i - 1] && pops[i] > pops[i - 1]);
   assert.equal(stageWorldScale(1), 1);
 });
@@ -32,8 +32,8 @@ test('단계 범위 밖·이상한 입력은 1~5단계로 자른다', () => {
 test('applyWorldScale: CONFIG.world의 크기와 적 수를 바꾸고, 같은 단계로 여러 번 불러도 같고, 1단계로 돌아온다', () => {
   const r = applyWorldScale(4);
   assert.equal(CONFIG.world.size, 10400);
-  assert.equal(CONFIG.world.population, 187);
-  assert.deepEqual(r, { scale: M.stageScale[4], size: 10400, population: 187 });
+  assert.equal(CONFIG.world.population, 216);
+  assert.deepEqual(r, { scale: M.stageScale[4], size: 10400, population: 216 });
   applyWorldScale(4);
   assert.equal(CONFIG.world.size, 10400);
   applyWorldScale(1);
@@ -57,16 +57,20 @@ test('월드를 읽는 코드는 새 크기를 본다: 방위 경계는 새 중�
   assert.equal(sprite.x, 20);
 });
 
-test('카메라 한계: 월드가 커지면 더 멀리까지 물러설 수 있고, 시야가 월드를 넘지 않는다', () => {
+test('카메라 한계: 단계가 시야를 바꾸지 않으므로 월드가 커져도 한계는 같고(minZoom), 시야가 월드를 넘지 않는다', () => {
   const [w, h] = [1264, 625];
   const small = zoomFloor(w, h, 3);
   applyWorldScale(5);
   const big = zoomFloor(w, h, 5);
-  assert.ok(big < small, `${big} < ${small}`); // 5단계는 월드(13200)도 크고 단계 배율(0.45)로 한계가 낮아진다(minZoom × 0.45)
+  assert.equal(big, small);
+  assert.equal(big, CONFIG.camera.minZoom);
   // 크기가 아주 커져도 화면 긴 변이 월드를 넘지 않는다
   assert.ok(w / zoomFor(1e9, w, h, 5) <= CONFIG.world.size + 1e-6);
-  // 시작 크기의 자연 배율은 한계보다 크다(월드가 커도 시작할 때는 가까이에서 시작한다)
-  assert.ok(zoomFor(CONFIG.player.startSize, w, h, 5) > big);
+  // 시작 크기의 화면은 월드 크기와 무관하게 같다(처음 시작 화면)
+  const start = zoomFor(CONFIG.player.startSize, w, h, 1);
+  assert.equal(zoomFor(CONFIG.player.startSize, w, h, 5), start);
+  applyWorldScale(1);
+  assert.equal(zoomFor(CONFIG.player.startSize, w, h, 1), start);
 });
 
 // ---- drawWorld: Phaser 없이 가짜 씬으로 만든 것을 모두 지우는지 본다 ----
@@ -130,5 +134,5 @@ test('growthTarget: 판 안에서는 맵이 커지기만 한다(정비 역진화
   growthTarget(5, CONFIG.world.size);
   growthTarget(1, CONFIG.world.size);
   assert.equal(CONFIG.world.size, 6000);
-  assert.equal(CONFIG.world.population, 108);
+  assert.equal(CONFIG.world.population, 115);
 });

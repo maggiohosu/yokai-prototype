@@ -241,16 +241,17 @@ test('spawnStage: 구간 경계와 가중치 비율, 알 수 없는 플레이어
   const table = CONFIG.enemy.stageWeights;
   assert.deepEqual(Object.keys(table), ['1', '2', '3', '4', '5']);
   assert.deepEqual(table[2], [0.35, 0.45, 0.2, 0, 0]);
-  assert.deepEqual(table[3], [0.22, 0.38, 0.32, 0.08, 0]);
-  assert.deepEqual(table[4], [0.1, 0.25, 0.35, 0.25, 0.05]);
-  assert.deepEqual(table[5], [0.05, 0.15, 0.3, 0.3, 0.2]);
+  // 3단계 이후는 사용자 지시(2026-11-23: 적이 너무 약하다)로 높였다
+  assert.deepEqual(table[3], [0.05, 0.15, 0.35, 0.3, 0.15]);
+  assert.deepEqual(table[4], [0.02, 0.08, 0.25, 0.4, 0.25]);
+  assert.deepEqual(table[5], [0, 0.04, 0.16, 0.35, 0.45]);
   for (const row of Object.values(table)) {
     assert.equal(row.length, 5);
     assert.ok(Math.abs(row.reduce((a, b) => a + b, 0) - 1) < 1e-9);
   }
   assert.equal(spawnStage(9, () => 0.999999), spawnStage(5, () => 0.999999)); // 5단계 위는 5단계 표
   assert.equal(spawnStage(5, () => 0.999999), 5);
-  assert.equal(spawnStage(3, () => 0.999999), 4);
+  assert.equal(spawnStage(3, () => 0.999999), 5); // 3단계 표에도 5단계 적이 15%(사용자 지시: 3단계 이후 적을 강하게)
   let seed = 12345;
   const rng = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
   const N = 40000;

@@ -56,6 +56,26 @@ export class Fx {
     this.burst(prey.x, prey.y, DIR_COLOR[prey.dir] ?? 0xffffff, 10, Math.max(0.6, prey.size / 30));
   }
 
+  // 진화로 맵이 커질 때: 내가 있는 곳에서 바깥으로 번지는 고리 두 겹(맵이 사방으로 늘어나는 연출). 선 굵기는 화면 픽셀이라 줌으로 나눈다.
+  worldPulse(x, y) {
+    const { pulse } = CONFIG.balance.view;
+    const scene = this.scene;
+    const ring = scene.add.graphics().setDepth(5);
+    scene.tweens.addCounter({
+      from: 0,
+      to: 1,
+      duration: pulse.sec * 1000,
+      ease: 'Cubic.easeOut',
+      onUpdate: (tween) => {
+        const k = tween.getValue();
+        const w = 1 / scene.cameras.main.zoom;
+        ring.clear();
+        ring.lineStyle(5 * w, 0xfff1b8, 0.85 * (1 - k)).strokeCircle(x, y, 30 + k * pulse.reach);
+        ring.lineStyle(2.5 * w, 0xc4f7e6, 0.7 * (1 - k)).strokeCircle(x, y, 20 + k * pulse.reach * 0.7);
+      },
+      onComplete: () => ring.destroy(),
+    });
+  }
   floatText(x, y, text, color = '#fff6cf') {
     let t = this.texts.find(o => !o.alive);
     if (!t) {

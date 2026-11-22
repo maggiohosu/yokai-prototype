@@ -400,39 +400,34 @@ test('크기별 감속은 이동 속도 강화·템포와 따로 곱해진다(�
   assert.equal(sizeSpeedMultiplier.length, 1);
 });
 
-test('stageZoomMultiplier: 단계가 오를수록 작아지고(맵이 커 보임) 1단계는 1, 범위 밖은 자른다', () => {
-  near(stageZoomMultiplier(1), 1);
-  for (let stage = 2; stage <= 5; stage++) assert.ok(stageZoomMultiplier(stage) < stageZoomMultiplier(stage - 1), 'stage ' + stage);
-  near(stageZoomMultiplier(5), B.view.stageZoom[5]);
+test('stageZoomMultiplier: 모두 1(진화한 뒤의 화면은 처음 시작 화면과 같다), 범위 밖은 1~5단계로 자른다', () => {
+  for (let stage = 1; stage <= 5; stage++) near(stageZoomMultiplier(stage), 1);
   near(stageZoomMultiplier(99), B.view.stageZoom[5]);
   near(stageZoomMultiplier(-2), 1);
   near(stageZoomMultiplier(undefined), 1);
 });
 
-test('zoomFor(stage): 같은 크기라도 단계가 오르면 더 멀리서 보이고, 1단계는 예전과 같고, 월드 밖이 보이지 않는다', () => {
+test('zoomFor(stage): 어느 단계에서든 같은 크기의 화면은 같고(처음 시작 화면), 1단계는 예전과 같고, 월드 밖이 보이지 않는다', () => {
   const [w, h] = [1280, 720];
   const size = CONFIG.player.startSize;
   near(zoomFor(size, w, h, 1), zoomFor(size, w, h));
-  for (let stage = 2; stage <= 5; stage++) assert.ok(zoomFor(size, w, h, stage) < zoomFor(size, w, h, stage - 1), 'stage ' + stage);
-  // 막히지 않는 구간에서는 정확히 단계 배율만큼 줄어든다(시작 크기는 카메라 한계에 걸리지 않는다)
+  for (let stage = 2; stage <= 5; stage++) near(zoomFor(size, w, h, stage), zoomFor(size, w, h, 1));
   near(zoomFor(size, w, h, 3) / zoomFor(size, w, h, 1), stageZoomMultiplier(3), 1e-9);
   // 아주 커져도 화면의 긴 변이 월드보다 넓어지지 않는다(월드 밖이 보이지 않는다)
   for (const stage of [1, 3, 5]) {
     const z = zoomFor(1e9, w, h, stage);
     assert.ok(w / z <= CONFIG.world.size + 1e-6, `stage ${stage}: 시야 ${w / z}`);
   }
-  // 단계가 높을수록 더 멀리까지 물러설 수 있다(한계가 같은 비율로 낮아진다)
-  assert.ok(zoomFor(1e9, w, h, 5) < zoomFor(1e9, w, h, 1));
   assert.equal(zoomFor(1e9, 740, 360, 1), CONFIG.camera.minZoom);
 });
 
-test('easePace: 진화로 단계 템포가 바뀌어도 곧바로 뛰지 않고 시정수(실제 15초)로 서서히 새 값에 다가간다', () => {
+test('easePace: 진화로 단계 템포가 바뀌어도 곧바로 뛰지 않고 시정수(paceTauSec, 실제 40초)로 서서히 새 값에 다가간다', () => {
   const { paceTauSec } = B.evolveSlow;
   const [from, to] = [tempoMultiplier(at(1)), tempoMultiplier(at(2))];
   assert.equal(easePace(from, to, 0), from, '진화 순간에는 그대로');
   near(easePace(from, to, paceTauSec), to + (from - to) / Math.E, 1e-9);
   let pace = from, last = from;
-  for (let t = 0; t < 120; t += 1 / 60) {
+  for (let t = 0; t < 12 * paceTauSec; t += 1 / 60) {
     pace = easePace(pace, to, 1 / 60);
     assert.ok(pace >= last - 1e-12 && pace <= to + 1e-12, '단조 증가');
     last = pace;

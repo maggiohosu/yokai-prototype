@@ -4,7 +4,7 @@ import { STEMS } from '../data/stems.js';
 import { abilityLabel } from '../systems/abilities.js';
 import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
-import { between, clamp, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
+import { between, clamp, colorPicker, drawWorld, nearSpawnPlan, refillRingFor, regionAt, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage, startStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, shouldPause } from '../systems/levelup.js';
 import { drawStageMark } from '../art/marks.js';
@@ -20,7 +20,7 @@ import { MaintButton } from '../game/maintButton.js';
 import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenance.js';
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
-import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
+import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, startPace, upkeep } from '../systems/balance.js';
 import { applyWorldScale, growthTarget } from '../systems/worldScale.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
@@ -55,8 +55,9 @@ export class PlayScene extends Phaser.Scene {
     applyWorldScale(this.stress ? 1 : this.progress.stage);
     this.worldView = drawWorld(this);
     this.playerStats = playerStats(this.progress);
-    this.pace = this.playerStats.pace;
-    this.paceTarget = this.pace; // 단계 템포의 목표값. 판 안 진화로 바뀌면 this.pace가 서서히 따라간다(balance.easePace)
+    // 단계 템포(this.paceTarget)로 곧바로 시작하지 않고 처음 시작 화면과 같은 느린 템포에서 서서히 올라간다(balance.startPace, easePace). 시험 판(?stress)은 곧바로.
+    this.paceTarget = this.playerStats.pace;
+    this.pace = this.stress ? this.paceTarget : startPace();
     this.player = new Player(this, this.progress.formId, this.playerStats);
     this.player.stage = this.progress.stage;
     this.player.grade = this.progress.grade;
@@ -222,7 +223,9 @@ export class PlayScene extends Phaser.Scene {
     // 진화는 '나와 적이 함께 자라서 맵이 더 커진' 것으로 보이게 한다: 맵이 실제로 커지고, 카메라는 확대되지 않고 물러서고, 속도도 직전 크기 기준으로 이어 간다.
     if (!this.stress) {
       this.growWorld();
+      this.pace = startPace(); // 속도도 처음 시작처럼 느리게: 나와 적이 함께 느려졌다가 함께 빨라진다(recalcPace가 목표 템포를 새 단계로 바꾼다)
       this.follow?.expand?.();
+      if (!this.reducedMotion) this.fx.worldPulse(p.x, p.y);
       p.carryOnEvolve?.(sizeBefore);
     }
     this.marker.destroy();
@@ -242,6 +245,13 @@ export class PlayScene extends Phaser.Scene {
     for (const actor of [this.player, ...this.enemies]) {
       actor.sprite.x += shift;
       actor.sprite.y += shift;
+    }
+    // 3단계 이상으로 오르면 멀리 흩어진 낮은 단계 적을 evolveCull 비율만큼 지운다: 보충이 플레이어 둘레에서 stageWeights대로 더 강한 적을 채운다.
+    const myStage = this.progress.stage;
+    for (let i = this.enemies.length - 1; i >= 0; i--) {
+      if (!shouldCullOnEvolve(this.enemies[i], this.player, myStage)) continue;
+      this.enemies[i].destroy();
+      this.enemies.splice(i, 1);
     }
     this.combat.clearEffects();
     this.enemyFire.clear();
@@ -344,18 +354,24 @@ export class PlayScene extends Phaser.Scene {
   }
   seedEnemies() {
     const { world, enemy } = CONFIG;
+    const playerStage = this.player.stage ?? 1;
+    // 3단계 이후에는 적을 시작 장소 근처에 모으고(nearSpawn) 처음부터 높은 단계가 나온다(startStageWeights). 1·2단계는 예전처럼 모두 1단계에서 시작한다.
+    const plan = nearSpawnPlan(playerStage, world.population);
     for (let i = 0; i < world.population; i++) {
-      // 사용자 지시: 판을 처음 시작할 때 적은 모두 1단계에서 시작한다(이후 스스로 먹고 진화한다. 보충되는 적은 stageWeights).
-      let size = spawnSize(this.player.size),
+      let size = spawnSize(this.player.size, playerStage),
         near,
-        stage = 1;
+        stage = startStage(playerStage);
       if (i < world.initialNeighbors) {
         near = canEat({ size, stage }, this.player) ? world.outerRing : world.innerRing;
         if (i === 0) {
+          stage = 1; // 첫 한 마리는 늘 가까이 있는 작은 먹이(1단계)다
           const small = enemy.sizes[0];
           size = this.player.size * between([small.min, small.max]);
           near = [world.innerRing[0], world.innerRing[0]];
         }
+      } else if (plan && i < world.initialNeighbors + plan.count) {
+        // 위협이 아닌 적(내가 먹을 수 있음)은 시작 화면 안쪽부터, 위협은 안전 거리(safeStart) 밖의 시작 고리에 놓는다.
+        near = canEat({ size, stage }, this.player) ? plan.startRing : plan.preyRing;
       }
       if (!this.spawn(size, { near, initial: true, stage })) this.spawn(size, { initial: true, stage });
     }
@@ -715,13 +731,24 @@ export class PlayScene extends Phaser.Scene {
     if (this.refillTime <= 0) {
       this.refillTime = CONFIG.world.refillInterval;
       const count = Math.min(CONFIG.world.refillBatch, CONFIG.world.population - this.enemies.length);
-      for (let i = 0; i < count; i++) this.spawn(spawnSize(size), { view });
+      // 3단계 이후에는 보충되는 적도 플레이어 둘레(화면 밖)에서 나온다(nearSpawn). 1·2단계는 월드 전체.
+      const refill = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
+      const refillRing = refill ? refillRingFor(view, refill.refillRing) : null; // 고리 안쪽 반지름을 화면 크기에 맞춘다
+      for (let i = 0; i < count; i++) {
+        const s = spawnSize(size, this.player.stage ?? 1);
+        // 그래도 자리를 못 찾으면 월드 전체에서 한 번 더 찾는다(보충이 멈추지 않게).
+        if (!(refillRing && this.spawn(s, { view, near: refillRing }))) this.spawn(s, { view });
+      }
     }
     // 맞수 대요괴(balance.rivalPlan): 4·5단계에서 실제 25초마다, 동시 최대 2마리. 시험 판(?stress)은 적 구성을 직접 정하므로 건너뛴다.
     if (!this.stress) {
       this.rivalState.alive = this.enemies.reduce((n, e) => n + (e.rival && e.sprite.active ? 1 : 0), 0);
-      const plan = rivalPlan(this.player.stage ?? 1, this.player.size, this.rivalState, sim);
-      if (plan && !this.spawn(plan.size, { view, stage: plan.stage, rival: true })) rivalRetry(this.rivalState);
+      // 맞수 간격은 실제 25초: 템포가 서서히 오르는 동안에도 어긋나지 않게 목표 템포로 환산한 시뮬레이션 시간을 준다.
+      const plan = rivalPlan(this.player.stage ?? 1, this.player.size, this.rivalState, dt * CONFIG.tempo * this.paceTarget);
+      const nearPlan = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
+      const ring = nearPlan ? refillRingFor(view, nearPlan.refillRing) : null;
+      const rivalOpts = { view, stage: plan?.stage, rival: true };
+      if (plan && !(ring && this.spawn(plan.size, { ...rivalOpts, near: ring })) && !this.spawn(plan.size, rivalOpts)) rivalRetry(this.rivalState);
     }
     this.hudTime -= dt;
     if (this.hudTime <= 0) {
