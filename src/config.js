@@ -37,6 +37,21 @@ export const CONFIG = {
     wallMargin: 64,
   },
   eating: { ratio: 1.1, areaGain: 0.32 },
+  combat: {
+    aimHalfAngleDeg: 35,
+    range: 360,
+    cooldown: 0.55,
+    orbSpeed: 520,
+    orbRadius: 5,
+    shotSpacing: 12,
+    defeatSize: 4,
+    reversalFleeSeconds: 1.2,
+    reversalNoticeMs: 800,
+  },
+  // 본체 강화 1레벨당 배율(이동 속도·크기 성장·대표 효과=보물 공격력)
+  progression: { speedPerLevel: 0.06, growthPerLevel: 0.08, signaturePerLevel: 0.1 },
+  // 등급은 겉모습을 빛·테두리 색으로만 표현한다(F는 테두리 없음)
+  gradeGlow: { 'S+': 0xff6fd8, S: 0xffc53d, A: 0xa46bff, B: 0x4a9dff, C: 0x63b863, D: 0x9aa0a6, E: 0xa0785a, F: null },
   camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 4, portraitWidth: 585 },
   input: { joystickRadius: 51, deadZone: 0.07 },
   render: {

@@ -89,10 +89,10 @@ export class Hud {
     }
     drawMap(this.ctx, player, view);
   }
-  end(player, killer, onRestart) {
+  end(player, killer, onRestart, run = null) {
     byId('final-eaten').textContent = player.eaten;
     byId('final-size').textContent = number(player.maxSize);
-    byId('killer').textContent = killer.name + '에게 먹혔습니다.';
+    byId('killer').textContent = killer.name + '에게 먹혔습니다.' + (run ? ' 요력 +' + number(run.yoryeok) + (run.drops ? ' · 여의주 ' + run.drops + '개 획득' : '') : '');
     this.result.hidden = false;
     const button = byId('restart');
     button.onclick = () => {

@@ -17,6 +17,16 @@ export class Enemy extends Actor {
     this.wanderTime = 0;
     this.vx = 0;
     this.vy = 0;
+    this.reversed = false;
+    this.fleeTime = 0;
+  }
+  fleeFrom(player) {
+    this.reversed = true;
+    this.fleeTime = CONFIG.combat.reversalFleeSeconds;
+    const dx = this.x - player.x, dy = this.y - player.y;
+    const distance = Math.hypot(dx, dy);
+    this.vx = distance ? CONFIG.enemy.fleeSpeed * dx / distance : CONFIG.enemy.fleeSpeed;
+    this.vy = distance ? CONFIG.enemy.fleeSpeed * dy / distance : 0;
   }
   eat(prey) {
     const wasSmall = this.size < CONFIG.enemy.stage3Size;
@@ -32,10 +42,15 @@ export class Enemy extends Actor {
       dy = player.y - this.y,
       distance = Math.hypot(dx, dy);
     let speed = 0;
-    if (distance <= ai.detect) {
+    if (this.size >= player.size) {
+      this.reversed = false;
+      this.fleeTime = 0;
+    }
+    if (distance <= ai.detect || this.fleeTime > 0) {
       if (this.size > player.size) speed = ai.chaseSpeed;
       else if (this.size < player.size) speed = -ai.fleeSpeed;
     }
+    this.fleeTime = Math.max(0, this.fleeTime - dt);
     let vx, vy;
     if (speed && distance > 0) {
       vx = (dx / distance) * speed;

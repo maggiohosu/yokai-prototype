@@ -8,37 +8,89 @@ import { Enemy } from '../game/enemy.js';
 import { Joystick } from '../game/joystick.js';
 import { followPlayer } from '../game/camera.js';
 import { Hud } from '../game/hud.js';
+import { Combat } from '../game/combat.js';
+import { FireButton } from '../game/fireButton.js';
+import { loadProgress, saveProgress } from '../state/save.js';
+import { attachSession, playerStats } from '../game/session.js';
+import { HubView } from '../ui/HubView.js';
+import { EvolveView } from '../ui/EvolveView.js';
 
 export class PlayScene extends Phaser.Scene {
   constructor() {
     super('Play');
   }
-  create() {
+  create(data = {}) {
     for (const form of FORMS) drawCreature(this, form.id);
     drawWorld(this);
-    this.player = new Player(this);
+    this.progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
+    this.registry.set('progress', this.progress);
+    this.playerStats = playerStats(this.progress);
+    this.player = new Player(this, this.progress.formId, this.playerStats);
+    this.run = attachSession(this, this.progress);
     this.enemies = [];
     this.nextColor = colorPicker();
     this.ended = false;
     this.refillTime = 0;
     this.hudTime = 0;
-    this.joystick = new Joystick(document.getElementById('arena'));
+    const arena = document.getElementById('arena');
+    this.joystick = new Joystick(arena);
+    this.combat = new Combat(this, this.progress);
+    this.fireRequested = false;
+    this.fireButton = new FireButton(arena, () => {
+      if (this.scene.isActive() && !this.ended) this.fireRequested = true;
+    });
     this.follow = followPlayer(this, this.player);
     this.hud = new Hud();
     const avatar = document.getElementById('avatar');
-    if (!avatar.hasAttribute('src'))
-      avatar.src = this.textures.get(drawCreature(this, 'mimul')).getSourceImage().toDataURL();
+    avatar.src = this.formImage(this.progress.formId);
+    const form = FORM_BY_ID[this.progress.formId];
+    const idBox = document.querySelector('.hud .identity');
+    if (idBox) {
+      idBox.querySelector('small').textContent = form.stage + '단계 · ' + this.progress.grade + '등급';
+      idBox.querySelector('strong').textContent = form.name;
+    }
+    document.getElementById('result').hidden = true;
     this.makePlayerMarker();
     this.seedEnemies();
     this.hud.update(this.player, this.cameras.main.worldView);
-    this.events.once('shutdown', () => this.joystick.destroy());
+    this.events.once('shutdown', this.releaseControls, this);
     document.getElementById('loading').hidden = true;
+    // 확인용: ?debug=hub / ?debug=evolve (저장하지 않는 시험용 요력 지급)
+    const debug = new URLSearchParams(location.search).get('debug');
+    if (debug && !data.progress) {
+      if (debug === 'evolve' || debug === 'hub') { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
+      setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: () => true, onDone: () => this.openHub() }) : this.openHub()), 300);
+    }
+  }
+  formImage(formId) {
+    return this.textures.get(drawCreature(this, formId)).getSourceImage().toDataURL();
+  }
+  openHub() {
+    document.getElementById('result').hidden = true;
+    const getFormImage = (formId) => this.formImage(formId);
+    const save = (p) => saveProgress(p);
+    const openEvolve = () => EvolveView(this.progress, FORMS, {
+      getFormImage, save, onDone: () => this.openHub(),
+    });
+    HubView(this.progress, FORMS, {
+      getFormImage, save,
+      onPlay: () => this.scene.restart({ progress: this.progress }),
+      onEvolve: () => openEvolve(),
+    });
+  }
+  releaseControls() {
+    this.joystick?.destroy();
+    this.fireButton?.destroy();
+    this.joystick = null;
+    this.fireButton = null;
   }
   makePlayerMarker() {
     this.marker = this.add.graphics().setDepth(1);
-    this.marker.lineStyle(2.5, 0x68854f, 0.75).strokeEllipse(0, 0, 100, 42);
+    const glow = CONFIG.gradeGlow[this.progress.grade];
+    if (glow != null) this.marker.fillStyle(glow, 0.28).fillEllipse(0, 0, 112, 50);
+    this.marker.lineStyle(glow != null ? 4 : 2.5, glow ?? 0x68854f, glow != null ? 0.95 : 0.75).strokeEllipse(0, 0, 100, 42);
     this.nameTag = this.add
-      .text(0, 0, '나 · 미물', {
+      .text(0, 0, '나 · ' + FORM_BY_ID[this.progress.formId].name, {
         fontFamily: 'system-ui, sans-serif',
         fontStyle: 'bold',
         fontSize: '11px',
@@ -77,17 +129,26 @@ export class PlayScene extends Phaser.Scene {
     // 72마리면 최대 2,556쌍. 제곱거리로 검사하고 먹힌 개체는 즉시 제외한다.
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
-      const pair = eatingPair(this.player, enemy);
+      // 보물로 역전한 상대는 크기가 조금만 작아져도 바로 먹을 수 있다.
+      const reversed = enemy.reversed && enemy.size < this.player.size;
+      const pair = eatingPair(this.player, enemy, reversed ? 1 : CONFIG.eating.ratio);
       if (!pair) continue;
       const [hunter, prey] = pair;
-      hunter.eat(prey);
       if (prey === this.player) {
+        hunter.eat(prey);
         this.ended = true;
-        this.joystick.destroy();
-        this.hud.end(this.player, FORM_BY_ID[hunter.formId], () => this.scene.restart());
+        this.releaseControls();
+        this.combat.graphics.clear();
+        this.hud.end(this.player, FORM_BY_ID[hunter.formId], () => this.openHub(), this.run);
+        this.events.emit('runEnd', {
+          eaten: this.player.eaten, maxSize: this.player.maxSize, killerFormId: hunter.formId,
+        });
         return;
       }
+      const meal = this.combat.meal(prey, false);
+      hunter.eat(prey);
       prey.destroy();
+      this.events.emit('eat', meal);
     }
     for (let i = 0; i < this.enemies.length; i++) {
       const a = this.enemies[i];
@@ -109,10 +170,15 @@ export class PlayScene extends Phaser.Scene {
   update(_time, delta) {
     if (this.ended) return;
     const dt = Math.min(delta / 1000, CONFIG.render.maxDelta);
-    this.player.step(this.joystick.direction(), dt);
+    const direction = this.joystick.direction();
+    this.player.step(direction, dt);
+    this.combat.step(direction, dt, this.fireRequested);
+    this.fireRequested = false;
     for (const enemy of this.enemies) enemy.step(this.player, dt);
     this.resolveMeals();
     if (this.ended) return;
+    this.combat.draw();
+    this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
     this.follow(dt);
     const { x, y, size } = this.player;
     this.marker.setPosition(x, y + size * 0.64).setScale(size / 46);

@@ -35,10 +35,10 @@ export class Actor {
   }
 }
 
-export function eatingPair(a, b) {
+export function eatingPair(a, b, ratio = CONFIG.eating.ratio) {
   const larger = a.size >= b.size ? a : b;
   const smaller = larger === a ? b : a;
-  if (larger.size / smaller.size < CONFIG.eating.ratio) return null;
+  if (larger.size / smaller.size < ratio) return null;
   const reach = a.size + b.size,
     dx = a.x - b.x,
     dy = a.y - b.y;
