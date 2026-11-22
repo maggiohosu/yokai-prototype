@@ -1,6 +1,6 @@
 // 확률표 단위는 %. 배열의 인덱스는 시도 전 현재 레벨이다.
 export const ENHANCE = {
-  stats: ['growth', 'speed', 'signature'],
+  stats: ['growth', 'speed', 'vitality'],
   success: [95, 90, 80, 70, 60, 50, 40, 30, 20, 10],
   degradeOnFailure: [0, 0, 0, 0, 30, 30, 40, 40, 50, 50],
   greatOnSuccess: 5,

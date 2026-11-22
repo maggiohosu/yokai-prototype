@@ -34,12 +34,12 @@ export class Enemy extends Actor {
     this.vx = 0;
     this.vy = 0;
     this.reversed = false;
-    this.fleeTime = 0;
     this.special = rollSpecial(size, this.stage);
   }
+  // 보물에 깎여 나보다 작아진 상위 요괴: 역전. 풀리는 때는 무언가를 먹거나 진화·몸집 강화를 하거나 플레이어보다 커질 때다.
+  // 그 전까지는 플레이어를 쫓지 않고 도망한다(enemyAI.pickIntent), 먹기 규칙은 단계를 무시한다(rules.reversalPair).
   fleeFrom(player) {
     this.reversed = true;
-    this.fleeTime = CONFIG.combat.reversalFleeSeconds;
     const dx = this.x - player.x, dy = this.y - player.y;
     const distance = Math.hypot(dx, dy);
     this.vx = distance ? CONFIG.enemy.fleeSpeed * dx / distance : CONFIG.enemy.fleeSpeed;
@@ -48,6 +48,7 @@ export class Enemy extends Actor {
   // 먹으면 면적이 늘고, 먹이 점수만큼 요력과 식성이 쌓인다. 진화·강화를 했으면 'evolve'|'body', 아니면 null.
   eat(prey, rng = Math.random) {
     super.eat(prey);
+    this.reversed = false;
     this.yoryeok += preyValue(preyInfoOf(prey));
     if (prey.dir in this.diet) this.diet[prey.dir] += prey.size;
     return this.autoProgress(rng);
@@ -62,12 +63,14 @@ export class Enemy extends Actor {
     } else if (action === 'body') {
       this.yoryeok -= bodyCostAt(this.bodyLevel);
       this.bodyLevel++;
+      this.reversed = false;
       this.setSize(this.size * CONFIG.levelUp.bodyMult);
     }
     return action;
   }
   evolveTo(form, rng = Math.random) {
     const [min, max] = CONFIG.enemy.evolveJitter;
+    this.reversed = false;
     this.yoryeok -= evolutionCost(form.stage);
     this.formId = form.id;
     this.stage = form.stage;
@@ -76,18 +79,15 @@ export class Enemy extends Actor {
     this.setSize(CONFIG.levelUp.evolveResetSize * (min + rng() * (max - min)));
     this.diet = newDiet();
     this.bodyLevel = 0;
+    this.rewardSize = 0; // 새 형태는 새 크기 기준으로 요력을 준다
     this.grade = rollGrade(0, { rng });
     this.special = rollSpecial(this.size, this.stage, rng);
   }
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
   step(player, dt, grid) {
     const ai = CONFIG.enemy;
-    if (this.size >= player.size) {
-      this.reversed = false;
-      this.fleeTime = 0;
-    }
+    if (this.size >= player.size) this.reversed = false;
     const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt) : null;
-    this.fleeTime = Math.max(0, this.fleeTime - dt);
     const dir = intentDirection(this, intent);
     let vx, vy;
     if (dir) {

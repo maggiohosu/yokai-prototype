@@ -12,6 +12,7 @@
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/ui/overlay.css" />
+    <link rel="stylesheet" href="./src/ui/quickpick.css" />
   </head>
   <body>
     <header class="masthead">
@@ -41,18 +42,21 @@
           <span id="growth-count" aria-hidden="true"></span>
         </div>
       </section>
-      <aside class="mini" aria-label="현재 위치">
-        <div class="mini-title">사방 지도</div>
-        <canvas id="map" aria-label="사방 구역과 플레이어의 위치"></canvas>
-        <div class="location"><span id="region-seal"></span><span id="area"></span></div>
-      </aside>
+      <div class="field-size" aria-hidden="true"><span>현재 크기</span><strong id="field-size"></strong></div>
+      <div class="field-atlas">
+        <aside class="mini" aria-label="현재 위치">
+          <div class="mini-title">사방 지도</div>
+          <canvas id="map" aria-label="사방 구역과 플레이어의 위치"></canvas>
+          <div class="location"><span id="region-seal"></span><span id="area"></span></div>
+        </aside>
+        <a class="field-book" href="./index.html?gallery=1"><span class="book" aria-hidden="true"></span>도감</a>
+      </div>
+      <div class="movement-control"><div id="joystick" aria-hidden="true"><i>이동</i></div></div>
       <div class="help">
         <span class="keys">
           <span><kbd>WASD</kbd> 또는 방향키로 이동</span>
-          <span>누른 쪽으로 이동</span>
           <span><kbd>스페이스</kbd> 발사</span>
         </span>
-        <span class="touch-help">들판을 누른 쪽으로 이동</span>
       </div>
     </main>
     <main id="gallery" hidden>
@@ -65,30 +69,41 @@
         <div id="cards"></div>
       </div>
     </main>
-    <div id="joystick" aria-hidden="true" hidden><i></i></div>
+    <dialog id="rotate-guide" aria-labelledby="rotate-title" aria-describedby="rotate-help">
+      <div class="rotate-sheet">
+        <span class="rotate-phone" aria-hidden="true"></span>
+        <h2 id="rotate-title">가로로 돌려 주세요</h2>
+        <p id="rotate-help">왼손으로 이동하고 오른손으로 여의주를 쏘세요.</p>
+        <button type="button" id="rotate-start">가로 화면 열기</button>
+      </div>
+    </dialog>
     <div id="loading" role="status">들판을 펼치는 중…</div>
     <noscript><div class="script-required">들판을 열려면 브라우저에서 JavaScript를 켜 주세요.</div></noscript>
     <dialog id="result" aria-labelledby="end-title" hidden>
       <div class="result-paper">
-        <div class="result-heading">
-          <span class="result-stamp" aria-hidden="true">終</span>
-          <h2 id="end-title">판 종료</h2>
+        <div class="result-record">
+          <div class="result-heading">
+            <span class="result-stamp" aria-hidden="true">終</span>
+            <h2 id="end-title">판 종료</h2>
+          </div>
+          <p id="killer"></p>
+          <p id="run-reward" class="run-reward" hidden></p>
+          <dl>
+            <div>
+              <dt>먹은 수</dt>
+              <dd id="final-eaten"></dd>
+            </div>
+            <div>
+              <dt>최대 크기</dt>
+              <dd id="final-size"></dd>
+            </div>
+          </dl>
         </div>
-        <p id="killer"></p>
-        <p id="run-reward" class="run-reward" hidden></p>
-        <dl>
-          <div>
-            <dt>먹은 수</dt>
-            <dd id="final-eaten"></dd>
-          </div>
-          <div>
-            <dt>최대 크기</dt>
-            <dd id="final-size"></dd>
-          </div>
-        </dl>
-        <button id="restart" type="button" autofocus>다음 판 시작</button>
-        <button id="hub" type="button">강화와 진화</button>
-        <a href="./index.html?gallery=1">요괴 도감</a>
+        <div class="result-actions">
+          <button id="restart" type="button" autofocus>다음 판 시작</button>
+          <button id="hub" type="button">강화와 진화</button>
+          <a href="./index.html?gallery=1">요괴 도감</a>
+        </div>
       </div>
     </dialog>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>

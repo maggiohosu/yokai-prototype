@@ -44,7 +44,7 @@ export function rollGrade(enhSum, { rng = Math.random } = {}) {
   return GRADES[GRADES.length - 1];
 }
 
-const enhSumOf = (p) => p.enh.growth + p.enh.speed + p.enh.signature;
+const enhSumOf = (p) => p.enh.growth + p.enh.speed + p.enh.vitality;
 
 // ---- 선택지 ----
 function scoreForm(p, form, useBranch) {

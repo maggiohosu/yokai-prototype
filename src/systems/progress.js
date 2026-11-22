@@ -10,7 +10,7 @@ export function createProgress() {
     formId: 'mimul',
     stage: 1,
     grade: 'C',
-    enh: { growth: 0, speed: 0, signature: 0 },
+    enh: { growth: 0, speed: 0, vitality: 0 },
     protect: 0,
     shards: 0,
     treasure: null,

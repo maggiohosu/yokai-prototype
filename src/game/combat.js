@@ -7,12 +7,13 @@ import { canEat, stageOf } from '../systems/rules.js';
 const tuning = CONFIG.combat;
 
 // (x,y)에서 (hx,hy) 방향 부채꼴 안의 '나를 먹을 수 있는'(단계 규칙) 가장 가까운 적.
-function aimTarget(x, y, player, enemies, hx, hy) {
+// 이미 역전된 적(나보다 작아져 도망 중)은 더 이상 위협이 아니므로 표적에서 뺀다.
+export function aimTarget(x, y, player, enemies, hx, hy) {
   const cone = Math.cos(tuning.aimHalfAngleDeg * Math.PI / 180);
   let nearest = null;
   let best = tuning.range ** 2;
   for (const enemy of enemies) {
-    if (!enemy.sprite.active || !canEat(enemy, player)) continue;
+    if (!enemy.sprite.active || enemy.reversed || !canEat(enemy, player)) continue;
     const dx = enemy.x - x, dy = enemy.y - y;
     const distanceSq = dx * dx + dy * dy;
     if (distanceSq > best || dx * hx + dy * hy < Math.sqrt(distanceSq) * cone) continue;
@@ -20,6 +21,11 @@ function aimTarget(x, y, player, enemies, hx, hy) {
     best = distanceSq;
   }
   return nearest;
+}
+
+// 요력 기준 크기: 보물에 깎이기 전 가장 컸던 크기(진화하면 enemy.js가 초기화).
+export function rewardSizeOf(enemy) {
+  return Math.max(enemy.rewardSize ?? 0, enemy.size);
 }
 
 // 구슬이 한 프레임에 지나간 선분과 가장 먼저 닿는 충돌 원을 찾는다.
@@ -59,15 +65,17 @@ export class Combat {
   engage(enemy) {
     if (!this.engagements.has(enemy)) {
       this.engagements.set(enemy, {
-        preySize: enemy.size,
+        preySize: rewardSizeOf(enemy),
         myOriginalSizeAtEngage: this.scene.player.size,
       });
     }
     return this.engagements.get(enemy);
   }
 
+  // 보물로 깎여 작아졌어도 요력은 깎이기 전 가장 컸던 크기로 준다(사용자 결정 2026-11-23).
   meal(enemy, killedByTreasure) {
-    return { dir: enemy.dir, ...this.engage(enemy), killedByTreasure, special: !!enemy.special, stage: enemy.stage ?? 1, grade: enemy.grade };
+    const engaged = this.engage(enemy);
+    return { dir: enemy.dir, ...engaged, preySize: Math.max(engaged.preySize, rewardSizeOf(enemy)), killedByTreasure, special: !!enemy.special, stage: enemy.stage ?? 1, grade: enemy.grade };
   }
 
   stats() {
@@ -78,7 +86,8 @@ export class Combat {
 
   fire(stats = this.stats()) {
     const { damage, ways, perWay, speedMult, homing } = stats;
-    const power = damage * (gradeMultiplier(this.progress.grade) ?? 1) * (this.scene.playerStats?.signature ?? 1);
+    // 위력은 보물(여의주) 강화 레벨(treasureStats)과 등급 배율로만 정한다.
+    const power = damage * (gradeMultiplier(this.progress.grade) ?? 1);
     const { player } = this.scene;
     const base = Math.atan2(this.heading.y, this.heading.x);
     const speed = tuning.orbSpeed * speedMult;
@@ -100,9 +109,10 @@ export class Combat {
   hit(enemy, damage) {
     const { player } = this.scene;
     this.engage(enemy);
+    enemy.rewardSize = rewardSizeOf(enemy);
     const remaining = enemy.size - damage;
     // 역전: 나를 먹을 수 있던 적이 깎여서 이제 내가 먹을 수 있게 됐다(단계 규칙 포함).
-    const reversal = canEat(enemy, player) && canEat(player, { size: remaining, stage: stageOf(enemy) }, { reversed: true });
+    const reversal = !enemy.reversed && canEat(enemy, player) && canEat(player, { size: remaining, stage: stageOf(enemy) }, { reversed: true });
     if (reversal) this.scene.fireButton.showReversal();
     this.scene.fx?.flash(enemy);
     if (reversal) this.scene.fx?.reversal(enemy);

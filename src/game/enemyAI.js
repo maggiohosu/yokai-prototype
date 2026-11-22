@@ -75,7 +75,8 @@ function choose(enemy, player, grid, cfg) {
       if (score < preyScore) { prey = other; preyScore = score; }
     }
   };
-  if (player && isAlive(player) && dist(enemy, player) <= cfg.detect) consider(player, true);
+  // 역전 중인 적은 플레이어를 사냥감으로도 위협으로도 보지 않는다(감지 거리 안에서는 pickIntent가 먼저 도망을 정한다).
+  if (!enemy.reversed && player && isAlive(player) && dist(enemy, player) <= cfg.detect) consider(player, true);
   const near = queryGrid(grid, enemy.x, enemy.y, cfg.detect, scratch);
   for (const other of near) if (other !== enemy) consider(other, false);
   if (threat) return { mode: 'flee', target: threat };
@@ -85,14 +86,17 @@ function choose(enemy, player, grid, cfg) {
 
 // 반환: { mode: 'flee'|'chase'|'wander', target }. dt는 표적 재선택 타이머를 줄이는 데 쓴다(기본 0).
 export function pickIntent(enemy, player, grid, cfg = CONFIG.hunt, dt = 0) {
-  if (enemy.reversed && enemy.fleeTime > 0 && player) {
+  // 역전 중인 적(enemy.reversed)은 시간이 지나도 풀리지 않고(먹기·진화·몸집 강화로만 풀린다) 플레이어를 쫓지 않는다.
+  // 감지 거리 안에서는 플레이어에게서 도망하고, 밖에서는 플레이어를 빼고 평소처럼 움직인다.
+  if (enemy.reversed && player && isAlive(player) && dist(enemy, player) <= cfg.detect) {
     enemy.aiIntent = { mode: 'flee', target: player };
     enemy.aiTimer = cfg.retargetSeconds;
     return enemy.aiIntent;
   }
   let intent = enemy.aiIntent;
   enemy.aiTimer = (enemy.aiTimer ?? 0) - dt;
-  if (!intent || enemy.aiTimer <= 0 || !stillValid(enemy, intent, cfg)) {
+  const chasingPlayerWhileReversed = enemy.reversed && intent?.mode === 'chase' && intent.target === player;
+  if (!intent || chasingPlayerWhileReversed || enemy.aiTimer <= 0 || !stillValid(enemy, intent, cfg)) {
     const retarget = cfg.retargetSeconds * (0.8 + Math.random() * 0.4);
     intent = choose(enemy, player, grid, cfg);
     enemy.aiIntent = intent;

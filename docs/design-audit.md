@@ -81,18 +81,18 @@
 
 비교본은 로컬 Chrome의 360×780, 배율 1, 한국어 환경에서 촬영했다. 전후 모두 같은 시작 상태를 사용했다. 병행 중인 캐릭터 확장의 영향을 분리하기 위해 수정 후 비교 촬영 때만 기존 커밋의 `creature.js`와 `forms.js`를 브라우저에 제공했다. 두 참조 파일의 버전 고정은 브라우저 응답에만 적용했다. 진화의 보조 후보와 배경에 등장하는 적은 게임 진행 시점에 따라 달라질 수 있다.
 
-[수정 전 모음](../../yokai-design-review/before/overview.png) / [수정 후 모음](../../yokai-design-review/after/overview.png)
+[수정 전 모음](design-review/before/overview.png) / [수정 후 모음](design-review/after/overview.png)
 
 | 장면 | 수정 전 | 수정 후 |
 |---|---|---|
-| 들판 HUD·발사 | [전](../../yokai-design-review/before/field.png) | [후](../../yokai-design-review/after/field.png) |
-| 판 종료 | [전](../../yokai-design-review/before/result.png) | [후](../../yokai-design-review/after/result.png) |
-| 정비 | [전](../../yokai-design-review/before/hub.png) | [후](../../yokai-design-review/after/hub.png) |
-| 여의주 | [전](../../yokai-design-review/before/treasure.png) | [후](../../yokai-design-review/after/treasure.png) |
-| 성장 | [전](../../yokai-design-review/before/growth.png) | [후](../../yokai-design-review/after/growth.png) |
-| 진화 선택 | [전](../../yokai-design-review/before/evolve.png) | [후](../../yokai-design-review/after/evolve.png) |
-| 진화 결과 | [전](../../yokai-design-review/before/discovery.png) | [후](../../yokai-design-review/after/discovery.png) |
-| 도감 | [전](../../yokai-design-review/before/gallery.png) | [후](../../yokai-design-review/after/gallery.png) |
+| 들판 HUD·발사 | [전](design-review/before/field.png) | [후](design-review/after/field.png) |
+| 판 종료 | [전](design-review/before/result.png) | [후](design-review/after/result.png) |
+| 정비 | [전](design-review/before/hub.png) | [후](design-review/after/hub.png) |
+| 여의주 | [전](design-review/before/treasure.png) | [후](design-review/after/treasure.png) |
+| 성장 | [전](design-review/before/growth.png) | [후](design-review/after/growth.png) |
+| 진화 선택 | [전](design-review/before/evolve.png) | [후](design-review/after/evolve.png) |
+| 진화 결과 | [전](design-review/before/discovery.png) | [후](design-review/after/discovery.png) |
+| 도감 | [전](design-review/before/gallery.png) | [후](design-review/after/gallery.png) |
 
 ## 검증 및 인계
 
@@ -103,3 +103,21 @@
 - **후속 제안** 캐릭터 확장 통합 후 가장 긴 형태명과 많은 후보가 들어간 진화 확률표를 320px 실기기에서 한 번 더 본다. 이번 비교의 도감은 원본 17종 기준이다.
 
 감사에는 Damir Sokolovsky의 unslop(CC BY 4.0)과 Hallmark의 app/polish 기준을 사용했다.
+
+## 가로 들판으로 변경한 뒤의 검증
+
+위 360×780 비교본은 세로 배치의 기록이다. 가로 들판에서는 제목줄을 접고 왼쪽 위에 형태·단계·등급과 성장 게이지, 위 가운데에 현재 크기, 오른쪽 위에 사방 지도와 도감 링크를 둔다. 가운데 숫자와 HUD의 크기는 동일한 값에서 갱신한다. 도감은 세로로도 읽을 수 있다.
+
+| 화면 | 왼쪽 이동 스틱 | 오른쪽 발사 | 확인한 장면 |
+|---|---:|---:|---|
+| 844×390 | 약 129px | 약 101px | [들판](design-review/landscape/844x390-field.png), [결과](design-review/landscape/844x390-result.png), [정비](design-review/landscape/844x390-hub.png), [진화](design-review/landscape/844x390-evolve.png) |
+| 740×360 | 120px | 96px | [들판](design-review/landscape/740x360-field.png), [결과](design-review/landscape/740x360-result.png), [정비](design-review/landscape/740x360-hub.png), [진화](design-review/landscape/740x360-evolve.png) |
+| 390×844 | 회전 안내 | 첫 탭으로 전체 화면 요청 | [세로 안내](design-review/landscape/390x844-rotate.png) |
+
+- 두 조작은 안전 영역 안쪽 24px에 고정된다. 브라우저에서 손잡이를 끌고 놓아도 받침 중심 좌표가 같았다. 충전율은 발사 버튼 바깥 고리에 표시한다.
+- 360px 높이에서 결과 수치와 행동 버튼이 한 화면에 보인다. 정비의 본문을 끝까지 스크롤해도 하단 동작은 같은 위치에 있다. 진화 선택에서는 식성과 후보 그림을 나란히 놓았다.
+- 세로로 시작하면 안내를 먼저 열고, 플레이 중 세로로 돌리면 게임 루프를 멈춘다. 가로로 돌아오면 다시 진행한다. 회전 직후 뒤늦게 정비창이 열리는 경우에도 안내가 입력을 받는지 확인했다.
+- Chrome 헤드리스에서 첫 탭의 실제 전체 화면 진입을 확인했다. 이 환경은 기기를 물리적으로 돌리지 않는다. 전체 화면과 방향 잠금 API가 거절되는 경우를 별도로 재현해, 수동 회전으로 안내가 닫히고 게임이 열리는 것까지 확인했다.
+- 166종 확장이 분리된 뒤 기존 적 진화 테스트를 포함해 전체 93개가 통과했다. 병행 변경이 반영된 공유 트리에서도 전체 126개가 통과했다. 가로 배치만 독립적으로 확인한 비교본은 `edf6ab1`에 이번 표시 변경을 적용한 상태에서 촬영했다.
+- sloplint로 HTML/CSS 세 파일과 네 URL을 렌더 검사했다. 공유 트리 최종 실행은 FAIL 0, REFLEX 0, WARN 0이며 함께 로드된 S4의 `quickpick.css` 간격에 NOTE 3건이 있었다. 가로 배치 단독 실행에서는 일반 버튼 권장 높이를 넘는 발사 버튼에 REFLEX 39b가 나왔다. 발사 버튼의 지정 지름은 96~112px다. 임시 서버 재검사에서 발생한 리소스 폴백 경고는 공유 트리 서버를 이용한 최종 렌더에서 재현되지 않았다.
+- 기존 성장 화면 비교의 대상은 `LevelUpView.js`다. 새 `QuickPick.js`의 화면 검증과 고정 스틱 좌표를 사용하는 이동 판정은 S4 통합 대상이다.

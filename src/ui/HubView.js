@@ -11,7 +11,7 @@ import { dropChance, equip, exchangeShards, sell, sellPrice, treasureStats, trea
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 
-export const statNames = { growth: '크기 성장', speed: '이동 속도', signature: '대표 효과' };
+export const statNames = { growth: '크기 성장', speed: '이동 속도', vitality: '생명력' };
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
 
 export function attemptText(attempt) {

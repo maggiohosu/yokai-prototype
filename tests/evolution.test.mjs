@@ -174,7 +174,7 @@ test('evolve: 미지의 진화는 같은 단계 무작위 균등', () => {
 
 test('evolve: 강화 합계가 등급 굴림에 반영', () => {
   const p = createProgress();
-  p.enh = { growth: 10, speed: 10, signature: 10 };
+  p.enh = { growth: 10, speed: 10, vitality: 10 };
   p.yoryeok = 100;
   const rng = seeded(5);
   const N = 100000;
@@ -186,13 +186,13 @@ test('evolve: 강화 합계가 등급 굴림에 반영', () => {
 test('devolve', () => {
   const p = createProgress();
   assert.equal(devolve(p, forms), null);
-  Object.assign(p, { stage: 3, formId: 'imugi', enh: { growth: 3, speed: 2, signature: 1 } });
+  Object.assign(p, { stage: 3, formId: 'imugi', enh: { growth: 3, speed: 2, vitality: 1 } });
   p.diet.west = 5;
   const r = devolve(p, forms, { rng: seeded() });
   assert.equal(r.form.id, 'baem');
   assert.equal(p.stage, 2);
   assert.equal(p.formId, 'baem');
-  assert.deepEqual(p.enh, { growth: 3, speed: 2, signature: 1 });
+  assert.deepEqual(p.enh, { growth: 3, speed: 2, vitality: 1 });
   assert.equal(p.diet.west, 0);
   const r2 = devolve(p, forms);
   assert.equal(p.stage, 1);

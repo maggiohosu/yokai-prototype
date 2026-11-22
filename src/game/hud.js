@@ -71,6 +71,7 @@ export class Hud {
     portrait.alt = '';
     byId('avatar-slot').replaceChildren(portrait);
     this.size = byId('size');
+    this.fieldSize = byId('field-size');
     this.eaten = byId('eaten');
     this.area = byId('area');
     this.gaugeRow = byId('growth-gauge');
@@ -109,6 +110,7 @@ export class Hud {
     if (size !== this.lastSize) {
       this.lastSize = size;
       this.size.textContent = size;
+      this.fieldSize.textContent = size;
     }
     if (player.eaten !== this.lastEaten) {
       this.lastEaten = player.eaten;

@@ -19,11 +19,15 @@ export function normalizeProgress(raw, forms = FORMS) {
   }
   if (typeof raw.grade === 'string') base.grade = raw.grade;
   for (const k of Object.keys(base.diet)) if (isNum(raw.diet?.[k])) base.diet[k] = raw.diet[k];
-  for (const k of Object.keys(base.enh)) if (isNum(raw.enh?.[k])) base.enh[k] = raw.enh[k];
+  // 이전 저장본의 '대표 효과'(signature) 레벨은 같은 레벨의 '생명력'(vitality)으로 옮기고 signature는 버린다.
+  const rawEnh = raw.enh && typeof raw.enh === 'object' ? { ...raw.enh } : {};
+  if (!isNum(rawEnh.vitality) && isNum(rawEnh.signature)) rawEnh.vitality = rawEnh.signature;
+  for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = rawEnh[k];
   if (raw.treasure && typeof raw.treasure === 'object') base.treasure = raw.treasure;
   if (Array.isArray(raw.inventory)) base.inventory = raw.inventory.filter((x) => x && typeof x === 'object');
   if (Array.isArray(raw.discovered)) base.discovered = raw.discovered.filter((x) => typeof x === 'string');
-  if (ENHANCE.stats.includes(raw.pendingDegrade)) base.pendingDegrade = raw.pendingDegrade;
+  const pending = raw.pendingDegrade === 'signature' ? 'vitality' : raw.pendingDegrade;
+  if (ENHANCE.stats.includes(pending)) base.pendingDegrade = pending;
   if (raw.pendingDevolve === true && base.stage > 1) base.pendingDevolve = true;
   return base;
 }

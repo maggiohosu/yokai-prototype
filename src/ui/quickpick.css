@@ -1,0 +1,91 @@
+/* 빠른 성장 선택: 화면 가운데 카드 3장. 색·글꼴은 style.css의 :root 토큰만 쓴다(새 색 지정 금지). */
+.quickpick {
+  position: fixed; inset: 0; z-index: 40;
+  display: grid; place-items: center;
+  padding:
+    max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow-y: auto; overscroll-behavior: contain;
+  background: var(--veil); color: var(--ink);
+  font: 400 15px/1.4 var(--sans); font-variant-numeric: tabular-nums;
+  touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.qp-panel { display: grid; gap: 12px; width: min(560px, 100%); margin-block: auto; }
+.qp-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  padding: 8px 12px; border-radius: 4px; background: var(--ink); color: var(--paper);
+}
+.qp-title { margin: 0; font: 600 20px/1.2 var(--serif); }
+.qp-wallet { color: var(--gold); font-size: 13px; }
+.qp-cards {
+  display: grid; justify-content: center; gap: 8px;
+  grid-template-columns: repeat(var(--qp-count, 3), minmax(0, 176px));
+}
+.qp-card {
+  --qp-accent: var(--ink);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  min-width: 0; min-height: 132px; padding: 8px 6px 10px;
+  border: 2px solid var(--ink); border-top: 6px solid var(--qp-accent); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+  font: inherit; text-align: center; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.qp-card[data-kind='evolve'] { --qp-accent: var(--stamp); }
+.qp-card[data-kind='body'] { --qp-accent: var(--ochre); }
+.qp-card[data-kind='ability'] { --qp-accent: var(--jade); }
+.qp-card[data-dir='east'] { --qp-accent: var(--east); }
+.qp-card[data-dir='west'] { --qp-accent: var(--west); }
+.qp-card[data-dir='south'] { --qp-accent: var(--south); }
+.qp-card[data-dir='north'] { --qp-accent: var(--north); }
+.qp-card:hover { background: var(--sheet); }
+.qp-card:active { background: var(--sheet); transform: translateY(2px); box-shadow: 0 2px 0 var(--ink); }
+.qp-card:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.qp-kind { color: var(--ink-soft); font: 600 12px/1.2 var(--sans); }
+.qp-art {
+  display: grid; place-items: center; width: 56px; height: 56px;
+  border-radius: 50%; background: var(--sheet);
+}
+.qp-art img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.qp-glyph { color: var(--qp-accent); font: 600 22px/1 var(--serif); }
+.qp-mystery .qp-glyph { font-size: 18px; }
+.qp-name { min-height: 2.5em; display: grid; align-items: center; font: 600 15px/1.25 var(--serif); word-break: keep-all; overflow-wrap: anywhere; text-wrap: balance; }
+.qp-sub { color: var(--muted); font-size: 12px; line-height: 1.3; }
+.qp-note { color: var(--ink-soft); font-size: 11px; line-height: 1.3; word-break: keep-all; overflow-wrap: anywhere; }
+.qp-cost {
+  width: 100%; margin-top: auto; padding-top: 4px; border-top: 1px solid var(--line);
+  color: var(--ochre); font: 600 13px/1.2 var(--sans);
+}
+
+/* 아주 좁은 화면: 세로로 한 장씩. 카드 높이는 그대로 96px 이상이다. */
+@media (max-width: 339px) {
+  .qp-cards { grid-template-columns: minmax(0, 1fr); }
+  .qp-card {
+    display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; grid-template-rows: auto auto auto;
+    grid-template-areas: 'art name cost' 'art sub cost' 'art note cost';
+    justify-items: start; align-items: center; column-gap: 10px; row-gap: 0;
+    min-height: 96px; text-align: left;
+  }
+  .qp-kind { display: none; }
+  .qp-art { grid-area: art; }
+  .qp-name { grid-area: name; align-self: end; min-height: 0; }
+  .qp-sub { grid-area: sub; align-self: start; }
+  .qp-note { grid-area: note; }
+  .qp-cost { grid-area: cost; width: auto; padding: 0 0 0 8px; border-top: 0; border-left: 1px solid var(--line); }
+}
+/* 가로로 눕힌 낮은 화면 */
+@media (max-height: 460px) {
+  .qp-panel { gap: 8px; }
+  .qp-card { min-height: 104px; gap: 2px; padding-block: 6px 8px; }
+  .qp-art { width: 44px; height: 44px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .quickpick { animation: qp-fade 0.12s ease-out; }
+  .qp-card { animation: qp-rise 0.16s ease-out backwards; }
+  .qp-card:nth-child(2) { animation-delay: 0.03s; }
+  .qp-card:nth-child(3) { animation-delay: 0.06s; }
+  @keyframes qp-fade { from { opacity: 0; } }
+  @keyframes qp-rise { from { opacity: 0; transform: translateY(8px); } }
+}

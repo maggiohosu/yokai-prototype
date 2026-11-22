@@ -4,16 +4,32 @@ import { recordEat } from '../systems/progress.js';
 import { preyValue } from '../systems/rules.js';
 import { addToInventory, dropChance } from '../systems/treasure.js';
 import { gradeMultiplier } from '../systems/evolution.js';
+import { vitalityMax } from '../systems/vitality.js';
 import { saveProgress } from '../state/save.js';
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// 성장에 따른 속도 배율 f(사용자 결정 2026-11-23). 진화 단계가 증가분의 절반, 이동 속도 강화 레벨이 나머지 절반이다.
+//   f = minMult + (maxMult - minMult) × (0.5 × (단계-1)/(maxStage-1) + 0.5 × 속도 레벨/maxSpeedLevel)
+// 게임 템포(CONFIG.tempo × f)와 플레이어 이동 속도(CONFIG.player.speed × f)에 모두 곱한다.
+export function paceMultiplier(progress) {
+  const { minMult, maxMult, maxStage, maxSpeedLevel } = CONFIG.pace;
+  const stage = clamp(Number(progress?.stage) || 1, 1, maxStage);
+  const level = clamp(Number(progress?.enh?.speed) || 0, 0, maxSpeedLevel);
+  const stageShare = maxStage > 1 ? (stage - 1) / (maxStage - 1) : 0;
+  const levelShare = maxSpeedLevel > 0 ? level / maxSpeedLevel : 0;
+  return minMult + (maxMult - minMult) * (0.5 * stageShare + 0.5 * levelShare);
+}
 
 export function playerStats(progress) {
   const p = CONFIG.progression;
   const enh = progress.enh ?? {};
   return {
-    speed: CONFIG.player.speed * (1 + p.speedPerLevel * (enh.speed ?? 0)),
+    pace: paceMultiplier(progress),
+    speed: CONFIG.player.speed * paceMultiplier(progress),
     areaGain: CONFIG.eating.areaGain * (1 + p.growthPerLevel * (enh.growth ?? 0)),
-    // 대표 효과: 보물 공격력에 곱한다. 등급 배율은 combat.js가 따로 곱한다.
-    signature: 1 + p.signaturePerLevel * (enh.signature ?? 0),
+    // 생명력 최대치(초). 여의주 위력은 보물 강화 레벨과 등급 배율로만 정해진다(combat.js).
+    vitalityMax: vitalityMax(enh.vitality ?? 0),
     gradeMult: gradeMultiplier(progress.grade) ?? 1,
   };
 }

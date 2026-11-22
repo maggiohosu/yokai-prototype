@@ -98,3 +98,25 @@ test('형태나 단계가 없거나 서로 맞지 않으면 미물 1단계로 �
     assert.equal(p.yoryeok, 321);
   }
 });
+
+test('이전 저장본의 대표 효과(signature)는 같은 레벨의 생명력(vitality)으로 옮기고 signature는 지운다', () => {
+  const old = createProgress();
+  old.enh = { growth: 3, speed: 2, signature: 7 };
+  const s = fakeStorage();
+  s.setItem('yokai-proto-v1', JSON.stringify({ version: 1, savedAt: 1, progress: old }));
+  const loaded = loadProgress(s);
+  assert.deepEqual(loaded.enh, { growth: 3, speed: 2, vitality: 7 });
+  assert.equal('signature' in loaded.enh, false);
+  // 다시 저장해도 signature는 돌아오지 않는다.
+  saveProgress(loaded, s);
+  assert.deepEqual(JSON.parse(s.m.get('yokai-proto-v1')).progress.enh, { growth: 3, speed: 2, vitality: 7 });
+});
+
+test('저장본에 vitality가 이미 있으면 그 값을 쓰고, 퇴화 대기 중인 signature도 vitality로 바꾼다', () => {
+  const p = normalizeProgress({ enh: { growth: 1, speed: 1, signature: 9, vitality: 4 }, pendingDegrade: 'signature' });
+  assert.deepEqual(p.enh, { growth: 1, speed: 1, vitality: 4 });
+  assert.equal(p.pendingDegrade, 'vitality');
+  const other = normalizeProgress({ enh: { signature: 'x' }, pendingDegrade: 'speed' });
+  assert.deepEqual(other.enh, { growth: 0, speed: 0, vitality: 0 });
+  assert.equal(other.pendingDegrade, 'speed');
+});

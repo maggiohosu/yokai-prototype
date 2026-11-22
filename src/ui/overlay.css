@@ -147,6 +147,44 @@
   .yk-header .yk-wallet { margin-top: 4px; padding-top: 4px; }
   .yk-title { font-size: 22px; }
 }
+@media (orientation: landscape) and (min-width: 560px) and (max-height: 500px) {
+  .yk-dialog[open] {
+    display: grid;
+    grid-template-columns: minmax(152px, 28%) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: 'head body' 'tabs body' 'foot foot';
+    width: min(760px, calc(100% - 32px - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    height: min(400px, calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)));
+    background: var(--ink);
+  }
+  .yk-header { grid-area: head; padding: 16px 12px; }
+  .yk-header .yk-wallet { display: grid; gap: 4px; margin-top: 12px; padding-top: 8px; }
+  .yk-tabs {
+    grid-area: tabs; align-self: start; flex-wrap: wrap; gap: 4px; padding: 0 12px;
+    border-bottom: 0;
+  }
+  .yk-tabs .yk-button { background: var(--ink); color: var(--paper); }
+  .yk-tabs .yk-button[aria-pressed='true'] { color: var(--gold); border-color: var(--gold); }
+  .yk-tabs .yk-button:is(:hover,:active):enabled { background: var(--ink-hover); }
+  .yk-tabs .yk-button:focus-visible { outline-color: var(--gold); }
+  .yk-scroll { grid-area: body; background: var(--paper); }
+  .yk-footer { grid-area: foot; display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+  .yk-footer .yk-actions { flex: 0 1 320px; }
+  .yk-footer > .yk-button { min-width: 132px; }
+  .yk-footer > :is(.yk-status,.yk-hint,.yk-feedback) { flex: 1; min-width: 0; }
+  .yk-log { max-height: 36px; }
+  .yk-choices .yk-portrait { aspect-ratio: 1.65; }
+  .yk-scroll:has(.yk-choices) {
+    display: grid; align-content: start; align-items: start; gap: 12px;
+    grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  }
+  .yk-scroll:has(.yk-choices) > * { margin: 0; grid-column: 1 / -1; }
+  .yk-scroll:has(.yk-choices) > .yk-card { grid-column: 1; grid-row: span 2; }
+  .yk-scroll:has(.yk-choices) > :is(.yk-section-title,.yk-choices) { grid-column: 2; }
+  .yk-scroll:has(.yk-choices) .yk-diet { gap: 8px; }
+  .yk-reveal { padding-block: 4px; }
+  .yk-reveal .yk-portrait { width: min(112px, 32%); }
+}
 @keyframes yk-ink-in { from { opacity: .65; } to { opacity: 1; } }
 .yk-reveal .yk-portrait, .yk-flash { animation: yk-ink-in 180ms ease-out; }
 @media (prefers-reduced-motion: reduce) {

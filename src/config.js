@@ -63,9 +63,16 @@ export const CONFIG = {
   // 판 안 성장: 요력이 다음 선택지 비용에 닿으면 잠깐 멈추고 [진화]/[몸집 강화]/[능력 강화] 중 고른다.
   levelUp: {
     bodyBaseCost: 30, bodyCostGrowth: 1.6, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화
-    minGapRatio: 0.35, // 멈춘 뒤 다음 멈춤까지 최소 요력 증가(가장 싼 비용의 비율)
+    minGapRatio: 0.35, // 다음 멈춤까지 '이번 판에서 번 요력' 간격 = 가장 싼 카드 비용 × 이 값(아래 상·하한으로 자른다)
+    pauseGapMin: 25, // 멈춤 사이에 번 요력의 하한: 잔액이 아무리 많아도 이보다 자주 멈추지 않는다
+    pauseGapMax: 400, // 상한: 잔액이 아무리 많아도 이만큼만 벌면 판 안 선택이 열린다
     pauseCooldownSec: 5, // 실제 시간 기준 최소 간격
     evolveResetSize: 28, // 진화하면 크기를 이 값으로(=시작 크기)
+    // 빠른 성장 선택(카드 3장): 탭 한 번에 즉시 적용
+    quickCardCount: 3,
+    quickEnhanceCostMult: 1.5, // 능력 +1 카드 비용 = 이 값 × 본체 강화 비용(실패·퇴화 없이 확정이라 더 비싸다)
+    quickIgnoreMs: 150, // 카드가 열린 직후 이 시간 동안은 탭을 무시한다(실수 방지)
+    evolveMaxStage: 3, // 판 안 진화 카드는 이 단계 미만일 때만 나온다
   },
   combat: {
     aimHalfAngleDeg: 35,
@@ -80,8 +87,21 @@ export const CONFIG = {
     reversalFleeSeconds: 1.2,
     reversalNoticeMs: 800,
   },
-  // 본체 강화 1레벨당 배율(이동 속도·크기 성장·대표 효과=보물 공격력)
-  progression: { speedPerLevel: 0.06, growthPerLevel: 0.08, signaturePerLevel: 0.1 },
+  // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 pace 곡선, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
+  progression: { growthPerLevel: 0.08 },
+  // 생명력(사용자 결정 2026-11-23): 나를 먹을 수 있는 적과 겹쳐 있는 동안 게이지(초, 시뮬레이션 시간)가 줄고,
+  // 그동안은 먹히지 않는다. 0이 된 순간에도 겹쳐 있으면 먹힌다. 닿지 않으면 regenDelaySec 뒤부터 회복한다.
+  vitality: {
+    baseSec: 0.6, perLevelSec: 0.25, // 최대치 = baseSec + perLevelSec × 생명력 레벨(+10이면 3.1초)
+    regenFullSec: 4, // 빈 상태에서 가득 차기까지(최대치와 상관없이)
+    regenDelaySec: 0.5, // 닿은 직후 회복하지 않는 시간
+    hitDrainSec: 0.5, // 특수 적 구슬 한 방이 깎는 게이지. 모자란 비율만큼만 크기를 줄인다
+    arcColor: 0x48765e, warnColor: 0xd6453d, arcWidth: 4, arcPad: 7, flashHz: 6, // 원호 게이지(두께·간격은 화면 픽셀)
+  },
+  // 성장에 따른 속도 곡선(사용자 결정 2026-11-23). 배율 f = minMult + (maxMult - minMult)
+  //   × (0.5 × (단계-1)/(maxStage-1) + 0.5 × 이동 속도 강화 레벨/maxSpeedLevel).
+  // f는 게임 템포(tempo × f)와 플레이어 이동 속도(player.speed × f)에 모두 곱한다.
+  pace: { minMult: 1 / 3, maxMult: 1.5, maxStage: 5, maxSpeedLevel: 10 },
   // 등급은 겉모습을 빛·테두리 색으로만 표현한다(F는 테두리 없음)
   gradeGlow: { 'S+': 0xff6fd8, S: 0xffc53d, A: 0xa46bff, B: 0x4a9dff, C: 0x63b863, D: 0x9aa0a6, E: 0xa0785a, F: null },
   // 모션 그래픽. 끄기: 숨쉬기 breathAmount=0, 먹기 팝 punchScale=1, 번쩍임 flashSeconds=0, 흔들림 shakeIntensity=0, 기울기 maxTilt=0
@@ -91,7 +111,7 @@ export const CONFIG = {
     shakeMs: 150, shakeIntensity: 0.004, maxParticles: 160,
   },
   camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 16, portraitWidth: 585 },
-  // 화면 아무 곳 터치 → 캐릭터에서 손가락 방향 이동. 거리(px)가 deadZonePx 이하면 0, fullSpeedPx 이상이면 1. responseMs: 방향 반응 시간상수.
+  // 좌하단 고정 스틱: 패드 중심에서 손가락까지 거리(px)가 deadZonePx 이하면 0, 패드 반지름 또는 fullSpeedPx 중 작은 값 이상이면 1. responseMs: 방향 반응 시간상수.
   input: { joystickRadius: 51, deadZonePx: 14, fullSpeedPx: 90, responseMs: 20 },
   render: {
     targetFps: 60,
