@@ -1,7 +1,10 @@
 import { CONFIG, REGIONS } from '../config.js';
 import { FORMS, FORM_BY_ID } from '../data/forms.js';
-import { drawCreature } from '../art/creature.js';
-import { between, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
+import { STEMS } from '../data/stems.js';
+import { abilityLabel } from '../systems/abilities.js';
+import { eatBlocked, isAlly, isShielded } from '../game/status.js';
+import { drawCreature, getFormThumbnail } from '../art/creature.js';
+import { between, clamp, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, shouldPause } from '../systems/levelup.js';
 import { drawStageMark } from '../art/marks.js';
@@ -36,11 +39,15 @@ export class PlayScene extends Phaser.Scene {
     const debug = new URLSearchParams(location.search).get('debug');
     const preview = debug === 'hub' || debug === 'evolve';
     // ?debug=lv: 저장하지 않는 시험 판. 게임은 그대로 돌고 요력만 지급해 빠른 성장 선택을 열어 본다.
-    const sandbox = preview || debug === 'lv';
+    // ?stress=abilities: 저장하지 않는 시험 판. 능력 16종을 차례로 한 번씩 발동시키고 프레임 시간을 잰다(setupStress).
+    const stressMode = new URLSearchParams(location.search).get('stress');
+    const sandbox = preview || debug === 'lv' || stressMode === 'abilities';
     const progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
     this.progress = sandbox ? structuredClone(progress) : progress;
     this.saveProgress = sandbox ? () => true : saveProgress;
     if (!sandbox) this.registry.set('progress', this.progress);
+    this.simTime = 0; // 시뮬레이션 시계(초). 상태이상 타이머가 이 시계로 돈다 — 판 안 카드로 멈춘 동안에는 서 있다.
+    this.stress = stressMode === 'abilities' ? this.setupStress(new URLSearchParams(location.search)) : null;
     this.playerStats = playerStats(this.progress);
     this.pace = this.playerStats.pace;
     this.player = new Player(this, this.progress.formId, this.playerStats);
@@ -56,6 +63,12 @@ export class PlayScene extends Phaser.Scene {
     const onEatFx = (meal) => {
       const p = this.player;
       const gain = mealYoryeok(meal);
+      if (meal.byAlly) {
+        // 매혹한 요괴가 먹은 요력(요력만 내 것이 된다).
+        if (this.stress) this.stress.allyMeals++;
+        this.fx.floatText(meal.x, meal.y - 26, '+' + gain + ' 요력 (매혹)', '#85cfb7');
+        return;
+      }
       if (meal.special) {
         this.fx.floatText(p.x, p.y - p.size * 1.4, '요력 대박! +' + gain, '#ffd45c');
         this.fx.burst(p.x, p.y, 0xffd45c, 26, 1.5);
@@ -165,6 +178,8 @@ export class PlayScene extends Phaser.Scene {
       this.applyForm();
       this.recalcPace();
       this.fx.floatText(p.x, p.y - p.size * 2.1, '진화! ' + result.form.name + ' · ' + result.grade + '등급', '#ffd45c');
+      const ability = abilityLabel(result.form);
+      if (ability) this.fx.floatText(p.x, p.y - p.size * 3.5, ability, '#85cfb7');
       if (result.firstDiscovery) this.fx.floatText(p.x, p.y - p.size * 2.9, '첫 발견! 보호권 +1', '#c4f7e6');
     } else if (result.kind === 'body') {
       p.setSize(p.size * result.mult);
@@ -198,8 +213,9 @@ export class PlayScene extends Phaser.Scene {
     this.refreshIdentity();
     this.fx.burst(p.x, p.y, 0xfff1b8, 30, 1.6);
   }
+  // 판 안 카드·진화 화면·HUD 초상화는 도감과 같은 128px 썸네일(formId → dataURL 캐시)을 쓴다.
   formImage(formId) {
-    return this.textures.get(drawCreature(this, formId)).getSourceImage().toDataURL();
+    return getFormThumbnail(this, formId);
   }
   openHub() {
     document.getElementById('result').hidden = true;
@@ -269,13 +285,16 @@ export class PlayScene extends Phaser.Scene {
   endRun(killer) {
     this.ended = true;
     this.releaseControls();
-    this.combat.graphics.clear();
+    this.combat.clearEffects();
     this.enemyFire.clear();
     this.fireGfx.clear();
     this.hud.end(this.player, killer, {
       onRestart: () => this.scene.restart({ progress: this.progress }),
       onHub: () => this.openHub(),
     }, this.run);
+    // 매혹한 요괴가 번 요력은 획득한 요력에 이미 들어 있다. 결과 창에 따로 적는다(설계 4-4).
+    const reward = document.getElementById('run-reward');
+    if (reward && this.run.allyYoryeok > 0) reward.textContent += ' (매혹한 요괴가 번 요력 ' + Math.round(this.run.allyYoryeok) + ' 포함)';
     this.events.emit('runEnd', {
       eaten: this.player.eaten, maxSize: this.player.maxSize, killerFormId: killer.id ?? null,
     });
@@ -285,10 +304,11 @@ export class PlayScene extends Phaser.Scene {
     for (const hit of hits) {
       // 생명력 게이지가 먼저 막고, 모자란 비율만큼만 크기가 줄어든다.
       const { damageRatio } = absorbHit(this.vitality);
-      this.player.setSize(Math.max(1, this.player.size - hit.damage * damageRatio));
+      // 시험 판(?stress)은 플레이어 크기를 지키려고 구슬 피해를 크기에 반영하지 않는다.
+      if (!this.stress) this.player.setSize(Math.max(1, this.player.size - hit.damage * damageRatio));
       this.fx.flash(this.player);
       this.fx.burst(hit.x, hit.y, 0xd0508f, 6, 0.6);
-      if (isFatal(this.player.size)) {
+      if (isFatal(this.player.size) && !this.stress) {
         this.endRun({ name: '특수 요괴', message: '특수 요괴의 구슬에 맞아 쓰러졌습니다.' });
         return;
       }
@@ -296,15 +316,19 @@ export class PlayScene extends Phaser.Scene {
   }
   resolveMeals(grid, dt) {
     // 72마리면 최대 2,556쌍. 제곱거리로 검사하고 먹힌 개체는 즉시 제외한다.
+    const now = this.simTime;
     let threat = null; // 이번 단계에 나를 먹을 수 있는 적과 겹친 첫 적
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
+      // 매혹된 아군(풀린 직후 유예 포함)과는 서로 먹지 않는다(충돌 무시).
+      if (isShielded(enemy, now)) continue;
       // 보물로 역전한 상대는 크기가 조금만 작아져도 바로 먹을 수 있다.
       const pair = reversalPair(this.player, enemy) ?? eatPair(this.player, enemy);
       if (!pair) continue;
       const [hunter, prey] = pair;
       if (prey === this.player) {
-        threat ??= hunter;
+        // 빙결·경직·위협(겁먹음) 중인 적은 나를 먹지 못한다.
+        if (!eatBlocked(hunter, now)) threat ??= hunter;
         continue;
       }
       const meal = this.combat.meal(prey, false);
@@ -316,15 +340,24 @@ export class PlayScene extends Phaser.Scene {
     // 겹쳐 있는 동안은 생명력 게이지가 줄고, 게이지가 바닥나야 먹힌다.
     const { eaten } = stepVitality(this.vitality, { touching: !!threat, dt, max: this.playerStats.vitalityMax });
     this.threatened = !!threat;
-    if (threat && eaten) {
+    if (threat && eaten && !this.stress) {
       this.fx.burst(this.player.x, this.player.y, 0xfffbe6, 18, 1.2);
       threat.eat(this.player);
       this.endRun(FORM_BY_ID[threat.formId]);
       return;
     }
-    // 적끼리: 공간 격자로 닿은 쌍만 찾아 큰 쪽이 작은 쪽을 먹는다.
-    for (const [big, small] of findMeals(grid)) {
+    // 적끼리: 공간 격자로 닿은 쌍만 찾아 큰 쪽이 작은 쪽을 먹는다. 빙결·위협 중인 사냥꾼은 먹지 못한다.
+    for (const [big, small] of findMeals(grid, undefined, now)) {
       if (!big.sprite.active || !small.sprite.active) continue;
+      if (isAlly(big, now)) {
+        // 매혹한 요괴가 먹으면 그 요력은 내 요력이다(요력만, 식성·성향·드롭 없음).
+        const meal = this.combat.allyMeal(small, big);
+        this.fx.eatPop(big, small);
+        big.eat(small);
+        small.destroy();
+        this.events.emit('eat', meal);
+        continue;
+      }
       const grew = big.eat(small);
       small.destroy();
       if (grew === 'evolve') this.fx.burst(big.x, big.y, 0xfff1b8, 16, Math.max(0.8, big.size / 25));
@@ -372,44 +405,184 @@ export class PlayScene extends Phaser.Scene {
     const back = (p.size * t.back) / speed;
     this.fx.burst(p.x - direction.x * back, p.y - direction.y * back, t.color, t.count, power);
   }
+  // ---- 시험 판: ?stress=abilities[&only=능력키][&lv=0~15][&ms=구간 길이(밀리초)] ----
+  // 줄기 16개의 5단계 형태로 차례로 바꿔 가며(여의주 +lv, 속도 곡선 최대 = 템포 3.9 × 1.5) 적 72마리를 플레이어 둘레에 유지하고
+  // 자동으로 쏜다. 능력이 실제로 발동한 횟수와 프레임 시간을 window.__stressReport와 콘솔(STRESS_REPORT)에 남긴다. 저장하지 않는다.
+  setupStress(params) {
+    const only = params.get('only');
+    const level = clamp(Math.trunc(Number(params.get('lv') ?? 15)) || 0, 0, 15);
+    const ms = Math.max(300, Number(params.get('ms') ?? 2500) || 2500);
+    const phases = [];
+    for (const stem of STEMS) {
+      if (only && stem.ability !== only) continue;
+      const form = FORMS.find((f) => f.stem === stem.id && f.stage === 5 && f.entry) ?? FORMS.find((f) => f.stem === stem.id && f.stage === 5);
+      if (form) phases.push({ ability: stem.ability, stem: stem.id, form });
+    }
+    const first = phases[0]?.form ?? FORM_BY_ID.mimul;
+    Object.assign(this.progress, { formId: first.id, stage: first.stage, grade: 'C', treasure: { level } });
+    this.progress.enh = { ...this.progress.enh, speed: 10 };
+    window.__stressReport = { done: false };
+    return {
+      phases, index: -1, level, ms, phaseStart: 0, angle: 0, last: 0, done: false, allyMeals: 0, simMs: 0,
+      base: null, frame: [], upd: [], sim: [], steps: [], orbs: [], perPhase: [],
+    };
+  }
+  stressDirection(dt) {
+    const st = this.stress;
+    st.angle += dt * 1.2;
+    return { x: Math.cos(st.angle) * 0.35, y: Math.sin(st.angle) * 0.35 };
+  }
+  // 적 72마리를 플레이어 둘레(반지름 120~440)에 유지한다. 단계 1~5와 크기를 섞어서 능력 전부가 맞을 상대가 있게 한다.
+  stressFill() {
+    const p = this.player;
+    const world = CONFIG.world.size;
+    const dirs = Object.keys(REGIONS);
+    const ring = () => {
+      const a = Math.random() * Math.PI * 2, r = 120 + Math.random() * 320;
+      return { x: clamp(p.x + Math.cos(a) * r, 100, world - 100), y: clamp(p.y + Math.sin(a) * r, 100, world - 100) };
+    };
+    // 도망가는 적이 멀리 흩어지지 않게, 너무 멀어진 적은 둘레로 다시 데려온다.
+    for (const e of this.enemies) {
+      if (e.sprite.active && Math.hypot(e.x - p.x, e.y - p.y) > 520) {
+        const pos = ring();
+        e.sprite.x = pos.x;
+        e.sprite.y = pos.y;
+      }
+    }
+    while (this.enemies.length < CONFIG.world.population) {
+      const pos = ring();
+      const stage = 1 + Math.floor(Math.random() * 5);
+      const size = Math.max(CONFIG.player.startSize * 0.4, p.size * (0.6 + Math.random() * 1.8));
+      this.enemies.push(new Enemy(this, pos, size, dirs[Math.floor(Math.random() * dirs.length)], stage));
+    }
+  }
+  stepStress(now) {
+    const st = this.stress;
+    if (st.done) {
+      this.fireRequested = false;
+      return;
+    }
+    if (st.index < 0 || now - st.phaseStart >= st.ms) this.nextStressPhase(now);
+    if (st.done) return;
+    this.fireRequested = true;
+    this.stressFill();
+  }
+  nextStressPhase(now) {
+    const st = this.stress;
+    if (st.index >= 0) this.closeStressPhase();
+    st.index++;
+    if (st.index >= st.phases.length) {
+      this.finishStress();
+      return;
+    }
+    const { form } = st.phases[st.index];
+    Object.assign(this.progress, { formId: form.id, stage: form.stage });
+    this.applyForm();
+    this.recalcPace();
+    st.phaseStart = now;
+    st.base = { ...this.combat.counters };
+    st.last = 0;
+    for (const list of [st.frame, st.upd, st.sim, st.steps, st.orbs]) list.length = 0;
+  }
+  recordStress(t0, t1) {
+    const st = this.stress;
+    if (st.done || st.index < 0) return;
+    if (st.last) st.frame.push(t0 - st.last);
+    st.last = t0;
+    st.upd.push(t1 - t0);
+    st.sim.push(st.simMs);
+    st.steps.push(this.simSteps ?? 0);
+    st.orbs.push(this.combat.orbs.length);
+  }
+  closeStressPhase() {
+    const st = this.stress;
+    const { ability, form } = st.phases[st.index];
+    const summary = (list) => {
+      if (!list.length) return { avg: 0, p95: 0, max: 0 };
+      const sorted = [...list].sort((a, b) => a - b);
+      const avg = list.reduce((sum, v) => sum + v, 0) / list.length;
+      return { avg: +avg.toFixed(2), p95: +sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))].toFixed(2), max: +sorted.at(-1).toFixed(2) };
+    };
+    st.perPhase.push({
+      ability, form: form.id, stage: form.stage, level: st.level,
+      triggers: this.combat.counters[ability] - st.base[ability],
+      frames: st.upd.length,
+      enemies: this.enemies.length,
+      orbsMax: st.orbs.reduce((m, v) => Math.max(m, v), 0),
+      stepsPerFrame: +(st.steps.reduce((sum, v) => sum + v, 0) / Math.max(1, st.steps.length)).toFixed(2),
+      intervalMs: summary(st.frame), updateMs: summary(st.upd), simMs: summary(st.sim),
+    });
+  }
+  finishStress() {
+    const st = this.stress;
+    st.done = true;
+    this.fireRequested = false;
+    const report = {
+      done: true,
+      level: st.level, tempo: CONFIG.tempo, pace: +this.pace.toFixed(3), tempoTimesPace: +(CONFIG.tempo * this.pace).toFixed(3),
+      population: CONFIG.world.population, allyMeals: st.allyMeals,
+      abilities: st.perPhase,
+      allFired: st.perPhase.length > 0 && st.perPhase.every((phase) => phase.triggers > 0),
+      silent: st.perPhase.filter((phase) => phase.triggers === 0).map((phase) => phase.ability),
+    };
+    window.__stressReport = report;
+    console.log('STRESS_REPORT ' + JSON.stringify(report));
+  }
+
   // 템포: 시뮬레이션(이동·AI·발사·쿨타임·보충)에만 CONFIG.tempo를 곱한다. 연출·카메라·HUD는 실제 시간.
   // 빨라진 물체가 서로 통과하지 않게 한 프레임을 maxStep 이하의 작은 단계로 나눠 계산한다.
   simulate(sim, direction) {
     const steps = Math.max(1, Math.ceil(sim / CONFIG.render.maxStep));
     const h = sim / steps;
+    this.simSteps = steps;
     this.boostSec = 0;
     for (let i = 0; i < steps && !this.ended; i++) {
+      this.simTime += h;
       const grid = buildGrid(this.enemies, CONFIG.hunt.detect);
       // 부스터는 플레이어 이동에만 배율을 곱한다(적 AI·발사체·쿨타임은 그대로). 게이지는 화면 시간(h ÷ 템포 ÷ 속도 곡선)으로 닳는다.
       const boost = stepBoosterSim(this.booster, { pressed: this.boostHeld, h, scale: CONFIG.tempo * this.pace, max: CONFIG.booster.maxSec });
       this.boostSec += boost.boostSec;
       this.player.step(direction, h, boost.boostSec, this.boostMult);
-      this.combat.step(direction, h, i === 0 && this.fireRequested);
+      this.combat.step(direction, h, i === 0 && this.fireRequested, grid);
       for (const enemy of this.enemies) {
         enemy.step(this.player, h, grid);
-        if (enemy.special && enemy.sprite.active) this.enemyFire.tryFire(enemy, this.player, h);
+        if (enemy.special && enemy.sprite.active) this.enemyFire.tryFire(enemy, this.player, h, this.simTime);
       }
       this.resolveMeals(grid, h);
       if (this.ended) break;
-      this.applyEnemyHits(this.enemyFire.step(h, this.player));
+      this.applyEnemyHits(this.enemyFire.step(h, this.player, this.combat.shield));
     }
     this.fireRequested = false;
   }
   update(_time, delta) {
-    const dt = Math.min(delta / 1000, CONFIG.render.maxDelta);
+    if (!this.stress) {
+      this.tick(delta);
+      return;
+    }
+    const t0 = performance.now();
+    this.stepStress(t0);
+    this.tick(delta);
+    this.recordStress(t0, performance.now());
+  }
+  tick(delta) {
+    const stress = this.stress;
+    // 시험 판은 프레임이 느려도 같은 계산 단계 수(60fps 기준)로 돌려서 수치를 비교할 수 있게 한다.
+    const dt = stress ? 1 / 60 : Math.min(delta / 1000, CONFIG.render.maxDelta);
     if (this.ended) {
       this.fx.update(dt, null, this.progress.grade);
       return;
     }
     if (this.paused) return;
-    if (!this.preview && shouldPause(this.progress, this.level, performance.now() / 1000)) {
+    if (!this.preview && !stress && shouldPause(this.progress, this.level, performance.now() / 1000)) {
       this.openQuickPick();
       if (this.paused) return;
     }
-    const direction = this.joystick.direction();
+    const direction = stress ? this.stressDirection(dt) : this.joystick.direction();
     this.boostHeld = !!this.boosterButton?.held;
     const sim = dt * CONFIG.tempo * this.pace;
+    const simStart = stress ? performance.now() : 0;
     this.simulate(sim, direction);
+    if (stress) stress.simMs = performance.now() - simStart;
     if (this.ended) return;
     const boosting = this.boostSec > 0;
     this.boosterButton?.update(this.booster, CONFIG.booster.maxSec, boosting);

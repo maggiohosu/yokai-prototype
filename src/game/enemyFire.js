@@ -1,4 +1,7 @@
 import { CONFIG } from '../config.js';
+import { FORM_BY_ID } from '../data/forms.js';
+import { drawOrb } from '../art/orbs.js';
+import { fireBlocked } from './status.js';
 
 export function rollSpecial(size, stage, rng = Math.random) {
   return stage >= 3 && rng() < CONFIG.special.chance;
@@ -24,11 +27,14 @@ export class EnemyFire {
     this.prev = null;
     this.vx = 0;
     this.vy = 0;
+    this.dir = { x: 0, y: 0, vx: 1, vy: 0 }; // drawOrb에 넘기는 재사용 객체
   }
   // 특수 적(enemy.special === true)이 쏠 수 있으면 구슬을 만들고 true를 반환한다.
-  tryFire(enemy, player, dt) {
+  // now(시뮬레이션 시각)를 주면 빙결·경직·매혹(아군) 중에는 쏘지 않는다(쿨타임도 줄지 않는다).
+  tryFire(enemy, player, dt, now = 0) {
     const cfg = CONFIG.special;
     if (!enemy.special) return false;
+    if (fireBlocked(enemy, now)) return false;
     if (enemy.fireCd === undefined) enemy.fireCd = cfg.cooldown * (0.3 + Math.random() * 0.7);
     enemy.fireCd -= dt;
     if (enemy.fireCd > 0) return false;
@@ -42,15 +48,20 @@ export class EnemyFire {
     const ty = player.y + this.vy * t * cfg.leadAim - enemy.y;
     const m = Math.hypot(tx, ty) || 1;
     const ux = tx / m, uy = ty / m;
+    // 사용자 결정(2026-11-23): 4·5단계 특수 적의 구슬은 그 적 줄기의 모양·색으로 그린다(효과는 지금 구슬과 같음).
+    const stage = enemy.stage ?? 1;
+    const stem = stage >= 4 ? FORM_BY_ID[enemy.formId]?.stem ?? null : null;
     this.orbs.push({
       x: enemy.x + ux * enemy.size, y: enemy.y + uy * enemy.size,
       vx: ux * cfg.orbSpeed, vy: uy * cfg.orbSpeed,
       life: (cfg.range * 1.5) / cfg.orbSpeed,
+      ux, uy, style: stem, tier: stage,
     });
     return true;
   }
   // 플레이어를 맞힌 피해 목록 [{ damage, x, y }]. dt는 템포가 곱해진 시간.
-  step(dt, player) {
+  // shield({ block(ox, oy, nx, ny, r) })를 주면 호신주 진주가 막은 구슬은 사라진다.
+  step(dt, player, shield = null) {
     const cfg = CONFIG.special;
     if (this.prev && dt > 0) {
       const k = Math.min(1, dt * 8);
@@ -66,6 +77,7 @@ export class EnemyFire {
       o.x += o.vx * dt;
       o.y += o.vy * dt;
       o.life -= dt;
+      if (shield && shield.block(ox, oy, o.x, o.y, cfg.orbRadius)) continue;
       const reach = cfg.orbRadius + player.size;
       if (segDist2(ox, oy, o.x, o.y, player.x, player.y) < reach * reach) {
         hits.push({ damage: Math.max(cfg.minDamage, player.size * cfg.damageRatio), x: o.x, y: o.y });
@@ -79,7 +91,18 @@ export class EnemyFire {
   }
   draw(g) {
     const cfg = CONFIG.special;
+    const dir = this.dir;
     for (const o of this.orbs) {
+      if (o.style) {
+        // 줄기 모양 구슬: 플레이어 구슬과 헷갈리지 않게 특수 적 색 고리를 뒤에 깐다.
+        dir.x = o.x;
+        dir.y = o.y;
+        dir.vx = o.ux;
+        dir.vy = o.uy;
+        g.lineStyle(2, cfg.orbColor, 0.85).strokeCircle(o.x, o.y, cfg.orbRadius * 1.9);
+        drawOrb(g, dir, o.style, o.tier, cfg.orbRadius);
+        continue;
+      }
       const tx = o.x - o.vx * cfg.trailLength, ty = o.y - o.vy * cfg.trailLength;
       const mx = o.x - o.vx * cfg.trailLength * 0.5, my = o.y - o.vy * cfg.trailLength * 0.5;
       g.lineStyle(cfg.orbRadius * 1.1, cfg.trailColor, 0.35);

@@ -5,7 +5,8 @@
 
 import { REGIONS } from '../config.js';
 import { saveProgress } from '../state/save.js';
-import { buildChoices, canEvolve, devolve, evolve, evolutionCost, gradeOdds } from '../systems/evolution.js';
+import { buildChoices, canEvolve, devolve, evolve, evolutionCost, gradeOdds, unknownPool } from '../systems/evolution.js';
+import { abilityLabel } from '../systems/abilities.js';
 import { ALIGNMENT } from '../systems/tuning-evolution.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 
@@ -98,7 +99,7 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
     const art = formImage(getFormImage, form, grade);
     art.dataset.grade = grade;
     reveal.append(art, el('strong', 'yk-grade-label', grade + '등급'),
-      el('h3', 'yk-form-name', form.name), el('p', 'yk-description', form.desc));
+      el('h3', 'yk-form-name', form.name), el('p', 'yk-caption', abilityLabel(form)), el('p', 'yk-description', form.desc));
     if (firstDiscovery) reveal.append(el('p', 'yk-discovery', '첫 발견으로 보호권 1장 획득'));
     body.replaceChildren(reveal, gradeTable(progress));
     body.scrollTop = 0;
@@ -118,13 +119,18 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
         card.append(el('span', 'yk-portrait', '?'), el('strong', '', '미지의 진화'));
       } else {
         // 등급은 선택 이후에 정해지므로 미리보기에는 테두리가 없는 F를 쓴다.
-        card.append(formImage(getFormImage, choice.form, 'F'), el('strong', '', choice.form.name));
+        const name = el('strong');
+        name.append(el('span', '', choice.form.name));
+        const ability = abilityLabel(choice.form);
+        if (ability) name.append(el('small', 'yk-hint', ability));
+        card.append(formImage(getFormImage, choice.form, 'F'), name);
         card.style.setProperty('--yk-tint', REGIONS[choice.form.dir]?.tint);
       }
       cards.append(card);
     }
     body.append(cards);
-    const pool = catalog.filter(form => form.stage === next);
+    // 미지는 ①②를 뺀 나머지 중에서 뽑는다(unknownPool). 확률도 그 후보 수로 적는다.
+    const pool = unknownPool(choices.find(choice => choice.unknown), catalog, next);
     body.append(disclosure('미지의 진화 확률 (각 1/' + pool.length + ')',
       OddsTable('각 모습이 나올 확률', pool.map(form => [form.name, 100 / pool.length]))));
     if (!canEvolve(progress)) footer.append(el('p', 'yk-hint', '요력 ' + number(cost - progress.yoryeok) + ' 부족'));

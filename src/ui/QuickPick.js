@@ -8,6 +8,7 @@
 
 import { CONFIG } from '../config.js';
 import { QUICK_STAT_NAMES, quickStatNote } from '../systems/levelup.js';
+import { abilityLabel } from '../systems/abilities.js';
 
 const KIND_LABEL = { evolve: '진화', body: '몸집', ability: '능력 +1' };
 const numberFormat = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 });
@@ -62,7 +63,7 @@ function textOf(card) {
   if (card.kind === 'evolve') {
     return card.unknown
       ? { name: '???', sub: '미지의 진화' }
-      : { name: card.form.name, sub: card.form.stage + '단계' };
+      : { name: card.form.name, sub: card.form.stage + '단계', note: abilityLabel(card.form) };
   }
   if (card.kind === 'body') return { name: '몸집 강화', sub: '이번 판만' };
   return {

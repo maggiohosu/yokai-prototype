@@ -4,7 +4,8 @@ import { pickIntent, intentDirection } from './enemyAI.js';
 import { rollSpecial } from './enemyFire.js';
 import { drawCreature } from '../art/creature.js';
 import { Actor } from './actor.js';
-import { between } from './world.js';
+import { between, clamp } from './world.js';
+import { initStatus, isAlly, isDisabled, nowOf, slowFactor } from './status.js';
 import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
 import { evolutionCost, rollGrade } from '../systems/evolution.js';
 import { bodyCostAt, newDiet, nextProgress, pickEvolution, preyInfoOf, preyValue } from '../systems/rules.js';
@@ -36,6 +37,13 @@ export class Enemy extends Actor {
     this.vy = 0;
     this.reversed = false;
     this.special = rollSpecial(size, this.stage);
+    initStatus(this); // 상태이상 필드(빙결·위협·작열·파사인·둔화·밀림·매혹)를 숫자로 고정해 둔다
+  }
+  // 와류·대풍이 미는 이동. 방향 뒤집기 없이 위치만 바꾼다(월드 안으로 자른다).
+  push(dx, dy) {
+    const margin = Math.min(this.size, CONFIG.world.size / 2);
+    this.sprite.x = clamp(this.x + dx, margin, CONFIG.world.size - margin);
+    this.sprite.y = clamp(this.y + dy, margin, CONFIG.world.size - margin);
   }
   // 보물에 깎여 나보다 작아진 상위 요괴: 역전. 풀리는 때는 무언가를 먹거나 진화·몸집 강화를 하거나 플레이어보다 커질 때다.
   // 그 전까지는 플레이어를 쫓지 않고 도망한다(enemyAI.pickIntent), 먹기 규칙은 단계를 무시한다(rules.reversalPair).
@@ -51,6 +59,8 @@ export class Enemy extends Actor {
     super.eat(prey);
     this.capSize();
     this.reversed = false;
+    // 매혹된 아군은 크기만 자란다. 요력은 PlayScene이 플레이어 요력으로 보내고, 식성·진화·몸집 강화는 하지 않는다(설계 4-4).
+    if (isAlly(this, nowOf(this.scene))) return null;
     this.yoryeok += preyValue(preyInfoOf(prey));
     if (prey.dir in this.diet) this.diet[prey.dir] += prey.size;
     return this.autoProgress(rng);
@@ -96,13 +106,23 @@ export class Enemy extends Actor {
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
   step(player, dt, grid) {
     const ai = CONFIG.enemy;
+    const now = nowOf(this.scene);
+    // 대풍에 밀리는 중: 의지와 상관없이 밀린다.
+    if (this.knockUntil > now) this.push(this.knockVx * dt, this.knockVy * dt);
+    // 빙결·경직: 이동·사냥·발사가 모두 멈춘다.
+    if (isDisabled(this, now)) {
+      this.vx = 0;
+      this.vy = 0;
+      return;
+    }
     const early = ai.earlySpeedMult?.[player.stage ?? 1] ?? 1; // 초반에는 적이 느리다
+    const slow = slowFactor(this, now); // 선무 구름 안에서는 느려진다
     if (this.size >= player.size) this.reversed = false;
-    const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt) : null;
+    const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt, now) : null;
     const dir = intentDirection(this, intent);
     let vx, vy;
     if (dir) {
-      const speed = (intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed) * early;
+      const speed = (intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed) * early * slow;
       vx = dir.x * speed;
       vy = dir.y * speed;
       this.wanderTime = 0;
@@ -112,8 +132,8 @@ export class Enemy extends Actor {
         this.wanderAngle = Math.random() * Math.PI * 2;
         this.wanderTime = between(ai.wanderInterval);
       }
-      vx = Math.cos(this.wanderAngle) * ai.wanderSpeed * early;
-      vy = Math.sin(this.wanderAngle) * ai.wanderSpeed * early;
+      vx = Math.cos(this.wanderAngle) * ai.wanderSpeed * early * slow;
+      vy = Math.sin(this.wanderAngle) * ai.wanderSpeed * early * slow;
       const edge = this.size + ai.wallMargin,
         end = CONFIG.world.size - edge;
       if (this.x < edge) vx = Math.abs(vx);

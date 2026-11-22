@@ -40,10 +40,18 @@ export function mealYoryeok(meal) {
 }
 
 export function attachSession(scene, progress, rng = Math.random, save = saveProgress) {
-  const run = { yoryeok: 0, drops: 0 };
+  const run = { yoryeok: 0, drops: 0, allyYoryeok: 0 };
   const onEat = (meal) => {
-    recordEat(progress, meal);
     const gain = mealYoryeok(meal);
+    if (meal.byAlly) {
+      // 매혹한 요괴가 먹은 먹이: 요력만 내 것이 된다. 식성·성향·보물 드롭은 "내가 먹은 것"이 아니므로 기록하지 않는다(설계 4-4).
+      progress.yoryeok += gain;
+      run.yoryeok += gain;
+      run.allyYoryeok += gain;
+      save(progress);
+      return;
+    }
+    recordEat(progress, meal);
     progress.yoryeok += gain;
     run.yoryeok += gain;
     if (rng() < dropChance({ killedByTreasure: meal.killedByTreasure })) {
