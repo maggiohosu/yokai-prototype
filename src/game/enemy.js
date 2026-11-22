@@ -86,12 +86,13 @@ export class Enemy extends Actor {
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
   step(player, dt, grid) {
     const ai = CONFIG.enemy;
+    const early = ai.earlySpeedMult?.[player.stage ?? 1] ?? 1; // 초반에는 적이 느리다
     if (this.size >= player.size) this.reversed = false;
     const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt) : null;
     const dir = intentDirection(this, intent);
     let vx, vy;
     if (dir) {
-      const speed = intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed;
+      const speed = (intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed) * early;
       vx = dir.x * speed;
       vy = dir.y * speed;
       this.wanderTime = 0;
@@ -101,8 +102,8 @@ export class Enemy extends Actor {
         this.wanderAngle = Math.random() * Math.PI * 2;
         this.wanderTime = between(ai.wanderInterval);
       }
-      vx = Math.cos(this.wanderAngle) * ai.wanderSpeed;
-      vy = Math.sin(this.wanderAngle) * ai.wanderSpeed;
+      vx = Math.cos(this.wanderAngle) * ai.wanderSpeed * early;
+      vy = Math.sin(this.wanderAngle) * ai.wanderSpeed * early;
       const edge = this.size + ai.wallMargin,
         end = CONFIG.world.size - edge;
       if (this.x < edge) vx = Math.abs(vx);

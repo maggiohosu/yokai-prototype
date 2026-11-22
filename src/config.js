@@ -39,6 +39,8 @@ export const CONFIG = {
     detect: 290,
     fleeSpeed: 130,
     chaseSpeed: 108,
+    // 초반 적 이동 속도 배율(플레이어 진화 단계별, 사용자 지시 2026-11-23: 초반 70%). 없는 단계는 1.
+    earlySpeedMult: { 1: 0.7, 2: 0.85 },
     wanderSpeed: 39,
     turnRate: 4,
     wanderInterval: [1.25, 3.4],
