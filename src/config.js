@@ -20,7 +20,8 @@ export const CONFIG = {
     refillInterval: 0.5,
     refillBatch: 4,
   },
-  player: { startSize: 28, speed: 262 }, // 사용자 지시: 218 → 262(1.2배, 2026-11-23)
+  // 사용자 지시(2026-11-23): 플레이어와 적이 예전의 1/3 크기에서 시작한다. 크기에 묶인 값들도 함께 1/3(카메라는 camera.refSize 28 기준이라 화면에서도 1/3로 보인다).
+  player: { startSize: 28 / 3, speed: 262 }, // 사용자 지시: 218 → 262(1.2배, 2026-11-23)
   enemy: {
     // 생성 시점 플레이어 반지름의 배수. 후반에도 맵에 들어갈 수 있는 크기로 제한한다.
     sizes: [
@@ -41,9 +42,9 @@ export const CONFIG = {
     // 적이 스스로 진화할 수 있는 단계는 min(pace.maxStage, 플레이어 단계 + selfEvolveLead)까지다(5단계 용이 2단계 판에 생기지 않게).
     selfEvolveLead: 1,
     evolveJitter: [0.9, 1.1], // 적이 진화할 때 levelUp.evolveResetSize에 곱하는 범위
-    earlyUntilSize: 70,
+    earlyUntilSize: 70 / 3,
     earlyWeights: [0.35, 0.15, 0.5],
-    stage3Size: 31,
+    stage3Size: 31 / 3,
     maxSpawnSize: 140,
     detect: 290,
     fleeSpeed: 130,
@@ -51,7 +52,7 @@ export const CONFIG = {
     // 초반 적 이동 속도 배율(플레이어 진화 단계별, 사용자 지시 2026-11-23: 초반 70%). 없는 단계는 1.
     earlySpeedMult: { 1: 0.7, 2: 0.85 },
     // 적 몸집 상한(src/systems/growthCap.js). 크기 ≤ min(maxSize, max(minCap, 플레이어 크기 × maxSizeVsPlayer)), 몸집 강화는 maxBodyLevel번까지.
-    growthCap: { maxSizeVsPlayer: 2.5, minCap: 70, maxSize: 600, maxBodyLevel: 3 },
+    growthCap: { maxSizeVsPlayer: 2.5, minCap: 70 / 3, maxSize: 200, maxBodyLevel: 3 },
     wanderSpeed: 39,
     turnRate: 4,
     wanderInterval: [1.25, 3.4],
@@ -63,7 +64,7 @@ export const CONFIG = {
   special: {
     rewardMult: 8, // 특수 적 처치 시 요력 배율(요력 대박)
     chance: 0.3, range: 380, cooldown: 2.2, orbSpeed: 260, orbRadius: 7,
-    damageRatio: 0.12, minDamage: 2, maxOrbs: 24, deathSize: 14,
+    damageRatio: 0.12, minDamage: 2 / 3, maxOrbs: 24, deathSize: 14 / 3,
     leadAim: 0.6, trailLength: 0.16, orbColor: 0xc2185b, coreColor: 0xffb3dd, trailColor: 0x7b1fa2,
     ringColor: 0xe0245e, ringDashes: 14, ringSpin: 1.4, ringPad: 1.28, ringWidth: 3,
   },
@@ -74,7 +75,7 @@ export const CONFIG = {
   // 먹이 점수(=요력): base × (크기/sizeRef)^sizeExp × 단계 배율 × 등급 배율 × (보물 처치 배율) × (특수 적 배율)
   // 크고 높은 단계 하나가 작고 낮은 단계 여러 개보다 낫도록 크기 지수 > 1, 단계 배율은 3단계까지 4배씩,
   // 4·5단계는 보물 경제가 무너지지 않게 ×3, ×2.7로 늦춘다(사용자 결정 2026-11-23: ×48 / ×128).
-  score: { base: 10, sizeRef: 20, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 }, treasureMult: 1.5 },
+  score: { base: 10, sizeRef: 20 / 3, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 }, treasureMult: 1.5 },
   // 판 안 성장: 요력이 다음 선택지 비용에 닿으면 잠깐 멈추고 [진화]/[몸집 강화]/[능력 강화] 중 고른다.
   levelUp: {
     bodyBaseCost: 30, bodyCostGrowth: 1.6, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화
@@ -82,7 +83,7 @@ export const CONFIG = {
     pauseGapMin: 25, // 멈춤 사이에 번 요력의 하한: 잔액이 아무리 많아도 이보다 자주 멈추지 않는다
     pauseGapMax: 400, // 상한: 잔액이 아무리 많아도 이만큼만 벌면 판 안 선택이 열린다
     pauseCooldownSec: 5, // 실제 시간 기준 최소 간격
-    evolveResetSize: 28, // 진화하면 크기를 이 값으로(=시작 크기)
+    evolveResetSize: 28 / 3, // 진화하면 크기를 이 값으로(=시작 크기)
     // 빠른 성장 선택(카드 3장): 탭 한 번에 즉시 적용
     quickCardCount: 3,
     quickEnhanceCostMult: 1.5, // 능력 +1 카드 비용 = 이 값 × 본체 강화 비용(실패·퇴화 없이 확정이라 더 비싸다)
@@ -98,7 +99,7 @@ export const CONFIG = {
     orbSpeed: 520,
     orbRadius: 5,
     shotSpacing: 12,
-    defeatSize: 4,
+    defeatSize: 4 / 3,
     reversalFleeSeconds: 1.2,
     reversalNoticeMs: 800,
   },
@@ -135,7 +136,7 @@ export const CONFIG = {
     punchScale: 1.16, punchDecay: 1.4, flashSeconds: 0.09, textSeconds: 0.75,
     shakeMs: 150, shakeIntensity: 0.004, maxParticles: 160,
   },
-  camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 16, portraitWidth: 585 },
+  camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 16, portraitWidth: 585, refSize: 28 }, // refSize: 줌 기준 크기(시작 크기를 줄여도 화면 배율은 그대로)
   // 좌하단 고정 스틱: 패드 중심에서 손가락까지 거리(px)가 deadZonePx 이하면 0, 패드 반지름 또는 fullSpeedPx 중 작은 값 이상이면 1. responseMs: 방향 반응 시간상수.
   input: { joystickRadius: 51, deadZonePx: 14, fullSpeedPx: 90, responseMs: 20 },
   render: {

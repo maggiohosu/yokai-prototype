@@ -7,8 +7,8 @@ import { canEnemyBodyUp, enemySizeCap } from '../src/systems/growthCap.js';
 const cfg = CONFIG.enemy.growthCap;
 
 test('적 크기 상한: 플레이어 크기 × 배수, 최소·절대 상한', () => {
-  assert.equal(enemySizeCap(28), cfg.minCap);
-  assert.equal(enemySizeCap(100), 100 * cfg.maxSizeVsPlayer);
+  assert.equal(enemySizeCap(1), cfg.minCap);
+  assert.equal(enemySizeCap(40), 40 * cfg.maxSizeVsPlayer);
   assert.equal(enemySizeCap(10000), cfg.maxSize);
   assert.equal(enemySizeCap(undefined), cfg.minCap);
 });

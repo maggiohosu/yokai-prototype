@@ -88,7 +88,7 @@ test('keyVector: WASD·방향키, 대각선도 길이 1, 반대 키는 상쇄', 
 test('zoomFor: 세로 화면은 예전과 같다(짧은 변 = 너비)', () => {
   const cam = CONFIG.camera;
   const old = (size, width) =>
-    Math.max(cam.minZoom, cam.baseZoom * Math.min(1, width / cam.portraitWidth) * (CONFIG.player.startSize / size) ** cam.exponent);
+    Math.max(cam.minZoom, cam.baseZoom * Math.min(1, width / cam.portraitWidth) * ((cam.refSize ?? CONFIG.player.startSize) / size) ** cam.exponent);
   for (const [w, h] of [[360, 640], [390, 844], [585, 900], [800, 1200], [320, 480]]) {
     for (const size of [28, 40, 90, 400]) {
       near(zoomFor(size, w, h), old(size, w));
@@ -104,7 +104,7 @@ test('zoomFor: 가로 화면은 높이(짧은 변)를 기준으로 잡아 시야
   // 너비만 보던 예전 방식이라면 가로 폰에서 배율이 baseZoom(=1.18)으로 커져 세로 시야가 매우 좁았다.
   assert.ok(zoomFor(28, 740, 360) < CONFIG.camera.baseZoom);
   // 큰 화면(짧은 변이 portraitWidth 이상)은 그대로 baseZoom
-  near(zoomFor(CONFIG.player.startSize, 1280, 720), CONFIG.camera.baseZoom);
+  near(zoomFor(CONFIG.camera.refSize ?? CONFIG.player.startSize, 1280, 720), CONFIG.camera.baseZoom);
 });
 
 test('zoomFor: 커질수록 배율이 줄고 minZoom 아래로 내려가지 않는다', () => {

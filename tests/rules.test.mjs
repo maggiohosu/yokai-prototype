@@ -112,7 +112,7 @@ test('eatingPair(기존 호출)도 같은 규칙을 따르고 ratio 1이면 역�
 
 test('preyValue: 4·5단계 배율은 ×48 / ×128(3단계 ×16)이고 같은 단계 먹이 몇 마리로 진화할 수 있다', () => {
   assert.deepEqual(CONFIG.score.stageMult, { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 });
-  const c40 = (stage) => preyValue({ size: 40, stage, grade: 'C' });
+  const c40 = (stage) => preyValue({ size: 40 / 3, stage, grade: 'C' }); // 시작 크기 1/3: 예전 크기 40
   assert.equal(c40(1), 30);
   assert.equal(c40(2), 121);
   assert.equal(c40(3), 485);

@@ -8,7 +8,7 @@ export function zoomFor(size, cssWidth, cssHeight = Infinity) {
   const cam = CONFIG.camera;
   const shortSide = Math.min(cssWidth, cssHeight);
   const base = cam.baseZoom * Math.min(1, shortSide / cam.portraitWidth);
-  return Math.max(cam.minZoom, base * (CONFIG.player.startSize / size) ** cam.exponent);
+  return Math.max(cam.minZoom, base * ((cam.refSize ?? CONFIG.player.startSize) / size) ** cam.exponent);
 }
 
 export function followPlayer(scene, player) {

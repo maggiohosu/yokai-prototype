@@ -194,17 +194,18 @@ test('단계를 안 넘기면 예전처럼 크기로 2·3단계를 정한다', (
 });
 
 test('먹으면 면적이 늘고 먹힌 쪽 점수만큼 요력, 크기만큼 식성이 쌓인다', () => {
-  const e = makeEnemy(30, 'east', 2);
-  const p = prey(10, 'west', { stage: 1 });
+  // 시작 크기 1/3(2026-11-23): 크기는 예전 값 / 3
+  const e = makeEnemy(30 / 3, 'east', 2);
+  const p = prey(10 / 3, 'west', { stage: 1 });
   const expected = preyValue(preyInfoOf(p));
   const before = e.size;
   const result = e.eat(p);
   assert.equal(result, null);
   assert.ok(e.size > before);
   assert.equal(e.yoryeok, expected);
-  assert.equal(e.diet.west, 10);
+  assert.equal(e.diet.west, 10 / 3);
   assert.equal(e.diet.east, 0);
-  const none = e.eat({ x: 0, y: 0, size: 5 });
+  const none = e.eat({ x: 0, y: 0, size: 5 / 3 });
   assert.equal(none, null);
   assert.ok(e.yoryeok > expected);
 });
@@ -247,10 +248,10 @@ test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝과 특
 });
 
 test('몸집 강화: 비용을 내고 크기 ×bodyMult, 레벨이 오르면 다음 비용이 커진다', () => {
-  const e = makeEnemy(50, 'east', 3);
+  const e = makeEnemy(50 / 3, 'east', 3);
   e.yoryeok = bodyCostAt(0) + 5;
   assert.equal(e.autoProgress(), 'body');
-  assert.ok(Math.abs(e.size - 50 * CONFIG.levelUp.bodyMult) < 1e-9);
+  assert.ok(Math.abs(e.size - (50 / 3) * CONFIG.levelUp.bodyMult) < 1e-9);
   assert.equal(e.bodyLevel, 1);
   assert.ok(Math.abs(e.yoryeok - 5) < 1e-9);
   e.yoryeok = bodyCostAt(1) - 1;

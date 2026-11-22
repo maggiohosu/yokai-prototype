@@ -63,11 +63,11 @@ test('판매가 기준점, 다음 단계 판매가 기준 강화 비용, 레벨�
     assert.ok(s.ways >= 1 && s.perWay >= 1 && s.speedMult >= 1 && s.homing >= 0 && s.homing <= 1);
     assert.equal(s.shots, s.ways * s.perWay);
   }
-  assert.deepEqual(treasureStats(0), { damage: 3, ways: 1, perWay: 1, speedMult: 1, homing: 0, shots: 1, chargePower: 1 });
+  assert.deepEqual(treasureStats(0), { damage: 1, ways: 1, perWay: 1, speedMult: 1, homing: 0, shots: 1, chargePower: 1 });
   assert.equal(treasureStats(8).homing, 0.3);
   assert.equal(treasureStats(7).homing, 0);
   assert.deepEqual([0, 3, 5, 6, 11].map((level) => treasureStats(level).ways), [1, 2, 3, 4, 8]);
-  assert.ok(Math.abs(treasureStats(15).damage - 3 * 4.6) < 1e-9);
+  assert.ok(Math.abs(treasureStats(15).damage - 1 * 4.6) < 1e-9);
   assert.equal(treasureTitle(7), '+7 여의주');
   assert.deepEqual([10, 11, 12, 13, 14, 15].map(treasureTitle), [
     '+10 바람 여의주', '+11 번개 여의주', '+12 천둥 여의주', '+13 폭풍 여의주', '+14 하늘 여의주', '+15 용왕 여의주',

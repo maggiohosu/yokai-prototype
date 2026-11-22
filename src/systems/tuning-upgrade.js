@@ -24,7 +24,7 @@ export const TREASURE = {
   shardsPerProtect: 10,
   inventorySlots: 5,
   drop: { normal: 0.08, treasureKill: 0.20 }, // rng()와 직접 비교하는 비율
-  damageBase: 3,
+  damageBase: 1, // 적 크기가 1/3이 되어 피해도 1/3(사용자 지시 2026-11-23)
   // 레벨별 [방향 수, 방향당 발사, 속도 배율, 파워 배율, 유도]. 인덱스 = 레벨(0~15).
   levels: [
     [1, 1, 1.00, 1.00, 0],
