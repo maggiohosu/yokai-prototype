@@ -36,7 +36,7 @@ export class Fx {
   }
 
   flash(actor) {
-    if (!actor.sprite.active) return;
+    if (!actor.sprite.active || !(this.m.flashSeconds > 0)) return;
     actor.flash = this.m.flashSeconds;
     actor.sprite.setTintFill(0xfffbe6);
   }
@@ -52,7 +52,7 @@ export class Fx {
   }
 
   eatPop(hunter, prey) {
-    hunter.punch = this.m.punchScale;
+    if (this.m.punchScale > 1 && this.m.punchDecay > 0) hunter.punch = this.m.punchScale;
     this.burst(prey.x, prey.y, DIR_COLOR[prey.dir] ?? 0xffffff, 10, Math.max(0.6, prey.size / 30));
   }
 

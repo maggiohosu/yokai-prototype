@@ -301,10 +301,10 @@
 .yk-reveal .yk-form-name { animation: yk-fade-up .4s .3s both; }
 .yk-reveal .yk-description { animation: yk-fade-up .4s .4s both; }
 .yk-reveal .yk-discovery { animation: yk-pop .4s .5s both; }
-.yk-choices > * { animation: yk-fade-up .35s both; }
+.yk-choices > * { animation: yk-fade-up .35s backwards; }
 .yk-choices > *:nth-child(2) { animation-delay: .06s; }
 .yk-choices > *:nth-child(3) { animation-delay: .12s; }
-.yk-choice { transition: transform .12s ease, box-shadow .12s ease; }
+.yk-choice.yk-button { transition: transform .12s ease, box-shadow .12s ease; }
 .yk-choice:active:not(:disabled) { transform: scale(.96); }
 .yk-mystery .yk-portrait {
   background: linear-gradient(110deg, #2c4338 30%, #48685a 45%, #2c4338 60%) 0 0 / 220% 100%;

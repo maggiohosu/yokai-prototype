@@ -117,13 +117,19 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   function clearFeedback() {
     log.replaceChildren();
     status.textContent = '';
+    status.dataset.tone = '';
   }
-  function commit(message) {
+  function setStatus(message, tone = '') {
+    status.textContent = message;
+    status.dataset.tone = tone;
+  }
+  const attemptTone = { great: 'great', degrade: 'bad', fail: 'fail', success: 'good' };
+  const autoTone = { great: 'great', degrade: 'bad', target: 'good', max: 'good', gold: '' };
+  function commit(message, tone = '') {
     save(progress);
     clearFeedback();
-    status.textContent = message;
     // 결과가 정해진 뒤 그 결과의 색으로 짧게 튀어 오른다(모션: Opus)
-    status.dataset.tone = /대성공/.test(message) ? 'great' : /퇴화|깨졌/.test(message) ? 'bad' : /실패/.test(message) ? 'fail' : /성공|판매|교환/.test(message) ? 'good' : '';
+    setStatus(message, tone);
     status.classList.remove('yk-flash');
     void status.offsetWidth;
     status.classList.add('yk-flash');
@@ -138,7 +144,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         requestEvolution();
       } else {
         save(progress);
-        status.textContent = statNames[stat] + ' 강화가 +' + progress.enh[stat] + '이 되었어요.';
+        setStatus(statNames[stat] + ' 강화가 +' + progress.enh[stat] + '이 되었어요.');
         render();
       }
     });
@@ -148,7 +154,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     if (progress.yoryeok < cost || playingLog || progress.pendingDegrade) return;
     const result = tryEnhance(progress, stat);
     progress.yoryeok -= cost;
-    commit(statNames[stat] + ' ' + attemptText(result));
+    commit(statNames[stat] + ' ' + attemptText(result), attemptTone[result.result]);
     if (result.needsChoice) askDegrade();
   }
   function runAuto(stat, target) {
@@ -159,7 +165,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     clearFeedback();
     playingLog = true;
     render();
-    status.textContent = statNames[stat] + ' 연속 강화';
+    setStatus(statNames[stat] + ' 연속 강화');
     let shown = 0;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const batch = reduced ? attempts.length : Math.ceil(attempts.length / 8);
@@ -171,7 +177,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         window.setTimeout(showNext, 80);
       } else {
         playingLog = false;
-        status.textContent = statNames[stat] + ' ' + attempts.length + '회 · ' + stopText(reason, progress, stat);
+        setStatus(statNames[stat] + ' ' + attempts.length + '회 · ' + stopText(reason, progress, stat), autoTone[reason] ?? '');
         render();
         askDegrade();
       }
@@ -225,6 +231,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const result = tryUpgrade(item);
     progress.yoryeok -= cost;
     let message;
+    let tone = attemptTone[result.result] ?? (result.result === 'break' ? 'bad' : '');
     if (result.result === 'success') {
       recordTreasureSuccess(progress);
       message = '강화 성공 · ' + treasureTitle(result.to);
@@ -235,12 +242,12 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     } else {
       message = '강화 실패 · +' + result.from + ' 유지';
     }
-    commit(message);
+    commit(message, tone);
   }
   function sellButton(slot, item) {
     return button('판매 · ' + number(sellPrice(item.level)) + ' 요력', () => {
       const price = sell(progress, slot);
-      if (price) commit(treasureTitle(item.level) + ' 판매 · 요력 +' + number(price));
+      if (price) commit(treasureTitle(item.level) + ' 판매 · 요력 +' + number(price), 'good');
     });
   }
   function treasurePanel() {
@@ -288,7 +295,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const count = Math.floor(progress.shards / TREASURE.shardsPerProtect);
     const exchange = button(count ? '보호권 ' + count + '장으로 교환' : '보호권 교환', () => {
       const gained = exchangeShards(progress);
-      if (gained) commit('파편 교환 · 보호권 +' + gained);
+      if (gained) commit('파편 교환 · 보호권 +' + gained, 'good');
     });
     exchange.disabled = !count;
     shards.append(exchange);
