@@ -39,7 +39,7 @@ test('성공·파손 확률의 경계와 파손된 여의주의 중복 지급 �
 });
 
 test('판매가 기준점, 다음 단계 판매가 기준 강화 비용, 레벨별 전투 수치와 칭호', () => {
-  assert.deepEqual([0, 5, 10, 15].map(sellPrice), [5, 100, 1000, 10000]);
+  assert.deepEqual([0, 5, 10, 15].map(sellPrice), [5, 300, 5000, 100000]);
   assert.equal(upgradeCost(4), 20);
   assert.equal(upgradeCost(9), 200);
   assert.equal(upgradeCost(14), 2000);
@@ -47,7 +47,9 @@ test('판매가 기준점, 다음 단계 판매가 기준 강화 비용, 레벨�
   for (let level = 0; level < 15; level++) {
     const nextPrice = sellPrice(level + 1);
     assert.ok(nextPrice > sellPrice(level));
-    assert.equal(upgradeCost(level), Math.round(nextPrice * 0.2));
+    // 판매가를 올려도 강화 비용은 예전 곡선(costPrices) 기준 그대로다.
+    assert.ok(upgradeCost(level) < nextPrice * 0.2 || level < 1);
+    assert.ok(sellPrice(level + 1) >= upgradeCost(level));
     const current = treasureStats(level);
     const next = treasureStats(level + 1);
     assert.ok(current.damage > 0 && next.damage > current.damage);
@@ -88,17 +90,17 @@ test('보관함 5칸과 장착 1칸을 따로 유지하며 가득 찬 상태에�
   assert.equal(p.treasure, treasures[5]);
   assert.equal(p.inventory.length, 5);
   assert.equal(p.inventory[4], treasures[1]);
-  assert.equal(sell(p, 'equipped'), 100);
+  assert.equal(sell(p, 'equipped'), 300);
   assert.equal(sell(p, 'equipped'), 0);
   assert.equal(p.treasure, null);
   assert.equal(sell(p, 0), 5);
-  assert.equal(p.yoryeok, 105);
+  assert.equal(p.yoryeok, 305);
   assert.equal(p.inventory.length, 4);
   for (const slot of [-1, 4, 0.5, '0']) {
     assert.equal(equip(p, slot), false);
     assert.equal(sell(p, slot), 0);
   }
-  assert.equal(p.yoryeok, 105);
+  assert.equal(p.yoryeok, 305);
   assert.equal(p.inventory.length, 4);
 });
 

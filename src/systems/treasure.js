@@ -10,19 +10,25 @@ function checkLevel(level) {
   if (!validLevel(level)) throw new RangeError('여의주 강화 레벨이 범위를 벗어났습니다.');
 }
 
-export function sellPrice(level) {
-  checkLevel(level);
-  const end = TREASURE.prices.findIndex(([anchor]) => level <= anchor);
-  const [endLevel, endPrice] = TREASURE.prices[end];
+// 기준점 표에서 레벨의 값을 기하 보간한다.
+function priceAt(table, level) {
+  const end = table.findIndex(([anchor]) => level <= anchor);
+  const [endLevel, endPrice] = table[end];
   if (level === endLevel) return endPrice;
-  const [startLevel, startPrice] = TREASURE.prices[end - 1];
+  const [startLevel, startPrice] = table[end - 1];
   const fraction = (level - startLevel) / (endLevel - startLevel);
   return Math.round(startPrice * (endPrice / startPrice) ** fraction);
 }
 
+export function sellPrice(level) {
+  checkLevel(level);
+  return priceAt(TREASURE.prices, level);
+}
+
+// 강화 비용은 판매가와 따로 정한다(costPrices × upgradeCostRatio).
 export function upgradeCost(level) {
   checkLevel(level);
-  return level === maxLevel ? Infinity : Math.round(sellPrice(level + 1) * TREASURE.upgradeCostRatio);
+  return level === maxLevel ? Infinity : Math.round(priceAt(TREASURE.costPrices ?? TREASURE.prices, level + 1) * TREASURE.upgradeCostRatio);
 }
 
 // 호출자가 비용을 지불한다. break면 소유 슬롯에서 여의주를 제거하고 shards를 적립한다.
