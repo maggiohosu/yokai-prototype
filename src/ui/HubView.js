@@ -7,7 +7,7 @@ import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
 import { recordTreasureSuccess } from '../systems/progress.js';
-import { dropChance, equip, exchangeShards, sell, sellPrice, treasureTitle, tryUpgrade, upgradeCost } from '../systems/treasure.js';
+import { dropChance, equip, exchangeShards, sell, sellPrice, treasureStats, treasureTitle, tryUpgrade, upgradeCost } from '../systems/treasure.js';
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 
@@ -250,6 +250,20 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       if (price) commit(treasureTitle(item.level) + ' 판매 · 요력 +' + number(price), 'good');
     });
   }
+  function statLine(level) {
+    const a = treasureStats(level);
+    const b = level < TREASURE.success.length ? treasureStats(level + 1) : null;
+    const arrow = (x, y) => (b && x !== y ? x + '→' + y : x);
+    const m = (v) => '×' + v.toFixed(2);
+    const homing = (s) => (s.homing > 0 ? '있음' : '없음');
+    return [
+      '방향 ' + arrow(a.ways, b?.ways) + ' · 방향당 ' + arrow(a.perWay, b?.perWay) + '개',
+      '속도 ' + arrow(m(a.speedMult), b && m(b.speedMult)),
+      '파워 ' + arrow(m(a.damage / TREASURE.damageBase), b && m(b.damage / TREASURE.damageBase)),
+      '유도 ' + arrow(homing(a), b && homing(b)),
+    ].join(' · ');
+  }
+
   function treasurePanel() {
     const equipped = el('section', 'yk-card');
     const item = progress.treasure;
@@ -257,6 +271,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     if (item) {
       const title = el('h3', 'yk-orb-title', treasureTitle(item.level));
       equipped.append(title);
+      equipped.append(el('p', 'yk-cost', statLine(item.level)));
       const cost = upgradeCost(item.level);
       const controls = el('div', 'yk-actions');
       if (Number.isFinite(cost)) {

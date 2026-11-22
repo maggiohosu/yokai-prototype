@@ -1,5 +1,7 @@
 import { CONFIG } from '../config.js';
-import { FORMS } from '../data/forms.js';
+import { FORMS, FORM_BY_ID } from '../data/forms.js';
+import { pickIntent, intentDirection } from './enemyAI.js';
+import { rollSpecial } from './enemyFire.js';
 import { drawCreature } from '../art/creature.js';
 import { Actor } from './actor.js';
 import { between } from './world.js';
@@ -19,6 +21,7 @@ export class Enemy extends Actor {
     this.vy = 0;
     this.reversed = false;
     this.fleeTime = 0;
+    this.special = FORM_BY_ID[this.formId]?.stage === 3 && rollSpecial(size, 3);
   }
   fleeFrom(player) {
     this.reversed = true;
@@ -34,27 +37,24 @@ export class Enemy extends Actor {
     if (wasSmall && this.size >= CONFIG.enemy.stage3Size) {
       this.formId = formFor(this.dir, this.size).id;
       this.sprite.setTexture(drawCreature(this.scene, this.formId));
+      this.special = rollSpecial(this.size, 3);
     }
   }
-  step(player, dt) {
+  // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
+  step(player, dt, grid) {
     const ai = CONFIG.enemy;
-    const dx = player.x - this.x,
-      dy = player.y - this.y,
-      distance = Math.hypot(dx, dy);
-    let speed = 0;
     if (this.size >= player.size) {
       this.reversed = false;
       this.fleeTime = 0;
     }
-    if (distance <= ai.detect || this.fleeTime > 0) {
-      if (this.size > player.size) speed = ai.chaseSpeed;
-      else if (this.size < player.size) speed = -ai.fleeSpeed;
-    }
+    const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt) : null;
     this.fleeTime = Math.max(0, this.fleeTime - dt);
+    const dir = intentDirection(this, intent);
     let vx, vy;
-    if (speed && distance > 0) {
-      vx = (dx / distance) * speed;
-      vy = (dy / distance) * speed;
+    if (dir) {
+      const speed = intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed;
+      vx = dir.x * speed;
+      vy = dir.y * speed;
       this.wanderTime = 0;
     } else {
       this.wanderTime -= dt;

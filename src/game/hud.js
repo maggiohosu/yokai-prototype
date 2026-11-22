@@ -89,16 +89,21 @@ export class Hud {
     }
     drawMap(this.ctx, player, view);
   }
-  end(player, killer, onRestart, run = null) {
+  end(player, killer, { onRestart, onHub } = {}, run = null) {
     byId('final-eaten').textContent = player.eaten;
     byId('final-size').textContent = number(player.maxSize);
-    byId('killer').textContent = killer.name + '에게 먹혔습니다.' + (run ? ' 요력 +' + number(run.yoryeok) + (run.drops ? ' · 여의주 ' + run.drops + '개 획득' : '') : '');
+    byId('killer').textContent = (killer.message ?? killer.name + '에게 먹혔습니다.') + (run ? ' 요력 +' + number(run.yoryeok) + (run.drops ? ' · 여의주 ' + run.drops + '개 획득' : '') : '');
     this.result.hidden = false;
-    const button = byId('restart');
-    button.onclick = () => {
-      button.onclick = null;
-      onRestart();
+    const button = byId('restart'),
+      hub = byId('hub');
+    const once = (el, fn) => {
+      el.onclick = () => {
+        button.onclick = hub.onclick = null;
+        fn?.();
+      };
     };
+    once(button, onRestart);
+    once(hub, onHub);
     button.focus({ preventScroll: true });
   }
 }

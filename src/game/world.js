@@ -26,12 +26,22 @@ export function colorPicker() {
   };
 }
 
+// 초반(시작 크기~earlyUntilSize)엔 큰 적 비중을 높이고 커질수록 기존 분포로 선형 전환한다.
+export function sizeWeights(playerSize) {
+  const { sizes, earlyWeights, earlyUntilSize } = CONFIG.enemy;
+  const start = CONFIG.player.startSize;
+  const t = clamp((playerSize - start) / Math.max(1e-6, earlyUntilSize - start), 0, 1);
+  return sizes.map((band, i) => earlyWeights[i] * (1 - t) + band.weight * t);
+}
+
 export function spawnSize(playerSize) {
-  let draw = Math.random();
   const bands = CONFIG.enemy.sizes;
+  const weights = sizeWeights(playerSize);
+  let draw = Math.random() * weights.reduce((a, b) => a + b, 0);
   let band = bands.at(-1);
-  for (const entry of bands) {
-    draw -= entry.weight;
+  for (let i = 0; i < bands.length; i++) {
+    const entry = bands[i];
+    draw -= weights[i];
     if (draw < 0) {
       band = entry;
       break;

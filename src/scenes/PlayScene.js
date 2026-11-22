@@ -6,14 +6,15 @@ import { eatingPair } from '../game/actor.js';
 import { Player } from '../game/player.js';
 import { Enemy } from '../game/enemy.js';
 import { Joystick } from '../game/joystick.js';
-import { followPlayer } from '../game/camera.js';
+import { followPlayer, worldToClient } from '../game/camera.js';
 import { Hud } from '../game/hud.js';
 import { Combat } from '../game/combat.js';
 import { FireButton } from '../game/fireButton.js';
 import { loadProgress, saveProgress } from '../state/save.js';
-import { attachSession, playerStats } from '../game/session.js';
+import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
+import { buildGrid, findMeals } from '../game/enemyAI.js';
+import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
-import { yoryeokFor } from '../systems/progress.js';
 import { HubView } from '../ui/HubView.js';
 import { EvolveView } from '../ui/EvolveView.js';
 
@@ -36,8 +37,13 @@ export class PlayScene extends Phaser.Scene {
     this.run = attachSession(this, this.progress, Math.random, this.saveProgress);
     const onEatFx = (meal) => {
       const p = this.player;
-      const gain = yoryeokFor(meal.preySize, meal.killedByTreasure);
-      this.fx.floatText(p.x, p.y - p.size * 1.25, '+' + gain + ' 요력', meal.killedByTreasure ? '#c4f7e6' : '#fff1b8');
+      const gain = mealYoryeok(meal);
+      if (meal.special) {
+        this.fx.floatText(p.x, p.y - p.size * 1.4, '요력 대박! +' + gain, '#ffd45c');
+        this.fx.burst(p.x, p.y, 0xffd45c, 26, 1.5);
+      } else {
+        this.fx.floatText(p.x, p.y - p.size * 1.25, '+' + gain + ' 요력', meal.killedByTreasure ? '#c4f7e6' : '#fff1b8');
+      }
     };
     const onDropFx = () => {
       const p = this.player;
@@ -58,6 +64,9 @@ export class PlayScene extends Phaser.Scene {
     const arena = document.getElementById('arena');
     this.joystick = new Joystick(arena);
     this.combat = new Combat(this, this.progress);
+    this.enemyFire = new EnemyFire(this);
+    this.fireGfx = this.add.graphics().setDepth(4.5);
+    this.events.once('shutdown', () => this.enemyFire?.destroy());
     this.fireRequested = false;
     this.fireButton = new FireButton(arena, () => {
       if (this.scene.isActive() && !this.ended) this.fireRequested = true;
@@ -147,7 +156,33 @@ export class PlayScene extends Phaser.Scene {
       if (!this.spawn(size, { near, initial: true })) this.spawn(size, { initial: true });
     }
   }
-  resolveMeals() {
+  endRun(killer) {
+    this.ended = true;
+    this.releaseControls();
+    this.combat.graphics.clear();
+    this.enemyFire.clear();
+    this.fireGfx.clear();
+    this.hud.end(this.player, killer, {
+      onRestart: () => this.scene.restart({ progress: this.progress }),
+      onHub: () => this.openHub(),
+    }, this.run);
+    this.events.emit('runEnd', {
+      eaten: this.player.eaten, maxSize: this.player.maxSize, killerFormId: killer.id ?? null,
+    });
+  }
+  // 특수 적 구슬에 맞으면 크기(=체력)가 줄고, 일정 크기 아래면 판 종료.
+  applyEnemyHits(hits) {
+    for (const hit of hits) {
+      this.player.setSize(Math.max(1, this.player.size - hit.damage));
+      this.fx.flash(this.player);
+      this.fx.burst(hit.x, hit.y, 0xd0508f, 6, 0.6);
+      if (isFatal(this.player.size)) {
+        this.endRun({ name: '특수 요괴', message: '특수 요괴의 구슬에 맞아 쓰러졌습니다.' });
+        return;
+      }
+    }
+  }
+  resolveMeals(grid) {
     // 72마리면 최대 2,556쌍. 제곱거리로 검사하고 먹힌 개체는 즉시 제외한다.
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
@@ -159,13 +194,7 @@ export class PlayScene extends Phaser.Scene {
       if (prey === this.player) {
         this.fx.burst(prey.x, prey.y, 0xfffbe6, 18, 1.2);
         hunter.eat(prey);
-        this.ended = true;
-        this.releaseControls();
-        this.combat.graphics.clear();
-        this.hud.end(this.player, FORM_BY_ID[hunter.formId], () => this.openHub(), this.run);
-        this.events.emit('runEnd', {
-          eaten: this.player.eaten, maxSize: this.player.maxSize, killerFormId: hunter.formId,
-        });
+        this.endRun(FORM_BY_ID[hunter.formId]);
         return;
       }
       const meal = this.combat.meal(prey, false);
@@ -174,22 +203,34 @@ export class PlayScene extends Phaser.Scene {
       prey.destroy();
       this.events.emit('eat', meal);
     }
-    for (let i = 0; i < this.enemies.length; i++) {
-      const a = this.enemies[i];
-      if (!a.sprite.active) continue;
-      for (let j = i + 1; j < this.enemies.length; j++) {
-        const b = this.enemies[j];
-        if (!b.sprite.active) continue;
-        const pair = eatingPair(a, b);
-        if (!pair) continue;
-        pair[0].eat(pair[1]);
-        pair[1].destroy();
-        if (pair[1] === a) break;
-      }
+    // 적끼리: 공간 격자로 닿은 쌍만 찾아 큰 쪽이 작은 쪽을 먹는다.
+    for (const [big, small] of findMeals(grid)) {
+      if (!big.sprite.active || !small.sprite.active) continue;
+      big.eat(small);
+      small.destroy();
     }
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (!this.enemies[i].sprite.active) this.enemies.splice(i, 1);
     }
+  }
+  // 템포: 시뮬레이션(이동·AI·발사·쿨타임·보충)에만 CONFIG.tempo를 곱한다. 연출·카메라·HUD는 실제 시간.
+  // 빨라진 물체가 서로 통과하지 않게 한 프레임을 maxStep 이하의 작은 단계로 나눠 계산한다.
+  simulate(sim, direction) {
+    const steps = Math.max(1, Math.ceil(sim / CONFIG.render.maxStep));
+    const h = sim / steps;
+    for (let i = 0; i < steps && !this.ended; i++) {
+      const grid = buildGrid(this.enemies, CONFIG.hunt.detect);
+      this.player.step(direction, h);
+      this.combat.step(direction, h, i === 0 && this.fireRequested);
+      for (const enemy of this.enemies) {
+        enemy.step(this.player, h, grid);
+        if (enemy.special && enemy.sprite.active) this.enemyFire.tryFire(enemy, this.player, h);
+      }
+      this.resolveMeals(grid);
+      if (this.ended) break;
+      this.applyEnemyHits(this.enemyFire.step(h, this.player));
+    }
+    this.fireRequested = false;
   }
   update(_time, delta) {
     const dt = Math.min(delta / 1000, CONFIG.render.maxDelta);
@@ -197,24 +238,25 @@ export class PlayScene extends Phaser.Scene {
       this.fx.update(dt, null, this.progress.grade);
       return;
     }
-    const direction = this.joystick.direction();
-    this.player.step(direction, dt);
-    this.combat.step(direction, dt, this.fireRequested);
-    this.fireRequested = false;
-    for (const enemy of this.enemies) enemy.step(this.player, dt);
-    this.resolveMeals();
+    const direction = this.joystick.direction(worldToClient(this, this.player.x, this.player.y));
+    const sim = dt * CONFIG.tempo;
+    this.simulate(sim, direction);
     if (this.ended) return;
     for (const enemy of this.enemies) this.fx.animateActor(enemy, dt, enemy.vx, enemy.vy);
     const sp = this.playerStats.speed;
     this.fx.animateActor(this.player, dt, direction.x * sp, direction.y * sp);
     this.fx.update(dt, this.player, this.progress.grade);
     this.combat.draw();
+    const fg = this.fireGfx.clear();
+    this.enemyFire.draw(fg);
+    const now = this.time.now / 1000;
+    for (const enemy of this.enemies) if (enemy.special && enemy.sprite.active) drawSpecialMark(fg, enemy, now);
     this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
     this.follow(dt);
     const { x, y, size } = this.player;
     this.marker.setPosition(x, y + size * 0.64).setScale(size / 46);
     this.nameTag.setPosition(x, y + size * 1.18);
-    this.refillTime -= dt;
+    this.refillTime -= sim;
     const view = this.cameras.main.worldView;
     if (this.refillTime <= 0) {
       this.refillTime = CONFIG.world.refillInterval;

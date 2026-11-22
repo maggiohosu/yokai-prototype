@@ -56,7 +56,7 @@ export class FireButton {
     surface.querySelector('.keys').append(this.keyHelp);
     this.touchHelp = surface.querySelector('.touch-help');
     this.previousHelp = this.touchHelp.textContent;
-    this.touchHelp.textContent = '왼쪽을 끌어 이동 · 오른쪽 버튼 발사';
+    this.touchHelp.textContent = '화면을 눌러 그 방향으로 이동 · 오른쪽 버튼 발사';
 
     this.events = new AbortController();
     const options = { signal: this.events.signal };

@@ -25,7 +25,7 @@ async function start() {
   const Scene = gallery
     ? (await import('./scenes/GalleryScene.js')).GalleryScene
     : (await import('./scenes/PlayScene.js')).PlayScene;
-  new Phaser.Game({
+  const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'phaser-host',
     backgroundColor: '#dae4d7',
@@ -36,6 +36,8 @@ async function start() {
     audio: { noAudio: true },
     scene: [Scene],
   });
+  // 확인용: 주소에 ?debug가 있을 때만 게임 객체를 노출한다.
+  if (new URLSearchParams(location.search).has('debug')) window.__yokai = game;
 }
 start().catch((error) => {
   console.error(error);

@@ -1,5 +1,7 @@
 // 크기와 거리는 월드 단위, 속도는 초당 월드 단위다. size는 충돌 원의 반지름이다.
 export const CONFIG = {
+  // 게임 템포 배율(사용자 지시 2026-11-22: 3배). 이동·적 AI·발사체·쿨타임·보충에 곱한다.
+  tempo: 3,
   world: {
     size: 4000,
     population: 72,
@@ -26,6 +28,9 @@ export const CONFIG = {
       { weight: 0.13, min: 0.92, max: 1.08 },
       { weight: 0.2, min: 1.15, max: 1.75 },
     ],
+    // 플레이어가 startSize~earlyUntilSize일 때 earlyWeights(작은/비슷/큰 적)에서 sizes의 weight로 선형 전환한다.
+    earlyUntilSize: 70,
+    earlyWeights: [0.35, 0.15, 0.5],
     stage3Size: 31,
     maxSpawnSize: 140,
     detect: 290,
@@ -36,9 +41,21 @@ export const CONFIG = {
     wanderInterval: [1.25, 3.4],
     wallMargin: 64,
   },
+  // 적끼리 사냥(src/game/enemyAI.js). 속도 관련 값은 템포 1배 기준.
+  hunt: { detect: 320, playerBias: 0.8, retargetSeconds: 0.35 },
+  // 특수 적(3단계 일부)의 구슬(src/game/enemyFire.js). 속도·쿨타임은 템포 1배 기준.
+  special: {
+    rewardMult: 8, // 특수 적 처치 시 요력 배율(요력 대박)
+    chance: 0.3, range: 380, cooldown: 2.2, orbSpeed: 260, orbRadius: 7,
+    damageRatio: 0.12, minDamage: 2, maxOrbs: 24, deathSize: 14,
+    leadAim: 0.6, trailLength: 0.16, orbColor: 0xc2185b, coreColor: 0xffb3dd, trailColor: 0x7b1fa2,
+    ringColor: 0xe0245e, ringDashes: 14, ringSpin: 1.4, ringPad: 1.28, ringWidth: 3,
+  },
   eating: { ratio: 1.1, areaGain: 0.32 },
   combat: {
     aimHalfAngleDeg: 35,
+    homingTurnRate: 4, // 유도 1.0일 때 초당 최대 회전(라디안)
+    maxOrbs: 120,
     range: 360,
     cooldown: 0.55,
     orbSpeed: 520,
@@ -58,11 +75,13 @@ export const CONFIG = {
     punchScale: 1.16, punchDecay: 1.4, flashSeconds: 0.09, textSeconds: 0.75,
     shakeMs: 150, shakeIntensity: 0.004, maxParticles: 160,
   },
-  camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 4, portraitWidth: 585 },
-  input: { joystickRadius: 51, deadZone: 0.07 },
+  camera: { baseZoom: 1.18, minZoom: 0.43, exponent: 0.55, smoothRate: 16, portraitWidth: 585 },
+  // 화면 아무 곳 터치 → 캐릭터에서 손가락 방향 이동. 거리(px)가 deadZonePx 이하면 0, fullSpeedPx 이상이면 1. responseMs: 방향 반응 시간상수.
+  input: { joystickRadius: 51, deadZonePx: 14, fullSpeedPx: 90, responseMs: 10 },
   render: {
     targetFps: 60,
     maxDelta: 0.05,
+    maxStep: 1 / 60, // 템포를 곱한 뒤 한 계산 단계의 최대 시간(초)
     maxPixelRatio: 2,
     textureSize: 320,
     artUnits: 160,

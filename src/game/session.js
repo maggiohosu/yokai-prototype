@@ -17,11 +17,16 @@ export function playerStats(progress) {
   };
 }
 
+// 이번 먹이로 얻는 요력. 특수 적은 config.special.rewardMult배(사용자 결정: '요력 대박'으로 통일, 화폐 하나 원칙 유지).
+export function mealYoryeok(meal) {
+  return yoryeokFor(meal.preySize, meal.killedByTreasure) * (meal.special ? CONFIG.special.rewardMult : 1);
+}
+
 export function attachSession(scene, progress, rng = Math.random, save = saveProgress) {
   const run = { yoryeok: 0, drops: 0 };
   const onEat = (meal) => {
     recordEat(progress, meal);
-    const gain = yoryeokFor(meal.preySize, meal.killedByTreasure);
+    const gain = mealYoryeok(meal);
     progress.yoryeok += gain;
     run.yoryeok += gain;
     if (rng() < dropChance({ killedByTreasure: meal.killedByTreasure })) {

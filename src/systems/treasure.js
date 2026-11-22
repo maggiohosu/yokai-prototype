@@ -52,9 +52,11 @@ export function exchangeShards(state) {
 
 export function treasureStats(level) {
   checkLevel(level);
+  const [ways, perWay, speedMult, powerMult, homing] = TREASURE.levels[level];
   return {
-    damage: TREASURE.damageBase + level * TREASURE.damagePerLevel,
-    shots: TREASURE.shotsBase + Math.floor(level / TREASURE.levelsPerExtraShot),
+    damage: TREASURE.damageBase * powerMult,
+    ways, perWay, speedMult, homing,
+    shots: ways * perWay,
     chargePower: TREASURE.chargeBase + level * TREASURE.chargePerLevel,
   };
 }
