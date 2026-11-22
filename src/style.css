@@ -25,12 +25,6 @@
   --west: #a08a58;
   --south: #b2624f;
   --north: #526773;
-  --map-east: #b8d7bd;
-  --map-west: #e8d9b5;
-  --map-south: #e8b8a0;
-  --map-north: #bbcdd1;
-  --map-grid: #526d5840;
-  --map-view: #38544f88;
   --serif: 'Batang', 'AppleMyungjo', 'Nanum Myeongjo', Georgia, serif;
   --sans: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
   font-family: var(--sans);
@@ -135,6 +129,7 @@ body:not(.gallery-mode) > .masthead { display: none; }
   user-select: none;
   background: var(--field);
   --fire-size: clamp(96px, 26dvh, 112px);
+  --fire-right: calc(24px + env(safe-area-inset-right));
   --pad-size: clamp(120px, 33dvh, 136px);
   --edge: 16px;
   --top: calc(var(--edge) + env(safe-area-inset-top));
@@ -166,8 +161,8 @@ body:not(.gallery-mode) > .masthead { display: none; }
 .identity, .stat { display: flex; padding-inline: 12px; }
 .identity { align-items: center; gap: 8px; min-width: 0; }
 .identity > div, .stat { display: grid; gap: 2px; }
-.hud small, .mini-title, .location, .growth-gauge { font-size: 12px; line-height: 1.35; }
-.hud small, .mini-title { color: var(--muted); }
+.hud small, .growth-gauge { font-size: 12px; line-height: 1.35; }
+.hud small { color: var(--muted); }
 .identity strong { font: 600 19px/1.2 var(--serif); overflow-wrap: anywhere; }
 .portrait { flex: none; width: 32px; height: 32px; }
 .portrait img { display: block; width: 100%; height: 100%; object-fit: contain; }
@@ -197,25 +192,14 @@ body:not(.gallery-mode) > .masthead { display: none; }
 }
 .field-size span { font-size: 12px; line-height: 1.4; }
 .field-size strong { font: 600 clamp(32px, 8dvh, 48px)/1.08 var(--serif); }
-.field-atlas {
-  position: absolute; top: var(--top); right: var(--right);
-  display: flex; flex-direction: column; pointer-events: none;
-  border: 1px solid var(--line-dark); background: var(--paper);
-}
 .field-book {
+  position: absolute; top: var(--top); right: var(--right);
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px;
   padding: 4px 8px; color: var(--ink); text-decoration: none;
-  border-top: 1px solid var(--line); font-size: 14px; pointer-events: auto;
+  border: 1px solid var(--line-dark); border-radius: 4px; background: var(--paper); font-size: 14px;
 }
 .field-book:focus-visible { outline-offset: -3px; }
 .field-book:is(:hover,:active) { background: var(--sheet); }
-.mini {
-  width: 100px; padding: 4px; text-align: center;
-}
-.mini-title { margin-bottom: 4px; }
-#map { display: block; width: 100%; aspect-ratio: 1; border: 1px solid var(--line-dark); }
-.location { display: flex; justify-content: center; align-items: center; gap: 4px; margin-top: 4px; }
-#region-seal { color: var(--stamp); font-family: var(--serif); }
 .help {
   left: 50%; bottom: var(--bottom); transform: translateX(-50%);
   background: var(--paper); padding: 4px 8px; font-size: 12px; color: var(--ink-soft);
@@ -224,7 +208,7 @@ body:not(.gallery-mode) > .masthead { display: none; }
 .keys { gap: 12px; flex-wrap: wrap; }
 kbd { font: 600 12px var(--sans); color: var(--ink); }
 .fire-button {
-  position: absolute; right: calc(24px + env(safe-area-inset-right)); bottom: var(--bottom);
+  position: absolute; right: var(--fire-right); bottom: var(--bottom);
   width: var(--fire-size); height: var(--fire-size);
   padding: 4px; border: 2px solid var(--ink); border-radius: 50%;
   color: var(--paper);
@@ -245,14 +229,11 @@ kbd { font: 600 12px var(--sans); color: var(--ink); }
 }
 .fire-button[aria-disabled='true'] > span { background: var(--ink-hover); }
 .fire-button:active > span { background: var(--ink-soft); }
-/* 부스터: 발사 버튼 위쪽. 색·테두리는 발사 버튼과 같고, 둘레 원호(--gauge)가 남은 게이지다.
-   가로 폰(높이 약 390)에서는 발사 버튼 바로 위가 오른쪽 위 지도 상자(.field-atlas)와 겹치므로,
-   지도 상자(너비 82 = .mini 80 + 테두리) 왼쪽으로 12px 비껴 놓는다. 오른쪽·아래 여백은 안전 영역을 반영한 --right·--bottom을 쓴다. */
 .booster-button {
   --booster-size: clamp(72px, 21dvh, 84px);
   position: absolute;
-  right: calc(var(--right) + 82px + 12px);
-  bottom: calc(var(--bottom) + var(--fire-size) + 10px);
+  right: calc(var(--fire-right) + (var(--fire-size) - var(--booster-size)) / 2);
+  bottom: calc(var(--bottom) + var(--fire-size) + 16px);
   width: var(--booster-size); height: var(--booster-size);
   padding: 5px; border: 2px solid var(--ink); border-radius: 50%;
   color: var(--paper);
@@ -392,7 +373,6 @@ body:has(.script-required) #loading { display: none; }
   .title-group h1 { font-size: 20px; }
   .title-group p { margin-top: 0; }
   #arena { --edge: 12px; }
-  .mini { width: 88px; padding: 4px; }
   #cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .specimen { height: 112px; }
   #filters { gap: 0 4px; }
@@ -400,8 +380,6 @@ body:has(.script-required) #loading { display: none; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
   #arena { --edge: 12px; }
-  .mini { width: 80px; }
-  .field-book { width: 100%; }
   .hud .identity, .hud .stat { padding-inline: 8px; }
   .hud .growth-gauge { margin-inline: 8px; }
   #result { width: min(640px, calc(100% - 48px - env(safe-area-inset-left) - env(safe-area-inset-right))); }
