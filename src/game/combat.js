@@ -2,16 +2,17 @@ import { CONFIG } from '../config.js';
 import { gradeMultiplier } from '../systems/evolution.js';
 import { treasureStats } from '../systems/treasure.js';
 import { TREASURE } from '../systems/tuning-upgrade.js';
+import { canEat, stageOf } from '../systems/rules.js';
 
 const tuning = CONFIG.combat;
 
-// (x,y)에서 (hx,hy) 방향 부채꼴 안의 '나보다 큰' 가장 가까운 적.
-function aimTarget(x, y, size, enemies, hx, hy) {
+// (x,y)에서 (hx,hy) 방향 부채꼴 안의 '나를 먹을 수 있는'(단계 규칙) 가장 가까운 적.
+function aimTarget(x, y, player, enemies, hx, hy) {
   const cone = Math.cos(tuning.aimHalfAngleDeg * Math.PI / 180);
   let nearest = null;
   let best = tuning.range ** 2;
   for (const enemy of enemies) {
-    if (!enemy.sprite.active || enemy.size <= size) continue;
+    if (!enemy.sprite.active || !canEat(enemy, player)) continue;
     const dx = enemy.x - x, dy = enemy.y - y;
     const distanceSq = dx * dx + dy * dy;
     if (distanceSq > best || dx * hx + dy * hy < Math.sqrt(distanceSq) * cone) continue;
@@ -100,7 +101,8 @@ export class Combat {
     const { player } = this.scene;
     this.engage(enemy);
     const remaining = enemy.size - damage;
-    const reversal = enemy.size >= player.size && remaining < player.size;
+    // 역전: 나를 먹을 수 있던 적이 깎여서 이제 내가 먹을 수 있게 됐다(단계 규칙 포함).
+    const reversal = canEat(enemy, player) && canEat(player, { size: remaining, stage: stageOf(enemy) }, { reversed: true });
     if (reversal) this.scene.fireButton.showReversal();
     this.scene.fx?.flash(enemy);
     if (reversal) this.scene.fx?.reversal(enemy);
@@ -123,7 +125,7 @@ export class Combat {
       this.heading.y = direction.y / magnitude;
     }
     const stats = this.stats();
-    this.target = stats.homing > 0 ? aimTarget(player.x, player.y, player.size, enemies, this.heading.x, this.heading.y) : null;
+    this.target = stats.homing > 0 ? aimTarget(player.x, player.y, player, enemies, this.heading.x, this.heading.y) : null;
     if (this.target) this.engage(this.target);
     this.cooldown = Math.max(0, this.cooldown - dt);
     if (fireRequested && this.cooldown === 0) this.fire(stats);
@@ -131,7 +133,7 @@ export class Combat {
     for (let i = this.orbs.length - 1; i >= 0; i--) {
       const orb = this.orbs[i];
       if (orb.homing > 0) {
-        const target = aimTarget(orb.x, orb.y, player.size, enemies, orb.vx, orb.vy);
+        const target = aimTarget(orb.x, orb.y, player, enemies, orb.vx, orb.vy);
         if (target) {
           const dx = target.x - orb.x, dy = target.y - orb.y;
           const cross = orb.vx * dy - orb.vy * dx;
@@ -161,7 +163,7 @@ export class Combat {
   draw() {
     const g = this.graphics.clear();
     const target = this.target;
-    if (this.stats().homing > 0 && target?.sprite.active && target.size > this.scene.player.size) {
+    if (this.stats().homing > 0 && target?.sprite.active && canEat(target, this.scene.player)) {
       const radius = target.size + 5;
       g.lineStyle(4, 0x4e4835, 0.9).strokeCircle(target.x, target.y, radius);
       g.lineStyle(2, 0xffe693, 1).strokeCircle(target.x, target.y, radius);

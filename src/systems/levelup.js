@@ -52,7 +52,11 @@ export function cheapestCost(progress, run) {
 
 // 요력이 다음 멈춤 기준에 닿았고 실제 시간 간격도 지났으면 true. 기준이 없으면 여기서 정한다.
 export function shouldPause(progress, run, nowSec) {
-  if (run.nextPauseAt == null) run.nextPauseAt = cheapestCost(progress, run);
+  if (run.nextPauseAt == null) {
+    // 이월된 요력이 이미 넉넉하면 판 시작 즉시 멈추지 않고, 그 잔액을 기준점으로 삼는다.
+    const cheapest = cheapestCost(progress, run);
+    run.nextPauseAt = progress.yoryeok >= cheapest ? nextThreshold(progress.yoryeok, cheapest) : cheapest;
+  }
   return progress.yoryeok >= run.nextPauseAt
     && nowSec - run.lastPauseSec >= CONFIG.levelUp.pauseCooldownSec;
 }
@@ -61,7 +65,12 @@ export function shouldPause(progress, run, nowSec) {
 export function afterPause(progress, run, nowSec) {
   const cheapest = cheapestCost(progress, run);
   run.lastPauseSec = nowSec;
-  run.nextPauseAt = Math.max(cheapest, progress.yoryeok + cheapest * CONFIG.levelUp.minGapRatio);
+  run.nextPauseAt = nextThreshold(progress.yoryeok, cheapest);
+}
+
+// 다음 멈춤 기준. 간격을 잔액에 비례시켜, 요력을 모아 두는 중에도 먹이 하나마다 멈추지 않게 한다.
+function nextThreshold(yoryeok, cheapest) {
+  return Math.max(cheapest, yoryeok + Math.max(cheapest, yoryeok) * CONFIG.levelUp.minGapRatio);
 }
 
 // 몸집 강화는 확정이다. 요력이 부족하면 아무것도 바꾸지 않고 null.

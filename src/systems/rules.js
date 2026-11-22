@@ -28,6 +28,14 @@ export function eatPair(a, b, opts) {
   return null;
 }
 
+// 보물로 역전된 적(reversed)이 나보다 작아졌으면 단계와 상관없이 닿는 순간 내가 먹는다.
+// combat.hit의 '역전' 표시와 같은 조건이라, 표시가 나오면 닿았을 때 반드시 플레이어가 먹는다.
+export function reversalPair(player, enemy) {
+  if (!enemy.reversed || enemy.size >= player.size) return null;
+  const dx = player.x - enemy.x, dy = player.y - enemy.y, reach = player.size + enemy.size;
+  return dx * dx + dy * dy < reach * reach ? [player, enemy] : null;
+}
+
 // 먹이 점수 = 요력. 크고 높은 단계일수록 크게 오른다.
 export function preyValue({ size, stage = 1, grade = 'C', special = false, killedByTreasure = false }) {
   const s = CONFIG.score;

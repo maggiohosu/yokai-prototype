@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import {
-  stageOf, canEat, eatPair, preyValue, preyInfoOf, newDiet, bodyCostAt, topDietDir, pickEvolution, nextProgress,
+  stageOf, canEat, eatPair, reversalPair, preyValue, preyInfoOf, newDiet, bodyCostAt, topDietDir, pickEvolution, nextProgress,
 } from '../src/systems/rules.js';
 import { FORMS } from '../src/data/forms.js';
 import { evolutionCost } from '../src/systems/evolution.js';
@@ -10,6 +10,16 @@ import { spawnStage, spawnPoint } from '../src/game/world.js';
 import { eatingPair } from '../src/game/actor.js';
 
 const A = (size, stage, x = 0, y = 0) => ({ x, y, size, stage });
+
+test('역전 표시가 난 적(단계가 높아도)은 닿으면 플레이어가 먹는다', () => {
+  const player = A(40, 1, 0, 0);
+  const enemy = { ...A(35, 2, 10, 0), reversed: true };
+  assert.equal(eatPair(player, enemy)?.[0], enemy); // 규칙만 보면 플레이어가 먹힌다
+  assertPair(reversalPair(player, enemy), player, enemy);
+  assert.equal(reversalPair(player, { ...enemy, reversed: false }), null);
+  assert.equal(reversalPair(player, { ...enemy, size: 45 }), null);
+  assert.equal(reversalPair(player, { ...enemy, x: 200 }), null);
+});
 
 test('stageOf 기본값은 1', () => {
   assert.equal(stageOf({}), 1);

@@ -2,7 +2,7 @@ import { CONFIG, REGIONS } from '../config.js';
 import { FORMS, FORM_BY_ID } from '../data/forms.js';
 import { drawCreature } from '../art/creature.js';
 import { between, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
-import { canEat, eatPair } from '../systems/rules.js';
+import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, cheapestCost, createRunLevel, shouldPause } from '../systems/levelup.js';
 import { drawStageMark } from '../art/marks.js';
 import { Player } from '../game/player.js';
@@ -42,6 +42,7 @@ export class PlayScene extends Phaser.Scene {
     this.player.grade = this.progress.grade;
     this.level = createRunLevel();
     this.paused = false;
+    this.preview = preview;
     this.run = attachSession(this, this.progress, Math.random, this.saveProgress);
     const onEatFx = (meal) => {
       const p = this.player;
@@ -250,8 +251,7 @@ export class PlayScene extends Phaser.Scene {
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
       // 보물로 역전한 상대는 크기가 조금만 작아져도 바로 먹을 수 있다.
-      const reversed = enemy.reversed && enemy.size < this.player.size;
-      const pair = eatPair(this.player, enemy, { reversed });
+      const pair = reversalPair(this.player, enemy) ?? eatPair(this.player, enemy);
       if (!pair) continue;
       const [hunter, prey] = pair;
       if (prey === this.player) {
@@ -303,7 +303,7 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
     if (this.paused) return;
-    if (shouldPause(this.progress, this.level, performance.now() / 1000)) {
+    if (!this.preview && shouldPause(this.progress, this.level, performance.now() / 1000)) {
       this.openLevelUp();
       return;
     }

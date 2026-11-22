@@ -91,6 +91,7 @@ test('shouldPause: 이미 정한 기준은 다시 바꾸지 않는다', () => {
 
 test('shouldPause: 실제 시간 쿨다운이 지나야 다시 멈춘다', () => {
   const { progress, run } = setup(1000);
+  run.nextPauseAt = 500;
   run.lastPauseSec = 50;
   assert.equal(shouldPause(progress, run, 50 + L.pauseCooldownSec - 0.01), false);
   assert.equal(shouldPause(progress, run, 50 + L.pauseCooldownSec), true);
@@ -101,7 +102,7 @@ test('afterPause: 멈춘 시각을 기록하고 다음 기준을 최소 간격�
   const cheapest = cheapestCost(progress, run);
   afterPause(progress, run, 42);
   assert.equal(run.lastPauseSec, 42);
-  assert.equal(run.nextPauseAt, Math.max(cheapest, 100 + cheapest * L.minGapRatio));
+  assert.equal(run.nextPauseAt, Math.max(cheapest, 100 + Math.max(cheapest, 100) * L.minGapRatio));
   // 같은 요력, 같은 시각 근처에서는 곧바로 다시 멈추지 않는다.
   assert.equal(shouldPause(progress, run, 43), false);
   progress.yoryeok = run.nextPauseAt;
