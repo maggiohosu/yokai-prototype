@@ -1,22 +1,30 @@
 import { SAVE } from '../systems/tuning-evolution.js';
 import { createProgress } from '../systems/progress.js';
+import { ENHANCE } from '../systems/tuning-upgrade.js';
+import { FORMS } from '../data/forms.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // 알 수 없는 값·잘못된 타입은 기본값으로 대체
-export function normalizeProgress(raw) {
+export function normalizeProgress(raw, forms = FORMS) {
   const base = createProgress();
   if (!raw || typeof raw !== 'object') return base;
-  for (const k of ['yoryeok', 'alignment', 'stage', 'protect', 'shards', 'pity']) {
+  for (const k of ['yoryeok', 'alignment', 'protect', 'shards', 'pity']) {
     if (isNum(raw[k])) base[k] = raw[k];
   }
-  if (typeof raw.formId === 'string') base.formId = raw.formId;
+  const form = forms.find((f) => f.id === raw.formId && f.stage === raw.stage);
+  if (form) {
+    base.formId = form.id;
+    base.stage = form.stage;
+  }
   if (typeof raw.grade === 'string') base.grade = raw.grade;
   for (const k of Object.keys(base.diet)) if (isNum(raw.diet?.[k])) base.diet[k] = raw.diet[k];
   for (const k of Object.keys(base.enh)) if (isNum(raw.enh?.[k])) base.enh[k] = raw.enh[k];
   if (raw.treasure && typeof raw.treasure === 'object') base.treasure = raw.treasure;
   if (Array.isArray(raw.inventory)) base.inventory = raw.inventory.filter((x) => x && typeof x === 'object');
   if (Array.isArray(raw.discovered)) base.discovered = raw.discovered.filter((x) => typeof x === 'string');
+  if (ENHANCE.stats.includes(raw.pendingDegrade)) base.pendingDegrade = raw.pendingDegrade;
+  if (raw.pendingDevolve === true && base.stage > 1) base.pendingDevolve = true;
   return base;
 }
 

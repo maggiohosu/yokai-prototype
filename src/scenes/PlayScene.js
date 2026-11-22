@@ -22,11 +22,15 @@ export class PlayScene extends Phaser.Scene {
   create(data = {}) {
     for (const form of FORMS) drawCreature(this, form.id);
     drawWorld(this);
+    const debug = new URLSearchParams(location.search).get('debug');
+    const sandbox = Boolean(debug) && !data.progress;
+    this.sandbox = sandbox || Boolean(data.sandbox);
     this.progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
+    if (sandbox) this.progress = structuredClone(this.progress);
     this.registry.set('progress', this.progress);
     this.playerStats = playerStats(this.progress);
     this.player = new Player(this, this.progress.formId, this.playerStats);
-    this.run = attachSession(this, this.progress);
+    this.run = attachSession(this, this.progress, Math.random, this.sandbox ? () => false : saveProgress);
     this.enemies = [];
     this.nextColor = colorPicker();
     this.ended = false;
@@ -56,8 +60,7 @@ export class PlayScene extends Phaser.Scene {
     this.events.once('shutdown', this.releaseControls, this);
     document.getElementById('loading').hidden = true;
     // 확인용: ?debug=hub / ?debug=evolve (저장하지 않는 시험용 요력 지급)
-    const debug = new URLSearchParams(location.search).get('debug');
-    if (debug && !data.progress) {
+    if (sandbox) {
       if (debug === 'evolve' || debug === 'hub') { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
       setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: () => true, onDone: () => this.openHub() }) : this.openHub()), 300);
     }
@@ -68,13 +71,13 @@ export class PlayScene extends Phaser.Scene {
   openHub() {
     document.getElementById('result').hidden = true;
     const getFormImage = (formId) => this.formImage(formId);
-    const save = (p) => saveProgress(p);
+    const save = this.sandbox ? () => true : (p) => saveProgress(p);
     const openEvolve = () => EvolveView(this.progress, FORMS, {
       getFormImage, save, onDone: () => this.openHub(),
     });
     HubView(this.progress, FORMS, {
       getFormImage, save,
-      onPlay: () => this.scene.restart({ progress: this.progress }),
+      onPlay: () => this.scene.restart({ progress: this.progress, sandbox: this.sandbox }),
       onEvolve: () => openEvolve(),
     });
   }

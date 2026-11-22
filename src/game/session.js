@@ -17,9 +17,9 @@ export function playerStats(progress) {
   };
 }
 
-export function attachSession(scene, progress, rng = Math.random) {
+export function attachSession(scene, progress, rng = Math.random, save = saveProgress) {
   const run = { yoryeok: 0, drops: 0 };
-  scene.events.on('eat', (meal) => {
+  const onEat = (meal) => {
     recordEat(progress, meal);
     const gain = yoryeokFor(meal.preySize, meal.killedByTreasure);
     progress.yoryeok += gain;
@@ -30,8 +30,14 @@ export function attachSession(scene, progress, rng = Math.random) {
       else if (addToInventory(progress, treasure)) run.drops++;
       if (run.drops) scene.events.emit('treasureDrop', run.drops);
     }
-    saveProgress(progress);
+    save(progress);
+  };
+  const onRunEnd = () => save(progress);
+  scene.events.on('eat', onEat);
+  scene.events.once('runEnd', onRunEnd);
+  scene.events.once('shutdown', () => {
+    scene.events.off('eat', onEat);
+    scene.events.off('runEnd', onRunEnd);
   });
-  scene.events.once('runEnd', () => saveProgress(progress));
   return run;
 }

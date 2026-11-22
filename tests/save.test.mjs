@@ -17,7 +17,7 @@ test('저장 후 불러오기 왕복', () => {
   const s = fakeStorage();
   const p = createProgress();
   p.yoryeok = 321;
-  p.formId = 'baem';
+  p.formId = 'littleSnake';
   p.stage = 2;
   p.diet.east = 7;
   p.enh.growth = 4;
@@ -49,7 +49,7 @@ test('손상된 JSON / 버전 불일치 / 구조 이상 -> 새로 시작', () =>
 test('일부 필드 이상은 기본값으로 보정', () => {
   const p = normalizeProgress({ yoryeok: 'x', stage: 2, diet: { east: 3, west: 'a' }, inventory: 5, discovered: ['a', 1] });
   assert.equal(p.yoryeok, 0);
-  assert.equal(p.stage, 2);
+  assert.equal(p.stage, 1);
   assert.equal(p.diet.east, 3);
   assert.equal(p.diet.west, 0);
   assert.deepEqual(p.inventory, []);
@@ -68,4 +68,33 @@ test('clearSave', () => {
   saveProgress(createProgress(), s);
   clearSave(s);
   assert.equal(loadProgressWithStatus(s).status, 'new');
+});
+
+test('퇴화 선택 전과 B 선택 후의 대기 상태가 각각 저장·복원된다', () => {
+  const s = fakeStorage();
+  for (const pending of [{ pendingDegrade: 'growth' }, { pendingDevolve: true }]) {
+    const p = { ...createProgress(), formId: 'littleSnake', stage: 2, ...pending };
+    assert.ok(saveProgress(p, s));
+    assert.deepEqual(loadProgress(s), p);
+  }
+});
+
+test('알 수 없는 강화 항목, 잘못된 대기 값, 1단계 역진화는 버린다', () => {
+  const p = normalizeProgress({ formId: 'littleSnake', stage: 2, pendingDegrade: 'nope', pendingDevolve: 'true' });
+  assert.equal(p.pendingDegrade, undefined);
+  assert.equal(p.pendingDevolve, undefined);
+  assert.equal(normalizeProgress({ formId: 'mimul', stage: 1, pendingDevolve: true }).pendingDevolve, undefined);
+});
+
+test('형태나 단계가 없거나 서로 맞지 않으면 미물 1단계로 복구한다', () => {
+  for (const raw of [
+    { formId: 'ghost', stage: 3 }, { formId: 'littleSnake', stage: 3 },
+    { stage: 2 }, { formId: 'littleSnake' }, { formId: 'littleSnake', stage: '2' },
+  ]) {
+    const p = normalizeProgress({ ...raw, yoryeok: 321, pendingDevolve: true });
+    assert.equal(p.formId, 'mimul');
+    assert.equal(p.stage, 1);
+    assert.equal(p.pendingDevolve, undefined);
+    assert.equal(p.yoryeok, 321);
+  }
 });
