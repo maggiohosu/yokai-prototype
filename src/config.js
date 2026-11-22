@@ -30,7 +30,7 @@ export const CONFIG = {
     ],
     // 플레이어가 startSize~earlyUntilSize일 때 earlyWeights(작은/비슷/큰 적)에서 sizes의 weight로 선형 전환한다.
     // 플레이어 단계별 적 단계(1·2·3) 생성 가중치. 1단계 적은 방위 색 미물.
-    stageWeights: { 1: [0.55, 0.38, 0.07], 2: [0.35, 0.45, 0.2], 3: [0.25, 0.4, 0.35] },
+    stageWeights: { 1: [1, 0, 0], 2: [0.35, 0.45, 0.2], 3: [0.25, 0.4, 0.35] },
     evolveJitter: [0.9, 1.1], // 적이 진화할 때 levelUp.evolveResetSize에 곱하는 범위
     earlyUntilSize: 70,
     earlyWeights: [0.35, 0.15, 0.5],

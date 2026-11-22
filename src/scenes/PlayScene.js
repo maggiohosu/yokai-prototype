@@ -251,13 +251,13 @@ export class PlayScene extends Phaser.Scene {
   seedEnemies() {
     const { world, enemy } = CONFIG;
     for (let i = 0; i < world.population; i++) {
+      // 사용자 지시: 판을 처음 시작할 때 적은 모두 1단계에서 시작한다(이후 스스로 먹고 진화한다. 보충되는 적은 stageWeights).
       let size = spawnSize(this.player.size),
         near,
-        stage = spawnStage(this.player.stage ?? 1);
+        stage = 1;
       if (i < world.initialNeighbors) {
         near = canEat({ size, stage }, this.player) ? world.outerRing : world.innerRing;
         if (i === 0) {
-          stage = 1; // 상위 단계 적은 작아도 플레이어를 먹으므로, 먹을 수 있는 첫 이웃은 1단계로 보장한다.
           const small = enemy.sizes[0];
           size = this.player.size * between([small.min, small.max]);
           near = [world.innerRing[0], world.innerRing[0]];

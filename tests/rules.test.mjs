@@ -155,11 +155,13 @@ test('nextProgress: 진화가 몸집 강화보다 우선, 3단계는 몸집 강�
 });
 
 test('spawnStage: 구간 경계와 가중치 비율, 알 수 없는 플레이어 단계는 1단계 표', () => {
-  const w = CONFIG.enemy.stageWeights[1];
-  assert.equal(spawnStage(1, () => 0), 1);
-  assert.equal(spawnStage(1, () => w[0] + 1e-9), 2);
-  assert.equal(spawnStage(1, () => w[0] + w[1] + 1e-9), 3);
-  assert.equal(spawnStage(1, () => 0.999999), 3);
+  // 플레이어 1단계: 적도 모두 1단계(사용자 지시 2026-11-23)
+  for (const r of [0, 0.3, 0.6, 0.999999]) assert.equal(spawnStage(1, () => r), 1);
+  const w = CONFIG.enemy.stageWeights[2];
+  assert.equal(spawnStage(2, () => 0), 1);
+  assert.equal(spawnStage(2, () => w[0] + 1e-9), 2);
+  assert.equal(spawnStage(2, () => w[0] + w[1] + 1e-9), 3);
+  assert.equal(spawnStage(2, () => 0.999999), 3);
   assert.equal(spawnStage(undefined, () => 0), 1);
   assert.equal(spawnStage(9, () => 0.999999), spawnStage(3, () => 0.999999));
   const counts = { 1: 0, 2: 0, 3: 0 };
