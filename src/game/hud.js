@@ -62,6 +62,11 @@ export class Hud {
     this.size = byId('size');
     this.eaten = byId('eaten');
     this.area = byId('area');
+    this.gaugeRow = byId('growth-gauge');
+    this.gauge = byId('growth-meter');
+    this.gaugeLabel = this.gauge.labels[0];
+    this.gaugeCount = byId('growth-count');
+    this.gaugeRow.hidden = true;
     this.map = byId('map');
     this.map.width = this.map.height = CONFIG.render.mapPixels;
     this.ctx = this.map.getContext('2d');
@@ -70,6 +75,20 @@ export class Hud {
     this.lastSize = '';
     this.lastEaten = -1;
     this.lastArea = '';
+  }
+  setGauge(current, target, label = '다음 성장까지') {
+    const hidden = !Number.isFinite(target) || target <= 0;
+    if (this.gaugeRow.hidden !== hidden) this.gaugeRow.hidden = hidden;
+    if (hidden) return;
+
+    const balance = Number.isFinite(current) ? Math.max(0, current) : 0;
+    const value = Math.min(balance, target);
+    const count = number(balance) + ' / ' + number(target);
+    if (this.gauge.max !== target) this.gauge.max = target;
+    if (this.gauge.value !== value) this.gauge.value = value;
+    if (this.gaugeLabel.textContent !== label) this.gaugeLabel.textContent = label;
+    if (this.gaugeCount.textContent !== count) this.gaugeCount.textContent = count;
+    this.gauge.classList.toggle('is-full', balance >= target);
   }
   update(player, view) {
     const size = number(player.size),

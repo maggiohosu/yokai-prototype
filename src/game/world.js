@@ -1,4 +1,5 @@
 import { CONFIG, REGIONS } from '../config.js';
+import { canEat } from '../systems/rules.js';
 
 const { world } = CONFIG;
 const directions = Object.keys(REGIONS);
@@ -50,8 +51,25 @@ export function spawnSize(playerSize) {
   return Math.min(CONFIG.enemy.maxSpawnSize, playerSize * between([band.min, band.max]));
 }
 
-export function spawnPoint(player, enemies, size, { view, near, initial } = {}) {
+// 플레이어 단계(1~3)별 가중치(config.enemy.stageWeights)로 새 적의 단계(1~3)를 고른다.
+export function spawnStage(playerStage = 1, rng = Math.random) {
+  const table = CONFIG.enemy.stageWeights;
+  const weights = table[clamp(Math.round(playerStage) || 1, 1, 3)] ?? table[1];
+  let draw = rng() * weights.reduce((a, b) => a + b, 0);
+  let last = 1;
+  for (let i = 0; i < weights.length; i++) {
+    if (weights[i] <= 0) continue;
+    last = i + 1;
+    draw -= weights[i];
+    if (draw < 0) return last;
+  }
+  return last;
+}
+
+// stage를 넘기면 시작 직후 플레이어를 먹을 수 있는 적(단계 규칙 포함)을 멀리 둔다. 안 넘기면 크기만 본다.
+export function spawnPoint(player, enemies, size, { view, near, initial, stage } = {}) {
   const edge = size + world.spawnGap;
+  const dangerous = stage == null ? size >= player.size * CONFIG.eating.ratio : canEat({ size, stage }, player);
   for (let attempt = 0; attempt < world.spawnAttempts; attempt++) {
     let x, y;
     if (near) {
@@ -69,7 +87,7 @@ export function spawnPoint(player, enemies, size, { view, near, initial } = {}) 
       if (x > view.left - pad && x < view.right + pad && y > view.top - pad && y < view.bottom + pad)
         continue;
     }
-    const safe = initial && size >= player.size * CONFIG.eating.ratio ? world.safeStart : edge + player.size;
+    const safe = initial && dangerous ? world.safeStart : edge + player.size;
     if ((x - player.x) ** 2 + (y - player.y) ** 2 < safe ** 2) continue;
     if (enemies.some((e) => (x - e.x) ** 2 + (y - e.y) ** 2 < (edge + e.size) ** 2)) continue;
     return { x, y };

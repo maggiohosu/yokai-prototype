@@ -1,6 +1,7 @@
 // 판 안 기록(요력·식성·성향·보물 드롭)과 강화·등급의 능력치 반영을 한곳에서 연결한다.
 import { CONFIG } from '../config.js';
-import { recordEat, yoryeokFor } from '../systems/progress.js';
+import { recordEat } from '../systems/progress.js';
+import { preyValue } from '../systems/rules.js';
 import { addToInventory, dropChance } from '../systems/treasure.js';
 import { gradeMultiplier } from '../systems/evolution.js';
 import { saveProgress } from '../state/save.js';
@@ -17,9 +18,9 @@ export function playerStats(progress) {
   };
 }
 
-// 이번 먹이로 얻는 요력. 특수 적은 config.special.rewardMult배(사용자 결정: '요력 대박'으로 통일, 화폐 하나 원칙 유지).
+// 이번 먹이로 얻는 요력 = rules.preyValue(크기^지수 × 단계 × 등급 × 보물 처치 × 특수 적 배율). 화폐는 요력 하나.
 export function mealYoryeok(meal) {
-  return yoryeokFor(meal.preySize, meal.killedByTreasure) * (meal.special ? CONFIG.special.rewardMult : 1);
+  return preyValue({ size: meal.preySize, stage: meal.stage, grade: meal.grade, special: meal.special, killedByTreasure: meal.killedByTreasure });
 }
 
 export function attachSession(scene, progress, rng = Math.random, save = saveProgress) {

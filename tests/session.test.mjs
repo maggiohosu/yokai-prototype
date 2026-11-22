@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { createProgress, yoryeokFor } from '../src/systems/progress.js';
-import { attachSession } from '../src/game/session.js';
+import { createProgress } from '../src/systems/progress.js';
+import { attachSession, mealYoryeok } from '../src/game/session.js';
 import { TREASURE } from '../src/systems/tuning-upgrade.js';
 
 test('같은 씬을 restart해도 eat 리스너는 한 번만 붙는다', () => {
@@ -19,7 +19,7 @@ test('같은 씬을 restart해도 eat 리스너는 한 번만 붙는다', () => 
     assert.equal(scene.events.listenerCount('runEnd'), 1);
     scene.events.emit('eat', meal);
     assert.equal(progress.diet.east, round * meal.preySize);
-    assert.equal(progress.yoryeok, round * yoryeokFor(meal.preySize));
+    assert.equal(progress.yoryeok, round * mealYoryeok(meal));
     assert.equal(run.drops, 1);
     assert.equal(rolls, round);
     assert.equal(saves, round);

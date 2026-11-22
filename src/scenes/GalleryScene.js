@@ -10,18 +10,29 @@ export class GalleryScene extends Phaser.Scene {
     const cards = document.getElementById('cards');
     const filters = document.getElementById('filters');
     const branchName = { yo: '요', seon: '선', none: '' };
-    for (const form of FORMS) {
+    const specimens = FORMS.flatMap((form) => {
+      if (form.id !== 'mimul') return [form];
+      const variants = Object.entries(REGIONS).map(([dir, region]) => ({
+        ...form,
+        dir,
+        name: region.name + ' ' + form.name,
+      }));
+      return [form, ...variants];
+    });
+    for (const form of specimens) {
       const region = REGIONS[form.dir];
       const card = document.createElement('article');
       card.className = 'card';
       card.dataset.dir = form.dir;
+      card.dataset.form = form.id;
       card.style.setProperty('--tint', region?.tint ?? '#dce5c5');
       card.style.setProperty('--region-ink', region?.ink ?? '#657441');
       const specimen = document.createElement('div');
       specimen.className = 'specimen';
       const img = document.createElement('img');
       img.alt = form.name;
-      img.src = this.textures.get(drawCreature(this, form.id)).getSourceImage().toDataURL();
+      const key = drawCreature(this, form.id, { dir: form.dir });
+      img.src = this.textures.get(key).getSourceImage().toDataURL();
       specimen.append(img);
       const entry = document.createElement('div');
       entry.className = 'entry';
@@ -38,14 +49,14 @@ export class GalleryScene extends Phaser.Scene {
       cards.append(card);
     }
     const filterBy = (dir) => {
-      let count = 0;
+      const visibleForms = new Set();
       for (const card of cards.children) {
         card.hidden = dir !== 'all' && card.dataset.dir !== dir;
-        if (!card.hidden) count++;
+        if (!card.hidden) visibleForms.add(card.dataset.form);
       }
       for (const button of filters.children)
         button.setAttribute('aria-pressed', String(button.dataset.dir === dir));
-      document.getElementById('form-count').textContent = count + '종';
+      document.getElementById('form-count').textContent = visibleForms.size + '종';
     };
     for (const [dir, label] of [
       ['all', '전체'],

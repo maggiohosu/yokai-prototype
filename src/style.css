@@ -177,10 +177,55 @@ a:focus-visible {
 .hud {
   top: 18px;
   left: max(20px, env(safe-area-inset-left));
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto auto;
   align-items: center;
+  max-width: calc(100% - 40px);
   border-radius: 10px;
   padding: 10px 5px;
+}
+.growth-gauge {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto minmax(28px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 16px 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.growth-gauge label {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.growth-gauge progress {
+  --fill: #52785b;
+  appearance: none;
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border: 1px solid var(--ink);
+  border-radius: 8px;
+  background: #e5dfcb;
+}
+.growth-gauge progress::-webkit-progress-bar {
+  background: #e5dfcb;
+}
+.growth-gauge progress::-webkit-progress-value {
+  background: var(--fill);
+}
+.growth-gauge progress::-moz-progress-bar {
+  background: var(--fill);
+}
+.growth-gauge progress.is-full {
+  --fill: var(--gold);
+  box-shadow: 0 0 5px #d6aa4caa;
 }
 .identity,
 .stat {
@@ -575,6 +620,13 @@ body.gallery-mode {
     left: 10px;
     top: 10px;
     padding: 7px 2px;
+    max-width: calc(100% - 20px);
+  }
+  .growth-gauge {
+    margin: 6px 10px 0;
+    padding-top: 5px;
+    gap: 6px;
+    font-size: 10px;
   }
   .identity,
   .stat {

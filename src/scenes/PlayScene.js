@@ -1,8 +1,10 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, REGIONS } from '../config.js';
 import { FORMS, FORM_BY_ID } from '../data/forms.js';
 import { drawCreature } from '../art/creature.js';
-import { between, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize } from '../game/world.js';
-import { eatingPair } from '../game/actor.js';
+import { between, colorPicker, drawWorld, regionAt, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
+import { canEat, eatPair } from '../systems/rules.js';
+import { afterPause, cheapestCost, createRunLevel, shouldPause } from '../systems/levelup.js';
+import { drawStageMark } from '../art/marks.js';
 import { Player } from '../game/player.js';
 import { Enemy } from '../game/enemy.js';
 import { Joystick } from '../game/joystick.js';
@@ -17,6 +19,7 @@ import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
 import { HubView } from '../ui/HubView.js';
 import { EvolveView } from '../ui/EvolveView.js';
+import { LevelUpView } from '../ui/LevelUpView.js';
 
 export class PlayScene extends Phaser.Scene {
   constructor() {
@@ -24,6 +27,7 @@ export class PlayScene extends Phaser.Scene {
   }
   create(data = {}) {
     for (const form of FORMS) drawCreature(this, form.id);
+    for (const dir of Object.keys(REGIONS)) drawCreature(this, 'mimul', { dir });
     drawWorld(this);
     this.fx = new Fx(this);
     const debug = new URLSearchParams(location.search).get('debug');
@@ -34,6 +38,10 @@ export class PlayScene extends Phaser.Scene {
     if (!preview) this.registry.set('progress', this.progress);
     this.playerStats = playerStats(this.progress);
     this.player = new Player(this, this.progress.formId, this.playerStats);
+    this.player.stage = this.progress.stage;
+    this.player.grade = this.progress.grade;
+    this.level = createRunLevel();
+    this.paused = false;
     this.run = attachSession(this, this.progress, Math.random, this.saveProgress);
     const onEatFx = (meal) => {
       const p = this.player;
@@ -74,13 +82,7 @@ export class PlayScene extends Phaser.Scene {
     this.follow = followPlayer(this, this.player);
     this.hud = new Hud();
     const avatar = document.getElementById('avatar');
-    avatar.src = this.formImage(this.progress.formId);
-    const form = FORM_BY_ID[this.progress.formId];
-    const idBox = document.querySelector('.hud .identity');
-    if (idBox) {
-      idBox.querySelector('small').textContent = form.stage + '단계 · ' + this.progress.grade + '등급';
-      idBox.querySelector('strong').textContent = form.name;
-    }
+    this.refreshIdentity();
     document.getElementById('result').hidden = true;
     this.makePlayerMarker();
     this.seedEnemies();
@@ -92,6 +94,64 @@ export class PlayScene extends Phaser.Scene {
       if (preview) { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
       setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: this.saveProgress, onDone: () => this.openHub() }) : this.openHub()), 300);
     }
+  }
+  refreshIdentity() {
+    document.getElementById('avatar').src = this.formImage(this.progress.formId);
+    const form = FORM_BY_ID[this.progress.formId];
+    const idBox = document.querySelector('.hud .identity');
+    if (idBox) {
+      idBox.querySelector('small').textContent = form.stage + '단계 · ' + this.progress.grade + '등급';
+      idBox.querySelector('strong').textContent = form.name;
+    }
+  }
+  // 판 안 성장: 요력이 가장 싼 선택지 비용에 닿으면 게임을 멈추고 3장 중 고른다. 시간은 실제 시간(씬이 멈추면 scene.time도 멈춤).
+  openLevelUp() {
+    this.paused = true;
+    const getFormImage = (id) => this.formImage(id);
+    const save = this.saveProgress;
+    const done = () => {
+      afterPause(this.progress, this.level, performance.now() / 1000);
+      this.paused = false;
+    };
+    LevelUpView(this.progress, FORMS, this.level, {
+      getFormImage, save,
+      onBody: (mult) => {
+        this.player.setSize(this.player.size * mult);
+        this.player.maxSize = Math.max(this.player.maxSize, this.player.size);
+        this.fx.burst(this.player.x, this.player.y, 0xffe27a, 18, 1.2);
+      },
+      onAbility: () => this.applyStats(),
+      onEvolve: () => {
+        const before = this.progress.formId;
+        EvolveView(this.progress, FORMS, {
+          getFormImage, save,
+          onDone: () => {
+            if (this.progress.formId !== before) this.applyForm();
+            this.applyStats();
+            done();
+          },
+        });
+      },
+      onResume: done,
+    });
+  }
+  applyStats() {
+    this.playerStats = playerStats(this.progress);
+    Object.assign(this.player.stats, { speed: this.playerStats.speed, areaGain: this.playerStats.areaGain });
+  }
+  // 판 안 진화·역진화: 형태·단계·등급을 바꾸고 크기는 시작 크기로 되돌린다.
+  applyForm() {
+    const p = this.player;
+    p.formId = this.progress.formId;
+    p.stage = this.progress.stage;
+    p.grade = this.progress.grade;
+    p.sprite.setTexture(drawCreature(this, p.formId));
+    p.setSize(CONFIG.levelUp.evolveResetSize);
+    this.marker.destroy();
+    this.nameTag.destroy();
+    this.makePlayerMarker();
+    this.refreshIdentity();
+    this.fx.burst(p.x, p.y, 0xfff1b8, 30, 1.6);
   }
   formImage(formId) {
     return this.textures.get(drawCreature(this, formId)).getSourceImage().toDataURL();
@@ -133,27 +193,30 @@ export class PlayScene extends Phaser.Scene {
       .setOrigin(0.5, 0)
       .setDepth(3);
   }
-  spawn(size, options) {
-    const pos = spawnPoint(this.player, this.enemies, size, options);
+  spawn(size, options = {}) {
+    const stage = options.stage ?? spawnStage(this.player.stage ?? 1);
+    const pos = spawnPoint(this.player, this.enemies, size, { ...options, stage });
     if (!pos) return false;
     const dir = this.nextColor(regionAt(pos.x, pos.y));
-    this.enemies.push(new Enemy(this, pos, size, dir));
+    this.enemies.push(new Enemy(this, pos, size, dir, stage));
     return true;
   }
   seedEnemies() {
     const { world, enemy } = CONFIG;
     for (let i = 0; i < world.population; i++) {
       let size = spawnSize(this.player.size),
-        near;
+        near,
+        stage = spawnStage(this.player.stage ?? 1);
       if (i < world.initialNeighbors) {
-        near = size >= this.player.size * CONFIG.eating.ratio ? world.outerRing : world.innerRing;
+        near = canEat({ size, stage }, this.player) ? world.outerRing : world.innerRing;
         if (i === 0) {
+          stage = 1; // 상위 단계 적은 작아도 플레이어를 먹으므로, 먹을 수 있는 첫 이웃은 1단계로 보장한다.
           const small = enemy.sizes[0];
           size = this.player.size * between([small.min, small.max]);
           near = [world.innerRing[0], world.innerRing[0]];
         }
       }
-      if (!this.spawn(size, { near, initial: true })) this.spawn(size, { initial: true });
+      if (!this.spawn(size, { near, initial: true, stage })) this.spawn(size, { initial: true, stage });
     }
   }
   endRun(killer) {
@@ -188,7 +251,7 @@ export class PlayScene extends Phaser.Scene {
       if (!enemy.sprite.active) continue;
       // 보물로 역전한 상대는 크기가 조금만 작아져도 바로 먹을 수 있다.
       const reversed = enemy.reversed && enemy.size < this.player.size;
-      const pair = eatingPair(this.player, enemy, reversed ? 1 : CONFIG.eating.ratio);
+      const pair = eatPair(this.player, enemy, { reversed });
       if (!pair) continue;
       const [hunter, prey] = pair;
       if (prey === this.player) {
@@ -206,8 +269,9 @@ export class PlayScene extends Phaser.Scene {
     // 적끼리: 공간 격자로 닿은 쌍만 찾아 큰 쪽이 작은 쪽을 먹는다.
     for (const [big, small] of findMeals(grid)) {
       if (!big.sprite.active || !small.sprite.active) continue;
-      big.eat(small);
+      const grew = big.eat(small);
       small.destroy();
+      if (grew === 'evolve') this.fx.burst(big.x, big.y, 0xfff1b8, 16, Math.max(0.8, big.size / 25));
     }
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (!this.enemies[i].sprite.active) this.enemies.splice(i, 1);
@@ -238,6 +302,11 @@ export class PlayScene extends Phaser.Scene {
       this.fx.update(dt, null, this.progress.grade);
       return;
     }
+    if (this.paused) return;
+    if (shouldPause(this.progress, this.level, performance.now() / 1000)) {
+      this.openLevelUp();
+      return;
+    }
     const direction = this.joystick.direction(worldToClient(this, this.player.x, this.player.y));
     const sim = dt * CONFIG.tempo;
     this.simulate(sim, direction);
@@ -250,7 +319,12 @@ export class PlayScene extends Phaser.Scene {
     const fg = this.fireGfx.clear();
     this.enemyFire.draw(fg);
     const now = this.time.now / 1000;
-    for (const enemy of this.enemies) if (enemy.special && enemy.sprite.active) drawSpecialMark(fg, enemy, now);
+    const myStage = this.player.stage ?? 1;
+    for (const enemy of this.enemies) {
+      if (!enemy.sprite.active) continue;
+      if (enemy.special) drawSpecialMark(fg, enemy, now);
+      drawStageMark(fg, enemy, myStage, now);
+    }
     this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
     this.follow(dt);
     const { x, y, size } = this.player;
@@ -267,6 +341,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.hudTime <= 0) {
       this.hudTime = CONFIG.render.hudInterval;
       this.hud.update(this.player, view);
+      this.hud.setGauge(this.progress.yoryeok, this.level.nextPauseAt ?? cheapestCost(this.progress, this.level), '다음 성장까지');
     }
   }
 }

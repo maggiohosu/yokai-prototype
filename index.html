@@ -34,6 +34,11 @@
         </div>
         <div class="stat"><small>현재 크기</small><strong id="size">–</strong></div>
         <div class="stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
+        <div class="growth-gauge" id="growth-gauge" hidden>
+          <label for="growth-meter">다음 성장까지</label>
+          <progress id="growth-meter" value="0" max="1"></progress>
+          <span id="growth-count" aria-hidden="true"></span>
+        </div>
       </section>
       <aside class="mini" aria-label="현재 위치">
         <div class="mini-title"><span class="compass" aria-hidden="true">✦</span> 사방 지도</div>

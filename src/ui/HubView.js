@@ -11,10 +11,10 @@ import { dropChance, equip, exchangeShards, sell, sellPrice, treasureStats, trea
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 
-const statNames = { growth: '크기 성장', speed: '이동 속도', signature: '대표 효과' };
+export const statNames = { growth: '크기 성장', speed: '이동 속도', signature: '대표 효과' };
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
 
-function attemptText(attempt) {
+export function attemptText(attempt) {
   if (attempt.protectedUsed) return '보호권 1장 사용 · +' + attempt.from + ' 유지';
   if (attempt.needsChoice) return '퇴화 · 방식 선택';
   if (attempt.from === attempt.to) return '실패 · +' + attempt.to + ' 유지';
@@ -36,7 +36,7 @@ function upgradeOdds(level) {
   return OddsTable('다음 여의주 강화 확률', [['성공', success], ['실패', 100 - success - broken], ['깨짐', broken]]);
 }
 
-function degradeDialog(parent, progress, stat, onChoice) {
+export function degradeDialog(parent, progress, stat, onChoice) {
   const modal = el('dialog', 'yk-prompt');
   modal.setAttribute('aria-label', '퇴화 방식 선택');
   modal.addEventListener('cancel', event => event.preventDefault());

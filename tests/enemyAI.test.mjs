@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { buildGrid, queryGrid, pickIntent, intentDirection, findMeals } from '../src/game/enemyAI.js';
 import { EnemyFire, rollSpecial, isFatal } from '../src/game/enemyFire.js';
+import { Enemy } from '../src/game/enemy.js';
+import { FORM_BY_ID } from '../src/data/forms.js';
+import { evolutionCost } from '../src/systems/evolution.js';
+import { bodyCostAt, preyValue, preyInfoOf } from '../src/systems/rules.js';
 
 const A = (x, y, size, extra = {}) => ({ x, y, size, ...extra });
 const cfg = CONFIG.hunt;
@@ -97,4 +101,166 @@ test('rollSpecial과 isFatal', () => {
   assert.equal(rollSpecial(50, 3, () => 0.99), false);
   assert.equal(isFatal(CONFIG.special.deathSize - 1), true);
   assert.equal(isFatal(CONFIG.special.deathSize), false);
+});
+
+test('상위 단계는 하위가 2배 미만이면 쫓고, 하위는 상위를 2배 이상 클 때만 쫓는다', () => {
+  const player = A(3000, 3000, 28);
+  const up = A(500, 500, 10, { stage: 2 });
+  const lowBig = A(560, 500, 19, { stage: 1 });
+  let grid = buildGrid([up, lowBig], 64);
+  assert.equal(pickIntent(up, player, grid, cfg).mode, 'chase');
+  const lowHuge = A(560, 500, 25, { stage: 1 });
+  const up2 = A(500, 500, 10, { stage: 2 });
+  grid = buildGrid([up2, lowHuge], 64);
+  const intent = pickIntent(up2, player, grid, cfg);
+  assert.equal(intent.mode, 'flee');
+  assert.equal(intent.target, lowHuge);
+});
+
+test('표적이 단계 규칙에서 벗어나면 즉시 다시 고른다', () => {
+  const me = A(500, 500, 10, { stage: 2 }), low = A(540, 500, 15, { stage: 1 });
+  const player = A(3000, 3000, 5);
+  const grid = buildGrid([me, low], 64);
+  assert.equal(pickIntent(me, player, grid, cfg).mode, 'chase');
+  low.size = 25;
+  assert.equal(pickIntent(me, player, grid, cfg, 0.01).mode, 'flee');
+});
+
+test('findMeals는 단계 규칙을 따른다: 상위가 하위를 먹고, 하위가 2배 이상 크면 하위가 먹는다', () => {
+  const up = A(100, 100, 10, { stage: 2 }), low = A(115, 100, 15, { stage: 1 });
+  const meals = findMeals(buildGrid([up, low], 64));
+  assert.equal(meals.length, 1);
+  assert.strictEqual(meals[0][0], up);
+  assert.strictEqual(meals[0][1], low);
+  const up2 = A(100, 100, 10, { stage: 2 }), huge = A(120, 100, 20, { stage: 1 });
+  const m2 = findMeals(buildGrid([up2, huge], 64));
+  assert.equal(m2.length, 1);
+  assert.strictEqual(m2[0][0], huge);
+  assert.strictEqual(m2[0][1], up2);
+});
+
+// ---- 적의 성장(먹기 → 요력 → 진화·몸집 강화). Phaser 없이 가짜 scene으로 돌린다. ----
+function fakeScene() {
+  const sprite = (x, y, key) => {
+    const sp = {
+      x, y, key, active: true, scaleX: 1, setOrigin: () => sp, setFlipX: () => sp,
+      setDisplaySize(w) { sp.scaleX = w; return sp; },
+      setTexture(k) { sp.key = k; return sp; },
+      destroy() { sp.active = false; },
+    };
+    return sp;
+  };
+  return { textures: { exists: () => true }, add: { image: (x, y, key) => sprite(x, y, key) } };
+}
+const makeEnemy = (size, dir, stage) => new Enemy(fakeScene(), { x: 500, y: 500 }, size, dir, stage);
+const prey = (size, dir, extra = {}) => ({ x: 0, y: 0, size, dir, stage: 1, ...extra });
+
+test('1단계 적은 방위 색 미물, 2·3단계는 해당 방위·단계의 형태', () => {
+  const a = makeEnemy(20, 'east', 1);
+  assert.equal(a.formId, 'mimul');
+  assert.equal(a.stage, 1);
+  assert.equal(a.sprite.key, 'creature-mimul-east');
+  assert.equal(a.special, false);
+  assert.equal(a.yoryeok, 0);
+  assert.deepEqual(a.diet, { east: 0, west: 0, south: 0, north: 0 });
+  assert.equal(a.bodyLevel, 0);
+  assert.ok(typeof a.grade === 'string');
+  for (let i = 0; i < 20; i++) {
+    const b = makeEnemy(30, 'south', 2);
+    assert.equal(FORM_BY_ID[b.formId].stage, 2);
+    assert.equal(FORM_BY_ID[b.formId].dir, 'south');
+    assert.equal(b.stage, 2);
+    const c = makeEnemy(40, 'north', 3);
+    assert.equal(FORM_BY_ID[c.formId].stage, 3);
+    assert.equal(FORM_BY_ID[c.formId].dir, 'north');
+    assert.equal(typeof c.special, 'boolean');
+  }
+});
+
+test('단계를 안 넘기면 예전처럼 크기로 2·3단계를 정한다', () => {
+  assert.equal(makeEnemy(CONFIG.enemy.stage3Size - 1, 'east').stage, 2);
+  assert.equal(makeEnemy(CONFIG.enemy.stage3Size, 'east').stage, 3);
+});
+
+test('먹으면 면적이 늘고 먹힌 쪽 점수만큼 요력, 크기만큼 식성이 쌓인다', () => {
+  const e = makeEnemy(30, 'east', 2);
+  const p = prey(10, 'west', { stage: 1 });
+  const expected = preyValue(preyInfoOf(p));
+  const before = e.size;
+  const result = e.eat(p);
+  assert.equal(result, null);
+  assert.ok(e.size > before);
+  assert.equal(e.yoryeok, expected);
+  assert.equal(e.diet.west, 10);
+  assert.equal(e.diet.east, 0);
+  const none = e.eat({ x: 0, y: 0, size: 5 });
+  assert.equal(none, null);
+  assert.ok(e.yoryeok > expected);
+});
+
+test('1→2 진화: 식성 1위 방위 새끼, 크기 초기화(±jitter), 비용 차감, 식성 초기화', () => {
+  const e = makeEnemy(60, 'east', 1);
+  e.diet = { east: 3, west: 0, south: 50, north: 1 };
+  e.yoryeok = evolutionCost(2) + 7;
+  e.bodyLevel = 2;
+  const keyBefore = e.sprite.key;
+  assert.equal(e.autoProgress(), 'evolve');
+  assert.equal(e.stage, 2);
+  assert.equal(e.dir, 'south');
+  assert.equal(e.formId, 'littleBird');
+  assert.notEqual(e.sprite.key, keyBefore);
+  assert.equal(e.sprite.key, 'creature-littleBird');
+  const [lo, hi] = CONFIG.enemy.evolveJitter, base = CONFIG.levelUp.evolveResetSize;
+  assert.ok(e.size >= base * lo - 1e-9 && e.size <= base * hi + 1e-9);
+  assert.equal(e.yoryeok, 7);
+  assert.deepEqual(e.diet, { east: 0, west: 0, south: 0, north: 0 });
+  assert.equal(e.bodyLevel, 0);
+  assert.equal(e.special, false);
+});
+
+test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝과 특수 적 굴림을 정한다', () => {
+  const lowEnd = makeEnemy(50, 'west', 2);
+  lowEnd.yoryeok = evolutionCost(3);
+  assert.equal(lowEnd.autoProgress(() => 0), 'evolve');
+  assert.equal(lowEnd.stage, 3);
+  assert.equal(FORM_BY_ID[lowEnd.formId].dir, 'west');
+  assert.equal(lowEnd.dir, 'west');
+  assert.ok(Math.abs(lowEnd.size - CONFIG.levelUp.evolveResetSize * CONFIG.enemy.evolveJitter[0]) < 1e-9);
+  assert.equal(lowEnd.special, true);
+  const highEnd = makeEnemy(50, 'west', 2);
+  highEnd.yoryeok = evolutionCost(3);
+  highEnd.autoProgress(() => 0.999999);
+  assert.ok(Math.abs(highEnd.size - CONFIG.levelUp.evolveResetSize * CONFIG.enemy.evolveJitter[1]) < 1e-3);
+  assert.equal(highEnd.special, false);
+  assert.equal(highEnd.yoryeok, 0);
+});
+
+test('몸집 강화: 비용을 내고 크기 ×bodyMult, 레벨이 오르면 다음 비용이 커진다', () => {
+  const e = makeEnemy(50, 'east', 3);
+  e.yoryeok = bodyCostAt(0) + 5;
+  assert.equal(e.autoProgress(), 'body');
+  assert.ok(Math.abs(e.size - 50 * CONFIG.levelUp.bodyMult) < 1e-9);
+  assert.equal(e.bodyLevel, 1);
+  assert.ok(Math.abs(e.yoryeok - 5) < 1e-9);
+  e.yoryeok = bodyCostAt(1) - 1;
+  assert.equal(e.autoProgress(), null);
+  assert.equal(e.bodyLevel, 1);
+});
+
+test('3단계는 요력이 아무리 많아도 진화하지 않고, 진화 가능하면 몸집 강화보다 진화가 먼저다', () => {
+  const top = makeEnemy(50, 'east', 3);
+  top.yoryeok = 1e6;
+  assert.equal(top.autoProgress(), 'body');
+  assert.equal(top.stage, 3);
+  const e = makeEnemy(50, 'east', 1);
+  e.yoryeok = evolutionCost(2) + bodyCostAt(0);
+  assert.equal(e.autoProgress(), 'evolve');
+});
+
+test('eat이 진화까지 이어진다: 먹은 뒤 요력이 비용에 닿으면 진화', () => {
+  const e = makeEnemy(20, 'east', 1);
+  e.yoryeok = evolutionCost(2) - 1;
+  assert.equal(e.eat(prey(20, 'north')), 'evolve');
+  assert.equal(e.stage, 2);
+  assert.equal(e.dir, 'north');
 });

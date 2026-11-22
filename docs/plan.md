@@ -63,3 +63,19 @@
 - 적도 자기보다 작은 적을 쫓아가 먹고, 큰 상대에게서 도망. 3단계 적 일부는 '특수 적'(붉은 점선 고리)으로 플레이어에게 구슬을 쏜다(맞으면 크기 감소, 일정 크기 아래면 판 종료).
 
 방향 수 n은 이동 방향을 기준으로 360/n 간격(2=앞뒤, 4=십자, 8=사방팔방). 방향당 발사는 그 방향으로 나란히 나가는 구슬 수.
+
+
+## 변경 이력 2 (사용자 결정, 2026-11-22 밤)
+- 적도 플레이어와 같은 구조: 먹어서 커지고(면적), 요력이 쌓이면 스스로 진화(크기 초기화, 식성 1위 방위로 형태 결정, 등급 굴림)·몸집 강화.
+- 판 안 진화·강화: 요력(화폐 하나 유지)이 다음 선택지 비용에 닿으면 게임이 잠깐 멈추고 3장 중 선택 — [진화](3단계 미만, 크기는 초기로) / [몸집 강화](확정, 크기 ×1.2, 판마다 초기화) / [능력 강화](성장·속도·효과 중 하나, 기존 성공률·대성공·퇴화 A/B 규칙) / [계속하기].
+- 진화한 모습은 판이 끝나도 유지(다음 판은 그 모습, 크기만 초기).
+- 먹기 규칙: 같은 단계 = 1.1배 이상 큰 쪽. 다른 단계 = 상위가 먹음, 단 하위가 상위의 2배 이상 크면 하위가 먹음. 보물로 깎아 쓰러뜨리기는 단계 무관.
+- 점수(요력) = 크기^1.6 × 단계 배율(1·4·16) × 등급 배율 × 보물 처치 1.5 × 특수 적 8. 크고 높은 단계 하나 > 작고 낮은 단계 여러 개.
+- 1단계 적: 방위 색 미물(디자인: Codex).
+
+### 공유 API 계약
+- src/systems/rules.js: stageOf(actor), canEat(a, b, { reversed }), eatPair(a, b, opts) → [먹는 쪽, 먹히는 쪽] | null(겹침 포함), preyValue({ size, stage, grade, special, killedByTreasure }) → 정수 요력.
+- src/systems/levelup.js: createRunLevel(), pauseOptions(progress, run), shouldPause(progress, run, nowSec), afterPause(progress, run, nowSec), applyBody(progress, run) → { cost, mult }, bodyCost(n).
+- src/ui/LevelUpView.js: LevelUpView(progress, forms, run, { getFormImage, save, onEvolve, onBody, onAbility, onResume }).
+- src/art/creature.js: drawCreature(scene, 'mimul', { dir }) → 방위 색 미물 텍스처 키. src/art/marks.js: drawStageMark(g, actor, playerStage, t).
+- src/game/hud.js: hud.setGauge(current, target, label).

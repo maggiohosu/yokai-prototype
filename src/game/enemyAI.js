@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { canEat, eatPair } from '../systems/rules.js';
 
 // Phaser 의존 없는 순수 로직. 적 70~80마리 기준으로 가볍게 동작한다.
 const KEY_SPAN = 4096;
@@ -48,28 +49,28 @@ export function queryGrid(grid, x, y, r, out = []) {
 }
 
 const scratch = [];
+const mealScratch = [];
 
 function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function stillValid(enemy, intent, player, cfg, ratio) {
+function stillValid(enemy, intent, cfg) {
   const t = intent.target;
   if (intent.mode === 'wander') return true;
   if (!t || !isAlive(t)) return false;
   if (dist(enemy, t) > cfg.detect * 1.35) return false;
-  if (intent.mode === 'flee') return t.size / enemy.size >= ratio;
-  return enemy.size / t.size >= ratio;
+  return intent.mode === 'flee' ? canEat(t, enemy) : canEat(enemy, t);
 }
 
-function choose(enemy, player, grid, cfg, ratio) {
+function choose(enemy, player, grid, cfg) {
   let threat = null, threatD = Infinity;
   let prey = null, preyScore = Infinity;
   const consider = (other, isPlayer) => {
     const d = dist(enemy, other);
-    if (other.size / enemy.size >= ratio) {
+    if (canEat(other, enemy)) {
       if (d < threatD) { threat = other; threatD = d; }
-    } else if (enemy.size / other.size >= ratio) {
+    } else if (canEat(enemy, other)) {
       const score = isPlayer ? d * cfg.playerBias : d;
       if (score < preyScore) { prey = other; preyScore = score; }
     }
@@ -84,7 +85,6 @@ function choose(enemy, player, grid, cfg, ratio) {
 
 // 반환: { mode: 'flee'|'chase'|'wander', target }. dt는 표적 재선택 타이머를 줄이는 데 쓴다(기본 0).
 export function pickIntent(enemy, player, grid, cfg = CONFIG.hunt, dt = 0) {
-  const ratio = CONFIG.eating.ratio;
   if (enemy.reversed && enemy.fleeTime > 0 && player) {
     enemy.aiIntent = { mode: 'flee', target: player };
     enemy.aiTimer = cfg.retargetSeconds;
@@ -92,9 +92,9 @@ export function pickIntent(enemy, player, grid, cfg = CONFIG.hunt, dt = 0) {
   }
   let intent = enemy.aiIntent;
   enemy.aiTimer = (enemy.aiTimer ?? 0) - dt;
-  if (!intent || enemy.aiTimer <= 0 || !stillValid(enemy, intent, player, cfg, ratio)) {
+  if (!intent || enemy.aiTimer <= 0 || !stillValid(enemy, intent, cfg)) {
     const retarget = cfg.retargetSeconds * (0.8 + Math.random() * 0.4);
-    intent = choose(enemy, player, grid, cfg, ratio);
+    intent = choose(enemy, player, grid, cfg);
     enemy.aiIntent = intent;
     enemy.aiTimer = retarget;
   }
@@ -111,23 +111,20 @@ export function intentDirection(enemy, intent) {
   return { x: (s * dx) / d, y: (s * dy) / d };
 }
 
-// 적끼리 닿아서 먹히는 쌍 [먹는 쪽, 먹히는 쪽] 목록. 한 마리는 한 번만 먹힌다.
-export function findMeals(grid, ratio = CONFIG.eating.ratio) {
+// 적끼리 닿아서 먹히는 쌍 [먹는 쪽, 먹히는 쪽] 목록(rules.eatPair 규칙). 한 마리는 한 번만 먹힌다.
+export function findMeals(grid, opts) {
   const meals = [];
   const eaten = new Set();
   for (const bucket of grid.buckets.values()) {
     for (const a of bucket) {
       if (eaten.has(a)) continue;
-      const near = queryGrid(grid, a.x, a.y, a.size + grid.maxSize);
+      const near = queryGrid(grid, a.x, a.y, a.size + grid.maxSize, mealScratch);
       for (const b of near) {
         if (b === a || eaten.has(b) || eaten.has(a)) continue;
-        const [big, small] = a.size >= b.size ? [a, b] : [b, a];
-        if (big.size / small.size < ratio) continue;
-        const dx = a.x - b.x, dy = a.y - b.y, reach = a.size + b.size;
-        if (dx * dx + dy * dy < reach * reach) {
-          eaten.add(small);
-          meals.push([big, small]);
-        }
+        const pair = eatPair(a, b, opts);
+        if (!pair) continue;
+        eaten.add(pair[1]);
+        meals.push(pair);
       }
     }
   }

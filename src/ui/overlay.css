@@ -320,3 +320,38 @@
 @media (prefers-reduced-motion: reduce) {
   .yk-dialog *, .yk-dialog *::before { animation: none !important; transition: none !important; }
 }
+
+
+/* ---- 판 안 성장(S2): LevelUpView 전용. 위 규칙은 건드리지 않고 yk-lv-* 만 더한다 ---- */
+.yk-lv-card { display: grid; gap: 6px; }
+.yk-lv-card > * { margin: 0; }
+.yk-lv-card[data-off='true'] { background: #f1eee0; }
+.yk-lv-card[data-off='true'] .yk-stat-name { color: var(--yk-muted); }
+.yk-lv-card > .yk-button { width: 100%; min-height: 50px; }
+.yk-lv-stage { font-size: 20px; }
+.yk-lv-stats { display: grid; gap: 8px; }
+.yk-lv-stat.yk-button {
+  display: grid;
+  gap: 5px;
+  width: 100%;
+  min-height: 66px;
+  align-content: center;
+  padding: 9px 10px;
+  text-align: left;
+}
+.yk-lv-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.yk-lv-name { font-size: 15px; }
+.yk-lv-cost { font-size: 13px; font-weight: 700; white-space: nowrap; }
+.yk-lv-odds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; }
+.yk-lv-odds > span {
+  display: grid;
+  padding: 3px 0 4px;
+  border-radius: 4px;
+  background: #f1efe1;
+  text-align: center;
+}
+.yk-lv-odds i { font-size: 11px; font-style: normal; font-weight: 600; color: var(--yk-muted); }
+.yk-lv-odds b { font-size: 13px; font-weight: 750; color: var(--yk-ink); }
+.yk-lv-stat:disabled .yk-lv-odds > span { background: #e6e4d8; }
+.yk-lv-stat:disabled .yk-lv-odds b { color: #686f62; }
+.yk-lv-card > .yk-cost + .yk-button { margin-top: 0; }

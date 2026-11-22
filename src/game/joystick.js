@@ -90,7 +90,7 @@ export class Joystick {
           y = (dy / length) * power;
         }
       }
-      // 시간상수 responseMs(10ms)로만 섞어 사실상 즉시 따라가고 떨림만 막는다.
+      // 시간상수 responseMs(20ms)로만 섞어 사실상 즉시 따라가고 떨림만 막는다.
       const now = performance.now();
       const blend = this.lastTime ? 1 - Math.exp(-(now - this.lastTime) / Math.max(0.001, responseMs)) : 1;
       this.lastTime = now;

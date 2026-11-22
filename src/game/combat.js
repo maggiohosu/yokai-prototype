@@ -66,7 +66,7 @@ export class Combat {
   }
 
   meal(enemy, killedByTreasure) {
-    return { dir: enemy.dir, ...this.engage(enemy), killedByTreasure, special: !!enemy.special };
+    return { dir: enemy.dir, ...this.engage(enemy), killedByTreasure, special: !!enemy.special, stage: enemy.stage ?? 1, grade: enemy.grade };
   }
 
   stats() {

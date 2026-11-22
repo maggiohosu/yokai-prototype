@@ -1,4 +1,4 @@
-import { CONFIG } from '../config.js';
+import { CONFIG, REGIONS } from '../config.js';
 import { FORM_BY_ID } from '../data/forms.js';
 
 // 원화 좌표는 160 × 160. 각 부품은 같은 몸통과 얼굴 기준점을 공유한다.
@@ -884,9 +884,10 @@ const PARTS = {
 export function drawGradeBorder(_graphics, _grade) {}
 
 export function drawCreature(scene, formId, opts = {}) {
-  const key = 'creature-' + formId;
+  const dir = formId === 'mimul' && Object.hasOwn(REGIONS, opts.dir) ? opts.dir : null;
+  const key = 'creature-' + formId + (dir ? '-' + dir : '');
   if (scene.textures.exists(key)) return key;
-  const form = FORM_BY_ID[formId];
+  const form = dir ? { ...FORM_BY_ID[formId], dir } : FORM_BY_ID[formId];
   const { textureSize, artUnits } = CONFIG.render;
   const g = scene.make.graphics({ add: false });
   const scale = textureSize / artUnits;

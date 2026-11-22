@@ -1,11 +1,12 @@
 import { CONFIG } from '../config.js';
 import { drawCreature } from '../art/creature.js';
 import { clamp } from './world.js';
+import { eatPair } from '../systems/rules.js';
 
 export class Actor {
-  constructor(scene, x, y, size, formId) {
+  constructor(scene, x, y, size, formId, drawOpts) {
     this.scene = scene;
-    this.sprite = scene.add.image(x, y, drawCreature(scene, formId)).setOrigin(0.5, 0.52);
+    this.sprite = scene.add.image(x, y, drawCreature(scene, formId, drawOpts)).setOrigin(0.5, 0.52);
     this.formId = formId;
     this.setSize(size);
   }
@@ -36,12 +37,7 @@ export class Actor {
   }
 }
 
+// 기존 호출 호환: 먹기 판정은 rules.eatPair가 맡는다(단계 규칙 포함). ratio가 1 이하면 역전 상태로 본다.
 export function eatingPair(a, b, ratio = CONFIG.eating.ratio) {
-  const larger = a.size >= b.size ? a : b;
-  const smaller = larger === a ? b : a;
-  if (larger.size / smaller.size < ratio) return null;
-  const reach = a.size + b.size,
-    dx = a.x - b.x,
-    dy = a.y - b.y;
-  return dx * dx + dy * dy < reach * reach ? [larger, smaller] : null;
+  return eatPair(a, b, { reversed: ratio <= 1 });
 }
