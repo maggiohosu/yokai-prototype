@@ -12,6 +12,8 @@ import { Combat } from '../game/combat.js';
 import { FireButton } from '../game/fireButton.js';
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, playerStats } from '../game/session.js';
+import { Fx } from '../game/fx.js';
+import { yoryeokFor } from '../systems/progress.js';
 import { HubView } from '../ui/HubView.js';
 import { EvolveView } from '../ui/EvolveView.js';
 
@@ -22,15 +24,32 @@ export class PlayScene extends Phaser.Scene {
   create(data = {}) {
     for (const form of FORMS) drawCreature(this, form.id);
     drawWorld(this);
+    this.fx = new Fx(this);
     const debug = new URLSearchParams(location.search).get('debug');
-    const sandbox = Boolean(debug) && !data.progress;
-    this.sandbox = sandbox || Boolean(data.sandbox);
-    this.progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
-    if (sandbox) this.progress = structuredClone(this.progress);
-    this.registry.set('progress', this.progress);
+    const preview = debug === 'hub' || debug === 'evolve';
+    const progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
+    this.progress = preview ? structuredClone(progress) : progress;
+    this.saveProgress = preview ? () => true : saveProgress;
+    if (!preview) this.registry.set('progress', this.progress);
     this.playerStats = playerStats(this.progress);
     this.player = new Player(this, this.progress.formId, this.playerStats);
-    this.run = attachSession(this, this.progress, Math.random, this.sandbox ? () => false : saveProgress);
+    this.run = attachSession(this, this.progress, Math.random, this.saveProgress);
+    const onEatFx = (meal) => {
+      const p = this.player;
+      const gain = yoryeokFor(meal.preySize, meal.killedByTreasure);
+      this.fx.floatText(p.x, p.y - p.size * 1.25, '+' + gain + ' 요력', meal.killedByTreasure ? '#c4f7e6' : '#fff1b8');
+    };
+    const onDropFx = () => {
+      const p = this.player;
+      this.fx.floatText(p.x, p.y - p.size * 1.8, '여의주 획득!', '#ffe27a');
+      this.fx.burst(p.x, p.y, 0xffe27a, 14, 1);
+    };
+    this.events.on('eat', onEatFx);
+    this.events.on('treasureDrop', onDropFx);
+    this.events.once('shutdown', () => {
+      this.events.off('eat', onEatFx);
+      this.events.off('treasureDrop', onDropFx);
+    });
     this.enemies = [];
     this.nextColor = colorPicker();
     this.ended = false;
@@ -60,9 +79,9 @@ export class PlayScene extends Phaser.Scene {
     this.events.once('shutdown', this.releaseControls, this);
     document.getElementById('loading').hidden = true;
     // 확인용: ?debug=hub / ?debug=evolve (저장하지 않는 시험용 요력 지급)
-    if (sandbox) {
-      if (debug === 'evolve' || debug === 'hub') { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
-      setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: () => true, onDone: () => this.openHub() }) : this.openHub()), 300);
+    if (debug && !data.progress) {
+      if (preview) { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
+      setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: this.saveProgress, onDone: () => this.openHub() }) : this.openHub()), 300);
     }
   }
   formImage(formId) {
@@ -71,13 +90,13 @@ export class PlayScene extends Phaser.Scene {
   openHub() {
     document.getElementById('result').hidden = true;
     const getFormImage = (formId) => this.formImage(formId);
-    const save = this.sandbox ? () => true : (p) => saveProgress(p);
+    const save = this.saveProgress;
     const openEvolve = () => EvolveView(this.progress, FORMS, {
       getFormImage, save, onDone: () => this.openHub(),
     });
     HubView(this.progress, FORMS, {
       getFormImage, save,
-      onPlay: () => this.scene.restart({ progress: this.progress, sandbox: this.sandbox }),
+      onPlay: () => this.scene.restart({ progress: this.progress }),
       onEvolve: () => openEvolve(),
     });
   }
@@ -138,6 +157,7 @@ export class PlayScene extends Phaser.Scene {
       if (!pair) continue;
       const [hunter, prey] = pair;
       if (prey === this.player) {
+        this.fx.burst(prey.x, prey.y, 0xfffbe6, 18, 1.2);
         hunter.eat(prey);
         this.ended = true;
         this.releaseControls();
@@ -149,6 +169,7 @@ export class PlayScene extends Phaser.Scene {
         return;
       }
       const meal = this.combat.meal(prey, false);
+      this.fx.eatPop(hunter, prey);
       hunter.eat(prey);
       prey.destroy();
       this.events.emit('eat', meal);
@@ -171,8 +192,11 @@ export class PlayScene extends Phaser.Scene {
     }
   }
   update(_time, delta) {
-    if (this.ended) return;
     const dt = Math.min(delta / 1000, CONFIG.render.maxDelta);
+    if (this.ended) {
+      this.fx.update(dt, null, this.progress.grade);
+      return;
+    }
     const direction = this.joystick.direction();
     this.player.step(direction, dt);
     this.combat.step(direction, dt, this.fireRequested);
@@ -180,6 +204,10 @@ export class PlayScene extends Phaser.Scene {
     for (const enemy of this.enemies) enemy.step(this.player, dt);
     this.resolveMeals();
     if (this.ended) return;
+    for (const enemy of this.enemies) this.fx.animateActor(enemy, dt, enemy.vx, enemy.vy);
+    const sp = this.playerStats.speed;
+    this.fx.animateActor(this.player, dt, direction.x * sp, direction.y * sp);
+    this.fx.update(dt, this.player, this.progress.grade);
     this.combat.draw();
     this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
     this.follow(dt);

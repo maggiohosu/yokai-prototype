@@ -26,9 +26,10 @@ export function attachSession(scene, progress, rng = Math.random, save = savePro
     run.yoryeok += gain;
     if (rng() < dropChance({ killedByTreasure: meal.killedByTreasure })) {
       const treasure = { level: 0 };
-      if (!progress.treasure) { progress.treasure = treasure; run.drops++; }
-      else if (addToInventory(progress, treasure)) run.drops++;
-      if (run.drops) scene.events.emit('treasureDrop', run.drops);
+      let got = false;
+      if (!progress.treasure) { progress.treasure = treasure; got = true; }
+      else got = addToInventory(progress, treasure);
+      if (got) { run.drops++; scene.events.emit('treasureDrop', run.drops); }
     }
     save(progress);
   };

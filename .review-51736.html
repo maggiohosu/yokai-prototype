@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#263e35" />
+    <title>요괴 키우기 · 미물에서 용까지</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="./src/style.css" />
+    <link rel="stylesheet" href="./src/ui/overlay.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="title-group">
+        <span class="crest" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+        <div>
+          <h1>요괴 키우기</h1>
+          <p>미물에서 용까지</p>
+        </div>
+      </div>
+      <a id="nav-link" class="nav-link" href="./index.html?gallery=1"
+        ><span class="book" aria-hidden="true"></span><span id="nav-text">요괴 도감</span></a
+      >
+    </header>
+    <main id="arena" aria-label="사방 들판 게임 화면">
+      <div id="phaser-host"></div>
+      <section class="hud" aria-label="플레이 현황">
+        <div class="identity">
+          <span class="portrait"><img id="avatar" alt="" /></span>
+          <div><small>1단계</small><strong>미물</strong></div>
+        </div>
+        <div class="stat"><small>현재 크기</small><strong id="size">–</strong></div>
+        <div class="stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
+      </section>
+      <aside class="mini" aria-label="현재 위치">
+        <div class="mini-title"><span class="compass" aria-hidden="true">✦</span> 사방 지도</div>
+        <canvas id="map" aria-label="사방 구역과 플레이어의 위치"></canvas>
+        <div class="location"><span id="region-seal"></span><span id="area"></span></div>
+      </aside>
+      <div class="help">
+        <span class="keys"
+          ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>또는</span><kbd>↑</kbd><kbd>←</kbd
+          ><kbd>↓</kbd><kbd>→</kbd> 이동</span
+        ><span class="touch-help">왼쪽 화면을 끌어 이동</span>
+      </div>
+    </main>
+    <main id="gallery" hidden>
+      <div class="folio">
+        <div class="folio-heading">
+          <h2>요괴 도감</h2>
+          <span id="form-count"></span>
+        </div>
+        <div id="filters" role="group" aria-label="방위별 보기"></div>
+        <div id="cards"></div>
+      </div>
+    </main>
+    <div id="joystick" aria-hidden="true" hidden><i></i></div>
+    <div id="loading" role="status">들판을 펼치는 중…</div>
+    <section id="result" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden>
+      <div class="result-paper">
+        <span class="result-stamp" aria-hidden="true">終</span>
+        <h2 id="end-title">판 종료</h2>
+        <p id="killer"></p>
+        <dl>
+          <div>
+            <dt>먹은 수</dt>
+            <dd id="final-eaten"></dd>
+          </div>
+          <div>
+            <dt>최대 크기</dt>
+            <dd id="final-size"></dd>
+          </div>
+        </dl>
+        <button id="restart" type="button">정비하러 가기 <span aria-hidden="true">→</span></button>
+        <a href="./index.html?gallery=1">요괴 도감</a>
+      </div>
+    </section>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
+    <script type="module">
+import { PlayScene } from './src/scenes/PlayScene.js';
+import { createProgress } from './src/systems/progress.js';
+const state = { phase: 'boot', counts: [] };
+window.review = state;
+async function check() {
+  const mode = new URLSearchParams(location.search).get('debug');
+  const original = createProgress();
+  original.yoryeok = 700;
+  const snapshot = JSON.stringify(original);
+  const key = 'yokai-proto-v1';
+  const stored = JSON.stringify({version:1, savedAt:1, progress:original});
+  localStorage.setItem(key, stored);
+  let writes = 0;
+  const set = Storage.prototype.setItem;
+  Storage.prototype.setItem = function(k, v) { if (k === key) writes++; return set.call(this,k,v); };
+  let countRolls = false, rolls = 0;
+  const random = Math.random;
+  const sessionRandom = () => { if (countRolls) {rolls++; return 0;} return random(); };
+  const scenes = [];
+  const create = PlayScene.prototype.create;
+  PlayScene.prototype.create = function(data) {
+    if (!scenes.length) this.registry.set('progress', original);
+    Math.random = sessionRandom;
+    try { create.call(this, data); } finally { Math.random = random; }
+    scenes.push(this);
+  };
+  PlayScene.prototype.update = () => {};
+  function eq(actual, expected, field) {
+    if (actual !== expected) throw Error(field + ' / ' + actual + ' != ' + expected);
+  }
+  async function wait(f) {
+    const end = Date.now()+15000;
+    while (!f()) { if (Date.now()>end) throw Error('timed out: '+state.phase); await new Promise(r=>setTimeout(r,25)); }
+  }
+  const button = (selector) => document.querySelector(selector);
+  await import('./src/main.js');
+  await wait(()=>scenes.length);
+  const s = scenes[0];
+  if (!mode) s.openHub();
+  if (mode) {
+    eq(s.progress.yoryeok, 5700, 'debug funds');
+    eq(s.progress.treasure?.level, 9, 'debug treasure');
+    eq(s.progress.diet.south, 40, 'debug diet');
+  }
+  const choose = async () => {
+    await wait(()=>button('.yk-choice'));
+    button('.yk-choice').click();
+    button('.yk-footer .yk-primary').click();
+  };
+  state.phase = 'overlays';
+  if (mode==='evolve') await choose();
+  await wait(()=>button('.yk-enhance-actions .yk-primary'));
+  button('.yk-enhance-actions .yk-primary').click();
+  if (mode==='hub') {
+    document.querySelectorAll('.yk-actions button')[1].click();
+    await choose();
+  }
+  for (let i=1; i<=3; i++) {
+    state.phase = 'round '+i;
+    eq(scenes[i-1], s, 'same scene');
+    const n = s.events.listeners('eat').filter(fn => fn.name === 'onEat').length;
+    eq(n,1,'eat listeners');
+    eq(s.events.listenerCount('runEnd'),1,'end listeners');
+    state.counts.push(n);
+    if (mode) eq(s.progress.stage, 2, 'debug evolution');
+    const y = s.progress.yoryeok, east = s.progress.diet.east, w = writes;
+    countRolls = true;
+    s.events.emit('eat',{dir:'east',preySize:12});
+    countRolls = false;
+    eq(rolls,i,'drop rolls');
+    eq(s.progress.yoryeok,y+12,'funds after eating');
+    eq(s.progress.diet.east,east+12,'diet after eating');
+    eq(writes-w,mode ? 0 : 1,'saves on eat');
+    if (i !== 2) s.events.emit('runEnd');
+    eq(writes-w,mode ? 0 : (i === 2 ? 1 : 2),'saves including runEnd');
+    if (i<3) {
+      if (i>1) s.openHub();
+      button('.yk-actions .yk-primary').click();
+      await wait(()=>scenes.length===i+1);
+      eq(s.progress.yoryeok,y+12,'funds after restart');
+    }
+  }
+  eq(s.registry.get('progress'),original,'normal registry');
+  if (mode) {
+    eq(JSON.stringify(original),snapshot,'original progress');
+    eq(localStorage.getItem(key),stored,'saved bytes');
+    eq(writes,0,'writes');
+  } else {
+    eq(JSON.parse(localStorage.getItem(key)).progress.yoryeok,s.progress.yoryeok,'normal save');
+    eq(writes,6,'writes');
+  }
+  Object.assign(state, {mode:mode||'normal', version:Phaser.VERSION, writes, rolls, phase:'passed'});
+}
+check().catch(e=>{state.error=String(e);}).finally(()=>{document.documentElement.dataset.review='done';});
+</script>
+  </body>
+</html>
+

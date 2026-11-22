@@ -272,3 +272,51 @@
   .yk-header .yk-wallet { margin-top: 4px; padding-top: 4px; }
   .yk-title { font-size: 22px; }
 }
+
+
+/* ---- 모션 그래픽(Opus): 결과를 먼저 정한 뒤 보여주는 연출만 둔다 ---- */
+@keyframes yk-rise { 0% { transform: scale(.55) translateY(14px); } 60% { transform: scale(1.08); } 100% { transform: none; } }
+@keyframes yk-spin { to { transform: rotate(360deg); } }
+@keyframes yk-pop { 0% { transform: scale(.6); } 70% { transform: scale(1.12); } 100% { transform: none; } }
+/* 투명도 0에서 시작하지 않는다: 애니메이션이 멈춰도 내용은 항상 보이게 */
+@keyframes yk-fade-up { from { transform: translateY(10px); } to { transform: none; } }
+@keyframes yk-bump { 0% { transform: scale(.94); } 45% { transform: scale(1.05); } 100% { transform: none; } }
+@keyframes yk-shimmer { from { background-position: -160% 0; } to { background-position: 260% 0; } }
+.yk-reveal { position: relative; isolation: isolate; }
+.yk-reveal > .yk-portrait { position: relative; overflow: visible; animation: yk-rise .5s cubic-bezier(.2,.9,.3,1.3) both; }
+.yk-reveal > .yk-portrait::before {
+  content: ''; position: absolute; inset: -42%; z-index: -1; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, var(--yk-glow, #e9dcae) 0 9deg, transparent 9deg 30deg);
+  -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%);
+  opacity: .6; animation: yk-spin 10s linear infinite;
+}
+.yk-reveal > .yk-portrait[data-grade="S+"] { --yk-glow: #ff8fe0; }
+.yk-reveal > .yk-portrait[data-grade="S"] { --yk-glow: #ffcf4d; }
+.yk-reveal > .yk-portrait[data-grade="A"] { --yk-glow: #b58cff; }
+.yk-reveal > .yk-portrait[data-grade="B"] { --yk-glow: #7db6ff; }
+.yk-reveal > .yk-portrait[data-grade="C"] { --yk-glow: #9fd69a; }
+.yk-reveal > .yk-portrait[data-grade="D"], .yk-reveal > .yk-portrait[data-grade="E"] { --yk-glow: #d8d2bf; }
+.yk-reveal > .yk-portrait[data-grade="F"]::before { display: none; }
+.yk-reveal .yk-grade-label { display: inline-block; animation: yk-pop .45s .2s both; }
+.yk-reveal .yk-form-name { animation: yk-fade-up .4s .3s both; }
+.yk-reveal .yk-description { animation: yk-fade-up .4s .4s both; }
+.yk-reveal .yk-discovery { animation: yk-pop .4s .5s both; }
+.yk-choices > * { animation: yk-fade-up .35s both; }
+.yk-choices > *:nth-child(2) { animation-delay: .06s; }
+.yk-choices > *:nth-child(3) { animation-delay: .12s; }
+.yk-choice { transition: transform .12s ease, box-shadow .12s ease; }
+.yk-choice:active:not(:disabled) { transform: scale(.96); }
+.yk-mystery .yk-portrait {
+  background: linear-gradient(110deg, #2c4338 30%, #48685a 45%, #2c4338 60%) 0 0 / 220% 100%;
+  animation: yk-shimmer 2.4s linear infinite;
+}
+.yk-button { transition: transform .1s ease; }
+.yk-button:active:not(:disabled) { transform: scale(.97); }
+.yk-flash { animation: yk-bump .32s ease-out; }
+[data-tone="great"] { color: #9a6a00; text-shadow: 0 0 10px #ffd96a; }
+[data-tone="good"] { color: #2f7a52; }
+[data-tone="fail"] { color: #6b6b62; }
+[data-tone="bad"] { color: #b2412f; }
+@media (prefers-reduced-motion: reduce) {
+  .yk-dialog *, .yk-dialog *::before { animation: none !important; transition: none !important; }
+}

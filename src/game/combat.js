@@ -91,8 +91,11 @@ export class Combat {
     const remaining = enemy.size - damage;
     const reversal = enemy.size >= player.size && remaining < player.size;
     if (reversal) this.scene.fireButton.showReversal();
+    this.scene.fx?.flash(enemy);
+    if (reversal) this.scene.fx?.reversal(enemy);
     if (remaining <= tuning.defeatSize) {
       const meal = this.meal(enemy, true);
+      this.scene.fx?.burst(enemy.x, enemy.y, 0x9deed3, 16, Math.max(0.8, enemy.size / 25));
       enemy.destroy();
       this.scene.events.emit('eat', meal);
     } else {

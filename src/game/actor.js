@@ -19,6 +19,7 @@ export class Actor {
     this.size = size;
     const width = (size * CONFIG.render.artUnits) / CONFIG.render.bodyRadius;
     this.sprite.setDisplaySize(width, width);
+    this.baseScale = this.sprite.scaleX;
     this.move(0, 0);
   }
   move(dx, dy) {

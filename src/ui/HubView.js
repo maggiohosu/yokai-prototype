@@ -122,6 +122,11 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     save(progress);
     clearFeedback();
     status.textContent = message;
+    // 결과가 정해진 뒤 그 결과의 색으로 짧게 튀어 오른다(모션: Opus)
+    status.dataset.tone = /대성공/.test(message) ? 'great' : /퇴화|깨졌/.test(message) ? 'bad' : /실패/.test(message) ? 'fail' : /성공|판매|교환/.test(message) ? 'good' : '';
+    status.classList.remove('yk-flash');
+    void status.offsetWidth;
+    status.classList.add('yk-flash');
     render();
   }
   function askDegrade() {
