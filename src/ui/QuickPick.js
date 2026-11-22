@@ -43,13 +43,16 @@ function artOf(card, getFormImage) {
       art.append(image);
       return art;
     }
+    art.classList.add('qp-text');
     art.append(el('span', 'qp-glyph', card.form.name.slice(0, 1)));
   } else if (card.kind === 'evolve') {
-    art.classList.add('qp-mystery');
+    art.classList.add('qp-mystery', 'qp-text');
     art.append(el('span', 'qp-glyph', '???'));
   } else if (card.kind === 'body') {
+    art.classList.add('qp-text');
     art.append(el('span', 'qp-glyph', '×' + numberFormat.format(card.mult)));
   } else {
+    art.classList.add('qp-text');
     art.append(el('span', 'qp-glyph', '+1'));
   }
   return art;

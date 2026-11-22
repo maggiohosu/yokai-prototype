@@ -50,6 +50,8 @@ html, body {
   overscroll-behavior: none;
 }
 body { display: flex; flex-direction: column; height: 100dvh; }
+/* 게임 중에는 두 손가락(이동 스틱 + 발사 버튼)을 브라우저 확대로 받지 않는다. 도감은 스크롤해야 하므로 제외. */
+html:not(:has(body.gallery-mode)), body:not(.gallery-mode) { touch-action: none; }
 button, a, select, summary {
   font: inherit;
   -webkit-tap-highlight-color: transparent;

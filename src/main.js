@@ -40,6 +40,13 @@ if (gallery) {
   document.getElementById('nav-text').textContent = '들판으로';
   document.getElementById('nav-link').href = './index.html';
 } else {
+  // 두 손가락 확대·두 번 탭 확대 막기(iOS Safari는 user-scalable=no와 touch-action을 무시할 때가 있다).
+  // 스크롤이 필요한 모달 안의 한 손가락 이동은 그대로 둔다.
+  const block = (event) => event.preventDefault();
+  document.addEventListener('gesturestart', block, { passive: false });
+  document.addEventListener('gesturechange', block, { passive: false });
+  document.addEventListener('touchmove', (event) => { if (event.touches.length > 1) event.preventDefault(); }, { passive: false });
+  document.addEventListener('dblclick', block, { passive: false });
   rotateGuide.addEventListener('cancel', event => event.preventDefault());
   // 회전 직후 정비창이 뒤늦게 열릴 때에도 회전 안내가 입력을 받는다.
   document.addEventListener('toggle', event => {
