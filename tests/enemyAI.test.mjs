@@ -157,11 +157,20 @@ function fakeScene() {
 const makeEnemy = (size, dir, stage) => new Enemy(fakeScene(), { x: 500, y: 500 }, size, dir, stage);
 const prey = (size, dir, extra = {}) => ({ x: 0, y: 0, size, dir, stage: 1, ...extra });
 
-test('1단계 적은 방위 색 미물, 2·3단계는 해당 방위·단계의 형태', () => {
+test('1단계 적은 그 방위의 1단계 형태 2종 중 하나, 2·3단계는 해당 방위·단계의 형태', () => {
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) {
+    const w = makeEnemy(20, 'west', 1);
+    assert.equal(FORM_BY_ID[w.formId].stage, 1);
+    assert.equal(FORM_BY_ID[w.formId].dir, 'west');
+    assert.notEqual(w.formId, 'mimul');
+    seen.add(w.formId);
+  }
+  assert.deepEqual([...seen].sort(), ['mokchung', 'namo']);
   const a = makeEnemy(20, 'east', 1);
-  assert.equal(a.formId, 'mimul');
+  assert.ok(['hwalsa', 'jubyeoreo'].includes(a.formId));
   assert.equal(a.stage, 1);
-  assert.equal(a.sprite.key, 'creature-mimul-east');
+  assert.equal(a.sprite.key, 'creature-' + a.formId);
   assert.equal(a.special, false);
   assert.equal(a.yoryeok, 0);
   assert.deepEqual(a.diet, { east: 0, west: 0, south: 0, north: 0 });
@@ -200,13 +209,13 @@ test('먹으면 면적이 늘고 먹힌 쪽 점수만큼 요력, 크기만큼 �
   assert.ok(e.yoryeok > expected);
 });
 
-test('1→2 진화: 식성 1위 방위 새끼, 크기 초기화(±jitter), 비용 차감, 식성 초기화', () => {
+test('1→2 진화: 식성 1위 방위의 입구 형태, 크기 초기화(±jitter), 비용 차감, 식성 초기화', () => {
   const e = makeEnemy(60, 'east', 1);
   e.diet = { east: 3, west: 0, south: 50, north: 1 };
   e.yoryeok = evolutionCost(2) + 7;
   e.bodyLevel = 2;
   const keyBefore = e.sprite.key;
-  assert.equal(e.autoProgress(), 'evolve');
+  assert.equal(e.autoProgress(() => 0), 'evolve'); // 남녘 입구 4개 중 첫째(새끼 새)
   assert.equal(e.stage, 2);
   assert.equal(e.dir, 'south');
   assert.equal(e.formId, 'littleBird');
@@ -249,14 +258,37 @@ test('몸집 강화: 비용을 내고 크기 ×bodyMult, 레벨이 오르면 다
   assert.equal(e.bodyLevel, 1);
 });
 
-test('3단계는 요력이 아무리 많아도 진화하지 않고, 진화 가능하면 몸집 강화보다 진화가 먼저다', () => {
-  const top = makeEnemy(50, 'east', 3);
+test('5단계는 요력이 아무리 많아도 진화하지 않고, 진화 가능하면 몸집 강화보다 진화가 먼저다', () => {
+  const top = makeEnemy(50, 'east', 5);
   top.yoryeok = 1e6;
   assert.equal(top.autoProgress(), 'body');
-  assert.equal(top.stage, 3);
+  assert.equal(top.stage, 5);
   const e = makeEnemy(50, 'east', 1);
   e.yoryeok = evolutionCost(2) + bodyCostAt(0);
   assert.equal(e.autoProgress(), 'evolve');
+});
+
+test('적의 자가 진화는 플레이어 단계 + selfEvolveLead까지만 한다', () => {
+  const lead = CONFIG.enemy.selfEvolveLead;
+  assert.equal(lead, 1);
+  const withPlayer = (stage, size, dir, playerStage) => {
+    const scene = fakeScene();
+    scene.player = { stage: playerStage, size: 28 };
+    return new Enemy(scene, { x: 500, y: 500 }, size, dir, stage);
+  };
+  const a = withPlayer(2, 30, 'east', 1);
+  a.yoryeok = evolutionCost(3) + 5;
+  assert.equal(a.autoProgress(), 'body', '플레이어 1단계 판에서 2단계 적은 3단계로 진화하지 않는다');
+  assert.equal(a.stage, 2);
+  const b = withPlayer(1, 30, 'east', 1);
+  b.yoryeok = evolutionCost(2);
+  assert.equal(b.autoProgress(), 'evolve', '플레이어 단계 + 1까지는 진화한다');
+  assert.equal(b.stage, 2);
+  const c = withPlayer(4, 30, 'east', 4);
+  c.yoryeok = evolutionCost(5);
+  assert.equal(c.autoProgress(), 'evolve');
+  assert.equal(c.stage, 5);
+  assert.ok(FORM_BY_ID[c.formId].stage === 5);
 });
 
 test('eat이 진화까지 이어진다: 먹은 뒤 요력이 비용에 닿으면 진화', () => {

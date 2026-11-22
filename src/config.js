@@ -29,8 +29,17 @@ export const CONFIG = {
       { weight: 0.2, min: 1.15, max: 1.75 },
     ],
     // 플레이어가 startSize~earlyUntilSize일 때 earlyWeights(작은/비슷/큰 적)에서 sizes의 weight로 선형 전환한다.
-    // 플레이어 단계별 적 단계(1·2·3) 생성 가중치. 1단계 적은 방위 색 미물.
-    stageWeights: { 1: [1, 0, 0], 2: [0.35, 0.45, 0.2], 3: [0.25, 0.4, 0.35] },
+    // 플레이어 단계별 적 단계(1~5) 생성 가중치. 1단계 적은 그 방위의 1단계 형태 2종 중 하나(formFor(dir, 1)).
+    // 2단계 행은 그대로이고, 3단계 행에 4단계 적 8%를 넣어 다음 목표를 미리 보여 준다(설계 5절). 1단계 행은 아래 사용자 지시가 우선한다.
+    stageWeights: {
+      1: [1, 0, 0, 0, 0], // 사용자 지시: 플레이어가 1단계일 때는 적도 모두 1단계로 나온다(스스로 먹고 진화)
+      2: [0.35, 0.45, 0.2, 0, 0],
+      3: [0.22, 0.38, 0.32, 0.08, 0],
+      4: [0.1, 0.25, 0.35, 0.25, 0.05],
+      5: [0.05, 0.15, 0.3, 0.3, 0.2],
+    },
+    // 적이 스스로 진화할 수 있는 단계는 min(pace.maxStage, 플레이어 단계 + selfEvolveLead)까지다(5단계 용이 2단계 판에 생기지 않게).
+    selfEvolveLead: 1,
     evolveJitter: [0.9, 1.1], // 적이 진화할 때 levelUp.evolveResetSize에 곱하는 범위
     earlyUntilSize: 70,
     earlyWeights: [0.35, 0.15, 0.5],
@@ -59,11 +68,13 @@ export const CONFIG = {
     ringColor: 0xe0245e, ringDashes: 14, ringSpin: 1.4, ringPad: 1.28, ringWidth: 3,
   },
   // stageOverride: 하위 단계가 상위 단계를 먹으려면 이 배수 이상 커야 한다(사용자 결정: 하위도 아주 크면 이김).
-  // 상위 단계는 하위가 stageOverride배 이상 크지 않으면 크기와 상관없이 하위를 먹는다. 같은 단계는 ratio.
-  eating: { ratio: 1.1, areaGain: 0.32, stageOverride: 2 },
+  // 단계 차 Δ가 클수록 더 커야 한다(사용자 결정 2026-11-23): 필요 배수 = stageOverride + stageOverrideStep × (Δ - 1)
+  // = 단계 차 1·2·3·4에 2·3·4·5배. 상위 단계는 하위가 그 배수 이상 크지 않으면 크기와 상관없이 하위를 먹는다. 같은 단계는 ratio.
+  eating: { ratio: 1.1, areaGain: 0.32, stageOverride: 2, stageOverrideStep: 1 },
   // 먹이 점수(=요력): base × (크기/sizeRef)^sizeExp × 단계 배율 × 등급 배율 × (보물 처치 배율) × (특수 적 배율)
-  // 크고 높은 단계 하나가 작고 낮은 단계 여러 개보다 낫도록 크기 지수 > 1, 단계 배율은 4배씩.
-  score: { base: 10, sizeRef: 20, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16 }, treasureMult: 1.5 },
+  // 크고 높은 단계 하나가 작고 낮은 단계 여러 개보다 낫도록 크기 지수 > 1, 단계 배율은 3단계까지 4배씩,
+  // 4·5단계는 보물 경제가 무너지지 않게 ×3, ×2.7로 늦춘다(사용자 결정 2026-11-23: ×48 / ×128).
+  score: { base: 10, sizeRef: 20, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 }, treasureMult: 1.5 },
   // 판 안 성장: 요력이 다음 선택지 비용에 닿으면 잠깐 멈추고 [진화]/[몸집 강화]/[능력 강화] 중 고른다.
   levelUp: {
     bodyBaseCost: 30, bodyCostGrowth: 1.6, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화
@@ -76,7 +87,7 @@ export const CONFIG = {
     quickCardCount: 3,
     quickEnhanceCostMult: 1.5, // 능력 +1 카드 비용 = 이 값 × 본체 강화 비용(실패·퇴화 없이 확정이라 더 비싸다)
     quickIgnoreMs: 150, // 카드가 열린 직후 이 시간 동안은 탭을 무시한다(실수 방지)
-    evolveMaxStage: 3, // 판 안 진화 카드는 이 단계 미만일 때만 나온다
+    evolveMaxStage: 5, // 판 안 진화 카드는 이 단계 미만일 때만 나온다(5단계가 마지막: pace.maxStage와 같다)
   },
   combat: {
     aimHalfAngleDeg: 35,
@@ -107,19 +118,12 @@ export const CONFIG = {
   // f는 게임 템포(tempo × f)와 플레이어 이동 속도(player.speed × f)에 모두 곱한다.
   pace: { minMult: 1 / 3, maxMult: 1.5, maxStage: 5, maxSpeedLevel: 10 },
   // 부스터(플레이어 전용, src/game/booster.js; 사용자 결정 2026-11-23). 누르는 동안 플레이어 이동 속도(속도 곡선 적용 후)에만 배율을 곱한다. 적·발사체는 그대로.
-  // 배율 = baseMult × 줄기 보정 + 이동 속도 강화 레벨 × perSpeedLevel. 줄기 보정 = 형태 데이터의 선택 필드 boostMult → 아래 formMult[형태 id] → 1.
+  // 배율 = baseMult × 줄기 보정 + 이동 속도 강화 레벨 × perSpeedLevel. 줄기 보정 = form.stem → src/data/stems.js의 boostMult → 1.0(줄기 없는 mimul).
   // 게이지(maxSec)·회복·지연은 화면 시간(초)으로 계산하고(템포·속도 곡선과 무관), 0이 되면 가속이 끝나 minRestartSec 이상 찰 때까지 다시 켜지지 않는다.
   // 뗀 직후 regenDelaySec는 회복하지 않고, 그 뒤 빈 상태에서 가득 차기까지 regenFullSec. 누르고 있는 동안은 회복하지 않는다.
   booster: {
     maxSec: 2, minRestartSec: 0.4, regenFullSec: 5, regenDelaySec: 0.5,
     baseMult: 1.3, perSpeedLevel: 0.02,
-    // 임시 값(방위·몸 특징 기준): 범·새 몸은 빠르게, 거북은 느리게, 나머지 1.0.
-    // 진화 줄기 설계(docs/design-forms-abilities.md)가 나오면 줄기별 form.boostMult로 바꾸고 이 표는 지운다.
-    formMult: {
-      mimul: 1, littleSnake: 1, littleTiger: 1.1, littleBird: 1.1, littleTurtle: 0.9,
-      hillFox: 1, imugi: 1, crane: 1.15, boYi: 1, skyHound: 1.15, whiteDeer: 1,
-      biFang: 1.1, dokkaebi: 1, attendant: 1, waterSpirit: 1, dueoksini: 1, darkTurtle: 0.9,
-    },
     // 가속 중 연출(실제 시간 기준, Fx.burst 재사용): 플레이어 뒤쪽으로 옅은 먼지를 흘린다.
     trail: { color: 0xe7cb8a, interval: 0.045, count: 2, power: 0.5, back: 0.9, startCount: 6 }, // color = :root의 --gold
   },
@@ -141,6 +145,10 @@ export const CONFIG = {
     maxPixelRatio: 2,
     textureSize: 320,
     artUnits: 160,
+    // 단계별 원화 캔버스(단위당 2px: 320/400/480). 몸 반지름 42 단위와 판정은 그대로 두고 캔버스만 키운다(설계 6-2의 1). T2가 쓴다.
+    artUnitsByStage: { 1: 160, 2: 160, 3: 160, 4: 200, 5: 240 },
+    textureBudgetMB: 24, // 크리처 텍스처 예산(MB). 넘으면 화면의 스프라이트가 쓰지 않는 것부터 오래된 순서로 지운다(설계 6-2의 3)
+    stageMarkLift: { 1: 1.7, 2: 1.7, 3: 1.7, 4: 2.1, 5: 2.5 }, // drawStageMark의 size × 배수(관·광륜과 겹치지 않게)
     bodyRadius: 42,
     hudInterval: 0.1,
     mapPixels: 220,

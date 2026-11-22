@@ -894,10 +894,10 @@ export function drawCreature(scene, formId, opts = {}) {
   g.scaleCanvas(scale, scale);
   if (form.branch === 'seon') {
     const halo = brush(g, form, true);
-    for (const part of form.parts) PARTS[part](halo);
+    for (const [name, args] of form.parts.map((spec) => [].concat(spec))) PARTS[name]?.(halo, args); // 인자형 ['이름', { n }]을 풀고, 아직 안 그린 부품은 건너뛴다
   }
   const paint = brush(g, form);
-  for (const part of form.parts) PARTS[part](paint);
+  for (const [name, args] of form.parts.map((spec) => [].concat(spec))) PARTS[name]?.(paint, args);
   drawGradeBorder(g, opts.grade);
   g.generateTexture(key, textureSize, textureSize);
   g.destroy();

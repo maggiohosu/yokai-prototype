@@ -6,7 +6,7 @@ import { enhanceCost, getEnhanceOdds } from '../src/systems/enhance.js';
 import { evolutionCost } from '../src/systems/evolution.js';
 import {
   bodyCost, createRunLevel, pauseOptions, cheapestCost, shouldPause, afterPause, applyBody,
-  quickEnhanceCost, earnedThisRun, pauseGap, pauseGauge, pickQuickCards, applyQuickCard,
+  quickEnhanceCost, earnedThisRun, pauseGap, pauseGauge, pickQuickCards, applyQuickCard, allQuickCards,
 } from '../src/systems/levelup.js';
 import { FORMS } from '../src/data/forms.js';
 
@@ -50,8 +50,8 @@ test('pauseOptions는 진화·몸집·능력 순서로 비용과 확률을 담�
   }
 });
 
-test('3단계에서는 진화를 고를 수 없고 몸집 비용은 강화 횟수를 따라간다', () => {
-  const { progress, run } = setup(0, { stage: 3 });
+test('5단계에서는 진화를 고를 수 없고 몸집 비용은 강화 횟수를 따라간다', () => {
+  const { progress, run } = setup(0, { stage: 5 });
   run.bodyLevel = 2;
   const [evolve, body] = pauseOptions(progress, run);
   assert.equal(evolve.available, false);
@@ -72,8 +72,8 @@ test('cheapestCost는 고를 수 있는 가장 싼 카드 비용이다(능력 +1
   assert.equal(quickEnhanceCost(0), Math.round(enhanceCost(0) * L.quickEnhanceCostMult));
   assert.ok(quickEnhanceCost(3) > enhanceCost(3));
 
-  // 능력치가 모두 최고이고 3단계면 몸집 강화만 남는다.
-  const b = setup(0, { stage: 3 });
+  // 능력치가 모두 최고이고 5단계면 몸집 강화만 남는다.
+  const b = setup(0, { stage: 5 });
   for (const stat of Object.keys(b.progress.enh)) b.progress.enh[stat] = 10;
   b.run.bodyLevel = 4;
   assert.equal(cheapestCost(b.progress, b.run), bodyCost(4));
@@ -258,4 +258,31 @@ test('applyBody: 요력이 부족하면 null이고 아무것도 바뀌지 않는
   progress.yoryeok = bodyCost(0);
   assert.ok(applyBody(progress, run));
   assert.equal(progress.yoryeok, 0);
+});
+
+test('판 안 진화 카드는 5단계 미만이면 나오고 비용은 다음 단계 비용이다(2,000 / 8,000)', () => {
+  assert.equal(L.evolveMaxStage, 5);
+  for (const [stage, cost] of [[1, 100], [2, 400], [3, 2000], [4, 8000]]) {
+    const { progress, run } = setup(10000, { stage, formId: { 1: 'mimul', 2: 'littleSnake', 3: 'hillFox', 4: 'gumiho' }[stage] });
+    const evolveCards = allQuickCards(progress, run, FORMS).filter((card) => card.kind === 'evolve');
+    assert.equal(evolveCards.length, 3, stage + '단계: 카드 3장');
+    for (const card of evolveCards) assert.equal(card.cost, cost, stage + '단계 비용');
+    assert.equal(pauseOptions(progress, run)[0].available, true);
+    assert.equal(pauseOptions(progress, run)[0].cost, cost);
+  }
+  const top = setup(10000, { stage: 5, formId: 'cheonho' });
+  assert.equal(allQuickCards(top.progress, top.run, FORMS).filter((card) => card.kind === 'evolve').length, 0);
+  assert.equal(pauseOptions(top.progress, top.run)[0].available, false);
+});
+
+test('4단계 진화 카드를 적용하면 8,000을 내고 5단계 형태가 된다', () => {
+  const { progress, run } = setup(8500, { stage: 4, formId: 'gumiho' });
+  progress.diet.east = 10;
+  const card = allQuickCards(progress, run, FORMS).find((c) => c.kind === 'evolve' && !c.unknown);
+  const result = applyQuickCard(progress, run, card, FORMS, { rng: () => 0.5 });
+  assert.equal(result.kind, 'evolve');
+  assert.equal(result.cost, 8000);
+  assert.equal(progress.stage, 5);
+  assert.equal(progress.yoryeok, 500);
+  assert.equal(run.spent, 8000);
 });

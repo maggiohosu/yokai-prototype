@@ -5,6 +5,9 @@ import { FORMS } from '../data/forms.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
+// 앞으로 형태 id를 바꿔야 할 때 { 옛id: 새id }를 여기에 적는다(normalizeProgress가 형태 검사 전에 바꾼다). 지금은 비어 있다.
+export const FORM_ID_ALIASES = {};
+
 // 알 수 없는 값·잘못된 타입은 기본값으로 대체
 export function normalizeProgress(raw, forms = FORMS) {
   const base = createProgress();
@@ -12,7 +15,8 @@ export function normalizeProgress(raw, forms = FORMS) {
   for (const k of ['yoryeok', 'alignment', 'protect', 'shards', 'pity']) {
     if (isNum(raw[k])) base[k] = raw[k];
   }
-  const form = forms.find((f) => f.id === raw.formId && f.stage === raw.stage);
+  const formId = Object.hasOwn(FORM_ID_ALIASES, raw.formId) ? FORM_ID_ALIASES[raw.formId] : raw.formId;
+  const form = forms.find((f) => f.id === formId && f.stage === raw.stage);
   if (form) {
     base.formId = form.id;
     base.stage = form.stage;
@@ -25,7 +29,9 @@ export function normalizeProgress(raw, forms = FORMS) {
   for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = rawEnh[k];
   if (raw.treasure && typeof raw.treasure === 'object') base.treasure = raw.treasure;
   if (Array.isArray(raw.inventory)) base.inventory = raw.inventory.filter((x) => x && typeof x === 'object');
-  if (Array.isArray(raw.discovered)) base.discovered = raw.discovered.filter((x) => typeof x === 'string');
+  if (Array.isArray(raw.discovered)) {
+    base.discovered = raw.discovered.filter((x) => typeof x === 'string').map((x) => (Object.hasOwn(FORM_ID_ALIASES, x) ? FORM_ID_ALIASES[x] : x));
+  }
   const pending = raw.pendingDegrade === 'signature' ? 'vitality' : raw.pendingDegrade;
   if (ENHANCE.stats.includes(pending)) base.pendingDegrade = pending;
   if (raw.pendingDevolve === true && base.stage > 1) base.pendingDevolve = true;

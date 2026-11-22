@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { stemBoostMult } from '../data/stems.js';
 
 // 부스터(플레이어 전용). 위쪽은 Phaser·DOM에 의존하지 않는 순수 계산이고, 아래 BoosterButton이 화면 버튼이다.
 // stepBooster의 시간(게이지·회복·지연)은 화면 시간(초)이다. 시뮬레이션 단계는 stepBoosterSim으로 변환해 쓴다. 상태는 { value, sinceRelease, locked }:
@@ -8,10 +9,11 @@ const EPS = 1e-9;
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // 부스터 배율 = baseMult × 줄기 보정 + perSpeedLevel × 이동 속도 강화 레벨.
-// 줄기 보정: 형태 데이터의 선택 필드 form.boostMult → CONFIG.booster.formMult[form.id](임시 표) → 1.
+// 줄기 보정: form.stem → src/data/stems.js의 boostMult → 1.0(줄기 없는 mimul·모르는 줄기).
+// 형태 데이터에 숫자 boostMult를 직접 적어 두면 그 값이 줄기 보정보다 먼저다(지금 forms.js에는 없다).
 export function boosterMult(progress, form, cfg = CONFIG.booster) {
   const level = clamp(Number(progress?.enh?.speed) || 0, 0, CONFIG.pace.maxSpeedLevel);
-  const stem = Number.isFinite(form?.boostMult) ? form.boostMult : (cfg.formMult?.[form?.id] ?? 1);
+  const stem = Number.isFinite(form?.boostMult) ? form.boostMult : stemBoostMult(form?.stem);
   return cfg.baseMult * stem + cfg.perSpeedLevel * level;
 }
 

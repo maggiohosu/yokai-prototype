@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { FORMS, FORM_BY_ID } from '../data/forms.js';
+import { FORMS } from '../data/forms.js';
 import { pickIntent, intentDirection } from './enemyAI.js';
 import { rollSpecial } from './enemyFire.js';
 import { drawCreature } from '../art/creature.js';
@@ -9,8 +9,8 @@ import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
 import { evolutionCost, rollGrade } from '../systems/evolution.js';
 import { bodyCostAt, newDiet, nextProgress, pickEvolution, preyInfoOf, preyValue } from '../systems/rules.js';
 
-// 2·3단계 형태: 해당 방위·단계의 형태 중 무작위(방위에 형태가 없으면 단계만 맞춘다).
-function formFor(dir, stage, rng = Math.random) {
+// 방위·단계의 형태 중 무작위(방위에 형태가 없으면 단계만 맞춘다). 1단계도 그 방위의 1단계 형태 2종 중 하나다.
+export function formFor(dir, stage, rng = Math.random) {
   const ofStage = FORMS.filter((form) => form.stage === stage);
   const pool = ofStage.filter((form) => form.dir === dir);
   const list = pool.length ? pool : ofStage;
@@ -23,8 +23,8 @@ const stageFromSize = (size) => (size < CONFIG.enemy.stage3Size ? 2 : 3);
 // 적도 플레이어와 같은 구조다: 먹어서 커지고, 요력이 쌓이면 스스로 진화·몸집 강화한다.
 export class Enemy extends Actor {
   constructor(scene, pos, size, dir, stage = stageFromSize(size)) {
-    const form = stage === 1 ? FORM_BY_ID.mimul : formFor(dir, stage);
-    super(scene, pos.x, pos.y, size, form.id, stage === 1 ? { dir } : undefined);
+    const form = formFor(dir, stage);
+    super(scene, pos.x, pos.y, size, form.id);
     this.dir = dir;
     this.stage = form.stage;
     this.grade = rollGrade(0);
@@ -56,8 +56,9 @@ export class Enemy extends Actor {
     return this.autoProgress(rng);
   }
   // 한 번에 한 가지만 한다(진화 우선). 남은 요력은 다음 먹기에서 이어서 쓴다.
+  // 자가 진화는 플레이어 단계 + enemy.selfEvolveLead까지만 한다(rules.nextProgress).
   autoProgress(rng = Math.random) {
-    const action = nextProgress(this);
+    const action = nextProgress(this, this.scene.player?.stage);
     if (action === 'evolve') {
       const form = pickEvolution(this, FORMS, rng);
       if (!form) return null;

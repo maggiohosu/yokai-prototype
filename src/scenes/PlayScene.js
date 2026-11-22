@@ -29,7 +29,7 @@ export class PlayScene extends Phaser.Scene {
     super('Play');
   }
   create(data = {}) {
-    for (const form of FORMS) drawCreature(this, form.id);
+    // 형태 171종을 부팅 때 모두 굽지 않는다(휴대폰 메모리). 필요할 때 drawCreature가 한 번 굽는다.
     for (const dir of Object.keys(REGIONS)) drawCreature(this, 'mimul', { dir });
     drawWorld(this);
     this.fx = new Fx(this);

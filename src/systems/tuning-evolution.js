@@ -1,5 +1,6 @@
 // 진화·성향·등급·저장 수치. 나중에 src/config.js로 합칠 것.
-export const EVOLVE_COST = { 2: 100, 3: 400 };
+// 4·5단계 비용은 사용자 결정(2026-11-23): 2,000 / 8,000.
+export const EVOLVE_COST = { 2: 100, 3: 400, 4: 2000, 5: 8000 };
 export const YORYEOK = { perSize: 1, treasureMult: 1.5 };
 
 // 성향(-100 요기 ~ +100 선기) 변화량
@@ -12,8 +13,8 @@ export const ALIGNMENT = {
   treasureSuccess: 5, // 보물 강화 성공 시 선기(+)
 };
 
-// 선택지 점수 가중치
-export const SCORE = { dir: 1, branch: 0.5 };
+// 선택지 점수 가중치. stem은 지금 줄기를 지키는 형태에 주는 가산점(설계 3-2).
+export const SCORE = { dir: 1, branch: 0.5, stem: 0.35 };
 
 export const GRADES = ['S+', 'S', 'A', 'B', 'C', 'D', 'E', 'F'];
 export const GRADE_BASE = { 'S+': 1, S: 4, A: 10, B: 20, C: 25, D: 20, E: 12, F: 8 };

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { FORMS, FORM_BY_ID } from '../src/data/forms.js';
+import { STEM_BY_ID } from '../src/data/stems.js';
 import { boosterMult, createBooster, stepBooster, stepBoosterSim } from '../src/game/booster.js';
 
 const B = CONFIG.booster;
@@ -44,13 +45,15 @@ test('배율: 거북 보정(0.9)은 줄기 항에만 곱하고, 속도 레벨 �
   assert.ok(boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.crane) > boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.mimul));
 });
 
-test('배율: 보정 순서는 form.boostMult → CONFIG.booster.formMult → 1.0', () => {
+test('배율: 보정 순서는 form.stem → stems.js의 boostMult → 1.0', () => {
   const progress = { enh: { speed: 0 } };
-  near(boosterMult(progress, { id: 'littleTurtle', boostMult: 1.2 }), 1.3 * 1.2, 1e-12); // 형태 데이터가 우선
-  near(boosterMult(progress, { id: 'littleTurtle' }), 1.3 * B.formMult.littleTurtle, 1e-12); // 없으면 임시 표
-  near(boosterMult(progress, { id: '표에 없는 형태' }), 1.3, 1e-12); // 표에도 없으면 1.0
+  near(boosterMult(progress, { id: 'x', stem: 'N1' }), 1.3 * STEM_BY_ID.N1.boostMult, 1e-12); // 줄기 보정
+  near(boosterMult(progress, { id: 'x', stem: 'W1' }), 1.3 * 1.2, 1e-12);
+  near(boosterMult(progress, { id: 'mimul', stem: null }), 1.3, 1e-12); // 줄기가 없으면 1.0
+  near(boosterMult(progress, { id: '줄기를 모르는 형태', stem: 'Z9' }), 1.3, 1e-12); // 모르는 줄기도 1.0
   near(boosterMult(progress, undefined), 1.3, 1e-12);
-  near(boosterMult(progress, { id: 'mimul', boostMult: 'x' }), 1.3 * B.formMult.mimul, 1e-12); // 숫자가 아니면 무시
+  near(boosterMult(progress, { id: 'x', stem: 'W1', boostMult: 'x' }), 1.3 * 1.2, 1e-12); // 숫자가 아닌 boostMult는 무시
+  near(boosterMult(progress, { id: 'x', stem: 'W1', boostMult: 1.0 }), 1.3, 1e-12); // 형태가 직접 적은 숫자는 줄기보다 먼저
 });
 
 test('배율: 진행 정보가 비어 있어도 레벨 0, 레벨은 0~10으로 자른다', () => {
@@ -60,18 +63,18 @@ test('배율: 진행 정보가 비어 있어도 레벨 0, 레벨은 0~10으로 �
   near(boosterMult({ enh: { speed: 99 } }, { id: 'mimul' }), 1.5);
 });
 
-test('임시 형태 표: 지금 17종이 모두 있고 0.9~1.2 안이며, 없는 형태 id는 없다', () => {
-  assert.equal(FORMS.length, 17);
+test('줄기 보정 표: 임시 형태 표(CONFIG.booster.formMult)는 없고, 모든 형태가 줄기 보정 0.9~1.2 안이다', () => {
+  assert.equal(B.formMult, undefined);
+  assert.equal(FORMS.length, 171);
   for (const form of FORMS) {
-    assert.ok(form.id in B.formMult, form.id + ' 보정 없음');
-    assert.ok(B.formMult[form.id] >= 0.9 && B.formMult[form.id] <= 1.2, form.id);
+    const mult = boosterMult({ enh: { speed: 0 } }, form) / B.baseMult;
+    assert.ok(mult >= 0.9 - 1e-12 && mult <= 1.2 + 1e-12, form.id + ' ' + mult);
   }
-  for (const id of Object.keys(B.formMult)) assert.ok(id in FORM_BY_ID, id + '는 없는 형태');
-  assert.equal(B.formMult.littleTurtle, 0.9);
-  assert.equal(B.formMult.darkTurtle, 0.9);
-  for (const id of ['littleTiger', 'skyHound', 'littleBird', 'crane', 'biFang']) {
-    assert.ok(B.formMult[id] >= 1.1 && B.formMult[id] <= 1.15, id);
-  }
+  near(boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.mimul), 1.3); // mimul은 줄기가 없어 1.0
+  near(boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.littleTurtle), 1.3 * 0.9); // N1
+  near(boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.baekho), 1.3 * 1.2); // W1: 설계값 1.20(옛 임시 표의 1.1~1.15와 다르다)
+  near(boosterMult({ enh: { speed: 0 } }, FORM_BY_ID.jujak), 1.3 * 1.2); // S1: 1.20
+  near(boosterMult({ enh: { speed: 10 } }, FORM_BY_ID.darkTurtle), 1.3 * 0.9 + 0.2); // 속도 레벨 항은 그대로 더한다
 });
 
 // ---- 게이지 소모 ----

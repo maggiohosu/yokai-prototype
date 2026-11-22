@@ -182,7 +182,7 @@ export function applyQuickCard(progress, run, card, forms, { rng = Math.random }
 }
 
 // ---- 옛 [성장할 때!] 창(LevelUpView)이 쓰는 선택지. 파일은 남겨 두지만 PlayScene은 더 열지 않는다. ----
-const MAX_STAGE = 3;
+// 마지막 단계는 새 카드와 같은 기준(pace.maxStage)이다.
 
 // 선택지 3종. 능력 강화는 세 능력치를 한 카드에 묶는다.
 // 비용이 Infinity이면 고를 수 없다(최고 단계·최고 레벨).
@@ -191,7 +191,7 @@ export function pauseOptions(progress, run) {
     {
       kind: 'evolve',
       cost: evolutionCost(progress.stage + 1),
-      available: progress.stage < MAX_STAGE,
+      available: progress.stage < CONFIG.pace.maxStage,
     },
     { kind: 'body', cost: bodyCost(run.bodyLevel), mult: CONFIG.levelUp.bodyMult },
     {

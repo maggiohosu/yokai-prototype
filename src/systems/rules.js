@@ -1,20 +1,27 @@
 import { CONFIG } from '../config.js';
-import { evolutionCost, gradeMultiplier } from './evolution.js';
+import { evolutionCost, gradeMultiplier, topDietDir } from './evolution.js';
 
-const DIRS = ['east', 'west', 'south', 'north'];
+export { topDietDir };
 
 // Phaser 의존 없는 순수 규칙. 적 72마리 × 템포 3배에서도 호출이 가볍도록 할당 없이 계산한다.
 export function stageOf(actor) {
   return actor.stage ?? 1;
 }
 
+// 하위 단계가 상위 단계를 먹으려면 상위보다 몇 배 커야 하는가. 단계 차 Δ에 따라 stageOverride + stageOverrideStep × (Δ - 1)배
+// (사용자 결정 2026-11-23: 단계 차 1·2·3·4에 2·3·4·5배). 먹기 판정은 이 함수 한 곳에서만 단계 차를 본다.
+export function stageOverrideMult(stageGap) {
+  const { stageOverride, stageOverrideStep = 0 } = CONFIG.eating;
+  return stageOverride + stageOverrideStep * (Math.max(1, stageGap) - 1);
+}
+
 // a가 b를 먹을 수 있는가(겹침은 보지 않는다).
 export function canEat(a, b, { reversed = false } = {}) {
   const sa = stageOf(a), sb = stageOf(b);
-  const { ratio, stageOverride } = CONFIG.eating;
+  const { ratio } = CONFIG.eating;
   if (sa === sb) return a.size >= b.size * (reversed ? 1 : ratio);
-  if (sa > sb) return b.size < a.size * stageOverride;
-  return a.size >= b.size * stageOverride;
+  if (sa > sb) return b.size < a.size * stageOverrideMult(sa - sb);
+  return a.size >= b.size * stageOverrideMult(sb - sa);
 }
 
 // 두 원이 겹치고 한쪽이 다른 쪽을 먹을 수 있으면 [먹는 쪽, 먹히는 쪽], 아니면 null.
@@ -68,35 +75,30 @@ export function bodyCostAt(level) {
   return l.bodyBaseCost * Math.pow(l.bodyCostGrowth, level);
 }
 
-// 식성 1위 방위. fallback이 동률 후보면 fallback을 우선한다. 식성이 모두 0이고 fallback도 없으면 null.
-export function topDietDir(diet, fallback = null) {
-  let best = DIRS.includes(fallback) ? fallback : null;
-  let bestValue = best ? diet[best] ?? 0 : 0;
-  for (const dir of DIRS) {
-    const value = diet[dir] ?? 0;
-    if (value > bestValue) {
-      best = dir;
-      bestValue = value;
-    }
-  }
-  return best;
-}
-
-// 다음 단계 형태 하나. 1→2는 식성 1위 방위의 새끼, 2→3은 같은 방위의 3종 중 무작위. 다음 단계가 없으면 null.
+// 다음 단계 형태 하나(적의 자가 진화, 3택을 쓰지 않는다). 식성 1위 방위가 지금 방위와 같으면 지금 줄기의 다음 단계 중 무작위,
+// 다르면 그 방위 줄기 4개의 입구 중 무작위. 줄기를 모르면(형태 id가 없으면) 같은 방위의 다음 단계 중 무작위. 다음 단계가 없으면 null.
 export function pickEvolution(actor, forms, rng = Math.random) {
   const next = stageOf(actor) + 1;
   const pool = forms.filter((form) => form.stage === next);
   if (pool.length === 0) return null;
-  const dir = stageOf(actor) === 1 ? topDietDir(actor.diet ?? newDiet(), actor.dir) : actor.dir;
-  const same = pool.filter((form) => form.dir === dir);
-  const list = same.length ? same : pool;
+  const cur = actor.formId ? forms.find((form) => form.id === actor.formId) : null;
+  const top = topDietDir(actor.diet ?? newDiet(), actor.dir);
+  let list = [];
+  if (top && top !== actor.dir) list = pool.filter((form) => form.dir === top && form.entry);
+  else if (cur?.stem) list = pool.filter((form) => form.stem === cur.stem);
+  if (!list.length) list = pool.filter((form) => form.dir === (top ?? actor.dir));
+  if (!list.length) list = pool;
   return list[Math.min(list.length - 1, Math.floor(rng() * list.length))];
 }
 
 // 요력이 쌓인 적이 지금 할 일: 'evolve' | 'body' | null. 진화가 우선이다.
-export function nextProgress(actor) {
+// playerStage를 주면 적의 자가 진화 상한은 min(pace.maxStage, 플레이어 단계 + enemy.selfEvolveLead)다(5단계 용이 2단계 판에 안 생기게).
+// 안 주면 pace.maxStage까지다.
+export function nextProgress(actor, playerStage) {
   const stage = stageOf(actor);
-  if (stage < 3 && actor.yoryeok >= evolutionCost(stage + 1)) return 'evolve';
+  const top = CONFIG.pace.maxStage;
+  const limit = Number.isFinite(playerStage) ? Math.min(top, Math.max(1, playerStage) + CONFIG.enemy.selfEvolveLead) : top;
+  if (stage < limit && actor.yoryeok >= evolutionCost(stage + 1)) return 'evolve';
   if (actor.yoryeok >= bodyCostAt(actor.bodyLevel ?? 0)) return 'body';
   return null;
 }

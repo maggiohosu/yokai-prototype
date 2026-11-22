@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createProgress } from '../src/systems/progress.js';
-import { saveProgress, loadProgress, loadProgressWithStatus, clearSave, normalizeProgress } from '../src/state/save.js';
+import { saveProgress, loadProgress, loadProgressWithStatus, clearSave, normalizeProgress, FORM_ID_ALIASES } from '../src/state/save.js';
+import { FORMS } from '../src/data/forms.js';
+import { evolutionCatalog } from '../src/systems/levelup.js';
+import { devolve } from '../src/systems/evolution.js';
 
 function fakeStorage(init = {}) {
   const m = new Map(Object.entries(init));
@@ -119,4 +122,61 @@ test('저장본에 vitality가 이미 있으면 그 값을 쓰고, 퇴화 대기
   const other = normalizeProgress({ enh: { signature: 'x' }, pendingDegrade: 'speed' });
   assert.deepEqual(other.enh, { growth: 0, speed: 0, vitality: 0 });
   assert.equal(other.pendingDegrade, 'speed');
+});
+
+// ---- 형태 171행으로 늘어난 뒤의 저장 호환(설계 6-1) ----
+const LEGACY_FORMS = {
+  mimul: 1, littleSnake: 2, littleTiger: 2, littleBird: 2, littleTurtle: 2,
+  hillFox: 3, imugi: 3, crane: 3, boYi: 3, skyHound: 3, whiteDeer: 3, biFang: 3, dokkaebi: 3, attendant: 3,
+  waterSpirit: 3, dueoksini: 3, darkTurtle: 3,
+};
+
+test('기존 17종으로 만든 옛 저장(formId, stage, discovered 17개)이 그대로 불러와진다', () => {
+  const discovered = Object.keys(LEGACY_FORMS);
+  assert.equal(discovered.length, 17);
+  for (const [formId, stage] of Object.entries(LEGACY_FORMS)) {
+    const s = fakeStorage();
+    const p = { ...createProgress(), formId, stage, discovered: discovered.slice(), yoryeok: 777, grade: 'B' };
+    assert.ok(saveProgress(p, s));
+    const r = loadProgressWithStatus(s);
+    assert.equal(r.status, 'ok', formId);
+    assert.equal(r.progress.formId, formId);
+    assert.equal(r.progress.stage, stage);
+    assert.deepEqual(r.progress.discovered, discovered);
+    assert.deepEqual(r.progress, p);
+  }
+  assert.equal(JSON.parse(fakeStorage({ 'yokai-proto-v1': JSON.stringify({ version: 1, progress: createProgress() }) }).m.get('yokai-proto-v1')).version, 1);
+});
+
+test('새 형태(4·5단계 포함)도 id와 단계가 맞으면 복구되고, 단계가 틀리면 미물로 돌아간다', () => {
+  for (const [formId, stage] of [['gumiho', 4], ['cheonho', 5], ['hwalsa', 1], ['gyebyeon', 2]]) {
+    const p = normalizeProgress({ formId, stage, yoryeok: 5 });
+    assert.equal(p.formId, formId);
+    assert.equal(p.stage, stage);
+  }
+  assert.equal(normalizeProgress({ formId: 'cheonho', stage: 4 }).formId, 'mimul');
+  assert.equal(normalizeProgress({ formId: 'gumiho', stage: 5 }).stage, 1);
+});
+
+test('pendingDevolve인 2단계 저장은 같은 줄기 1단계로 역진화한다', () => {
+  const catalog = evolutionCatalog(FORMS);
+  const loaded = normalizeProgress({ formId: 'littleSnake', stage: 2, pendingDevolve: true });
+  assert.equal(loaded.pendingDevolve, true);
+  const r = devolve(loaded, catalog);
+  assert.equal(r.form.id, 'hwalsa'); // E1에 1단계 뿌리가 있다
+  assert.equal(loaded.stage, 1);
+  const tiger = devolve(normalizeProgress({ formId: 'littleTiger', stage: 2, pendingDevolve: true }), catalog);
+  assert.equal(tiger.form.id, 'namo'); // W1은 뿌리가 없어 같은 방위 첫째
+});
+
+test('FORM_ID_ALIASES: 지금은 비어 있고, 옛 id가 생기면 형태 검사 전에 새 id로 바꾼다', () => {
+  assert.deepEqual(FORM_ID_ALIASES, {});
+  FORM_ID_ALIASES.oldFox = 'hillFox';
+  try {
+    const p = normalizeProgress({ formId: 'oldFox', stage: 3, discovered: ['oldFox', 'imugi'] });
+    assert.equal(p.formId, 'hillFox');
+    assert.deepEqual(p.discovered, ['hillFox', 'imugi']);
+  } finally {
+    delete FORM_ID_ALIASES.oldFox;
+  }
 });

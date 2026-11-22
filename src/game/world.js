@@ -51,10 +51,10 @@ export function spawnSize(playerSize) {
   return Math.min(CONFIG.enemy.maxSpawnSize, playerSize * between([band.min, band.max]));
 }
 
-// 플레이어 단계(1~3)별 가중치(config.enemy.stageWeights)로 새 적의 단계(1~3)를 고른다.
+// 플레이어 단계(1~5)별 가중치(config.enemy.stageWeights)로 새 적의 단계(1~5)를 고른다.
 export function spawnStage(playerStage = 1, rng = Math.random) {
   const table = CONFIG.enemy.stageWeights;
-  const weights = table[clamp(Math.round(playerStage) || 1, 1, 3)] ?? table[1];
+  const weights = table[clamp(Math.round(playerStage) || 1, 1, CONFIG.pace.maxStage)] ?? table[1];
   let draw = rng() * weights.reduce((a, b) => a + b, 0);
   let last = 1;
   for (let i = 0; i < weights.length; i++) {
