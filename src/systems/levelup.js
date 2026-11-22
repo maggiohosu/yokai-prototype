@@ -129,8 +129,23 @@ function shuffle(list, rng) {
 // 살 수 있는 카드 중 무작위 count장. 가능하면 종류(진화·몸집·능력)가 겹치지 않게 하고,
 // 종류가 모자랄 때만 같은 종류로 채운다. 화면에는 항상 진화 → 몸집 → 능력 순으로 놓는다.
 // 살 수 있는 카드가 없으면 빈 배열이다.
+// 진화를 살 수 있으면(사용자 지시 2026-11-23: 각 종족으로 더 자유롭게 변환) 진화 선택지를 모두 보여 준다: 줄기·방위마다 하나씩과 미지, 거기에
+// 진화하지 않을 수 있게 몸집·능력 카드 한 장을 곁들인다(진화 선택지가 한 장씩만 보이던 예전 규칙을 바꿈).
 export function pickQuickCards(progress, run, forms, { rng = Math.random, count = LU().quickCardCount } = {}) {
   const affordable = allQuickCards(progress, run, forms, { rng }).filter((card) => card.cost <= progress.yoryeok);
+  const evolve = affordable.filter((card) => card.kind === 'evolve');
+  if (evolve.length) {
+    const seen = new Set();
+    const shown = evolve.filter((card) => {
+      const key = card.unknown ? '?' : card.form.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const others = affordable.filter((card) => card.kind !== 'evolve');
+    const alt = others.length ? [shuffle(others, rng)[0]] : [];
+    return [...shown, ...alt].sort(byKind);
+  }
   const groups = new Map();
   for (const card of shuffle(affordable, rng)) {
     if (!groups.has(card.kind)) groups.set(card.kind, []);

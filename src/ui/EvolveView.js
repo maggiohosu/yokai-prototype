@@ -111,7 +111,8 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
   if (choices.length) {
     body.append(el('h3', 'yk-section-title', '진화할 모습 선택'));
     const cards = el('div', 'yk-choices');
-    for (const choice of choices) {
+    // 미지는 맨 뒤에 둔다(종족 선택지가 늘어도 ①②가 먼저 보인다).
+    for (const choice of [...choices.filter(c => !c.unknown), ...choices.filter(c => c.unknown)]) {
       const card = button('', () => choose(choice), 'yk-choice');
       card.disabled = !canEvolve(progress);
       if (choice.unknown) {

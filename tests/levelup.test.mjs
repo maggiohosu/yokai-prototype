@@ -265,7 +265,9 @@ test('판 안 진화 카드는 5단계 미만이면 나오고 비용은 다음 �
   for (const [stage, cost] of [[1, 100], [2, 400], [3, 2000], [4, 8000]]) {
     const { progress, run } = setup(10000, { stage, formId: { 1: 'mimul', 2: 'littleSnake', 3: 'hillFox', 4: 'gumiho' }[stage] });
     const evolveCards = allQuickCards(progress, run, FORMS).filter((card) => card.kind === 'evolve');
-    assert.equal(evolveCards.length, 3, stage + '단계: 카드 3장');
+    assert.ok(evolveCards.length >= 3, stage + '단계: 진화 카드 3장 이상');
+    // 종족 자유 선택: 네 종족(방위)을 모두 고를 수 있다
+    assert.deepEqual([...new Set(evolveCards.filter((card) => !card.unknown).map((card) => card.form.dir))].sort(), ['east', 'north', 'south', 'west'], stage + '단계: 네 종족');
     for (const card of evolveCards) assert.equal(card.cost, cost, stage + '단계 비용');
     assert.equal(pauseOptions(progress, run)[0].available, true);
     assert.equal(pauseOptions(progress, run)[0].cost, cost);

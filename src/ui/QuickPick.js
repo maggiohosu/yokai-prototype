@@ -88,6 +88,10 @@ export function QuickPick(cards, {
   if (Number.isFinite(yoryeok)) head.append(el('span', 'qp-wallet', '보유 요력 ' + numberFormat.format(yoryeok)));
   const list = el('div', 'qp-cards');
   list.style.setProperty('--qp-count', String(Math.max(1, cards.length)));
+  // 카드가 많으면(진화 선택지가 모두 보일 때) 줄바꿈한다: 4장까지는 한 줄, 5·6장은 3열, 7장 이상은 4열(패널도 넓힌다).
+  const cols = cards.length <= 4 ? Math.max(1, cards.length) : cards.length <= 6 ? 3 : 4;
+  list.style.setProperty('--qp-cols', String(cols));
+  panel.style.setProperty('--qp-panel-w', cols >= 4 ? '760px' : '560px');
   panel.append(head, list);
   layer.append(panel);
 

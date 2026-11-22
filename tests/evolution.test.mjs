@@ -98,10 +98,15 @@ test('buildChoices 1->2: 방위만', () => {
   const p = createProgress();
   p.diet = { east: 2, west: 10, south: 5, north: 0 };
   const c = buildChoices(p, forms, { rng: seeded() });
-  assert.equal(c.length, 3);
   assert.equal(c[0].form.id, 'beom');
   assert.equal(c[1].form.id, 'sae');
   assert.equal(c[2].unknown, true);
+  // 종족 자유 선택: ①②에 없는 방위의 입구 형태가 뒤에 붙는다(식성 0인 방위도).
+  const extras = c.slice(3);
+  assert.ok(extras.length >= 1 && extras.every((x) => x.species && !x.unknown));
+  const dirs = c.filter((x) => !x.unknown).map((x) => x.form.dir);
+  assert.equal(new Set(dirs).size, dirs.length, '방위마다 한 장씩');
+  assert.ok(dirs.includes('north'), '식성이 0인 북쪽 종족도 고를 수 있다');
 });
 
 test('buildChoices 2->3: 방위+갈래, 후보 3개 중 상위 2', () => {
@@ -116,7 +121,8 @@ test('buildChoices 2->3: 방위+갈래, 후보 3개 중 상위 2', () => {
   c = buildChoices(p, forms, { rng: seeded() });
   assert.equal(c[0].form.branch, 'yo');
   assert.equal(c[1].form.branch, 'yo');
-  assert.ok(c.every((x) => x.unknown || x.form.dir === 'east'));
+  assert.ok(c.filter((x) => !x.unknown && !x.species).every((x) => x.form.dir === 'east'));
+  assert.ok(c.filter((x) => x.species).every((x) => x.form.dir !== 'east'), '종족 선택지는 다른 방위(작은 시험 데이터에는 입구가 없는 방위도 있다)');
 });
 
 test('buildChoices: 정규 후보가 1개면 같은 단계 전체에서 2위', () => {
@@ -220,23 +226,27 @@ const ids = (choices) => choices.map((c) => (c.unknown ? '?' : c.form.id));
 test('buildChoices 3-2 예시 1: 청구 여우(E2), 동 80·남 20, 요 60 → 구미호(줄기 유지) / 선학(다른 줄기)', () => {
   const p = at('hillFox', { diet: { east: 80, south: 20 }, alignment: -60 });
   const c = buildChoices(p, catalog, { rng: seeded() });
-  assert.deepEqual(ids(c), ['gumiho', 'seonhak', '?']);
+  assert.deepEqual(ids(c).slice(0, 3), ['gumiho', 'seonhak', '?']);
   assert.equal(c[0].form.stem, 'E2');
   assert.equal(c[1].form.stem, 'E3');
+  // 서·남·북 종족도 식성과 무관하게 입구 형태로 고를 수 있다.
+  assert.deepEqual(c.slice(3).map((x) => x.form.dir).sort(), ['north', 'south', 'west']);
 });
 
 test('buildChoices 3-2 예시 2: 청구 여우, 남 70·동 30, 요 60 → 이매(S2, 방위·능력을 바꿈) / 구미호(지금 줄기 유지)', () => {
   const p = at('hillFox', { diet: { east: 30, south: 70 }, alignment: -60 });
   const c = buildChoices(p, catalog, { rng: seeded() });
-  assert.deepEqual(ids(c), ['imae', 'gumiho', '?']);
+  assert.deepEqual(ids(c).slice(0, 3), ['imae', 'gumiho', '?']);
   assert.equal(c[0].form.dir, 'south');
   assert.equal(c[1].form.stem, 'E2');
+  assert.deepEqual(c.slice(3).map((x) => x.form.dir).sort(), ['north', 'west']);
 });
 
 test('buildChoices 3-2 예시 3: 미물, 서 60·북 40 → 새끼 범(W1) / 계변(W2), 같은 방위 줄기 넷은 줄기 순서', () => {
   const p = at('mimul', { diet: { west: 60, north: 40 } });
   const c = buildChoices(p, catalog, { rng: seeded() });
-  assert.deepEqual(ids(c), ['littleTiger', 'gyebyeon', '?']);
+  assert.deepEqual(ids(c).slice(0, 3), ['littleTiger', 'gyebyeon', '?']);
+  assert.deepEqual(c.slice(3).map((x) => x.form.dir).sort(), ['east', 'north', 'south']);
 });
 
 test('buildChoices: ①과 ②의 줄기는 항상 다르다(5단계 미만 전 형태 × 식성·성향 조합), rng를 바꿔도 ①②는 같다', () => {
@@ -247,7 +257,14 @@ test('buildChoices: ①과 ②의 줄기는 항상 다르다(5단계 미만 전 
         const p = at(form.id, { diet, alignment });
         const a = buildChoices(p, catalog, { rng: seeded(1) });
         const b = buildChoices(p, catalog, { rng: seeded(999) });
-        assert.equal(a.length, 3, form.id);
+        assert.ok(a.length >= 3, form.id);
+        assert.equal(a[2].unknown, true, form.id + ': 미지는 늘 세 번째');
+        // 종족 자유 선택: 방위(종족)마다 정확히 한 장씩, 네 종족 모두 고를 수 있다
+        const picked = a.filter((x) => !x.unknown);
+        const pickedDirs = picked.map((x) => x.form.dir);
+        assert.ok(picked.slice(2).every((x) => x.species && x.form.entry), form.id + ': 종족 선택지는 입구');
+        assert.deepEqual([...new Set(pickedDirs.slice(2))].sort(), pickedDirs.slice(2).sort(), form.id + ': 종족 선택지끼리 방위가 겹치지 않는다');
+        assert.deepEqual([...new Set(pickedDirs)].sort(), ['east', 'north', 'south', 'west'], `${form.id}: 네 종족 모두 선택 가능`);
         assert.deepEqual(ids(a), ids(b), form.id + ' rng 영향');
         assert.notEqual(a[0].form.stem, a[1].form.stem, `${form.id} ${JSON.stringify(diet)} ${alignment}: ①②가 같은 줄기`);
         assert.equal(a[0].form.stage, form.stage + 1);
@@ -360,7 +377,7 @@ test('모든 줄기에서 mimul부터 5단계까지 3택으로 끝까지 올라�
     for (let stage = 2; stage <= 5; stage++) {
       p.yoryeok = 10000;
       const c = buildChoices(p, catalog, { rng: seeded() });
-      assert.equal(c.length, 3);
+      assert.ok(c.length >= 3);
       const pick = c.slice(0, 2).find((x) => x.form.stem === stem.id) ?? c[0];
       evolve(p, pick, catalog, { rng: seeded() });
       assert.equal(p.stage, stage);

@@ -20,7 +20,7 @@ import { MaintButton } from '../game/maintButton.js';
 import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenance.js';
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
-import { ascension, createRivalState, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
+import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
@@ -53,6 +53,7 @@ export class PlayScene extends Phaser.Scene {
     this.stress = stressMode === 'abilities' ? this.setupStress(new URLSearchParams(location.search)) : null;
     this.playerStats = playerStats(this.progress);
     this.pace = this.playerStats.pace;
+    this.paceTarget = this.pace; // 단계 템포의 목표값. 판 안 진화로 바뀌면 this.pace가 서서히 따라간다(balance.easePace)
     this.player = new Player(this, this.progress.formId, this.playerStats);
     this.player.stage = this.progress.stage;
     this.player.grade = this.progress.grade;
@@ -201,18 +202,25 @@ export class PlayScene extends Phaser.Scene {
   // 진화·능력 강화 뒤에 다시 계산하는 한 곳: 능력치, 템포 곡선(pace = 단계별 tempoMultiplier)과 플레이어 이동 속도(baseMult × 강화 레벨), 생명력 최대치, 부스터 배율.
   recalcPace() {
     this.playerStats = playerStats(this.progress);
-    this.pace = this.playerStats.pace;
+    this.paceTarget = this.playerStats.pace;
+    if (this.stress || !(this.pace > 0)) this.pace = this.paceTarget; // 시험 판은 곧바로, 판 안 진화는 tick에서 서서히 따라간다
     this.boostMult = boosterMult(this.progress, FORM_BY_ID[this.progress.formId]);
     Object.assign(this.player.stats, { speed: this.playerStats.speed, areaGain: this.playerStats.areaGain });
   }
   // 판 안 진화·역진화: 형태·단계·등급을 바꾸고 크기는 시작 크기로 되돌린다.
   applyForm() {
     const p = this.player;
+    const sizeBefore = p.size;
     p.formId = this.progress.formId;
     p.stage = this.progress.stage;
     p.grade = this.progress.grade;
     p.sprite.setTexture(drawCreature(this, p.formId));
     p.setSize(CONFIG.levelUp.evolveResetSize);
+    // 진화는 '나와 적이 함께 자라서 맵이 더 커진' 것으로 보이게 한다: 카메라는 확대되지 않고 물러서고, 속도도 직전 크기 기준으로 이어 간다.
+    if (!this.stress) {
+      this.follow?.expand?.();
+      p.carryOnEvolve?.(sizeBefore);
+    }
     this.marker.destroy();
     this.nameTag.destroy();
     this.makePlayerMarker();
@@ -646,6 +654,8 @@ export class PlayScene extends Phaser.Scene {
     }
     const direction = stress ? this.stressDirection(dt) : this.joystick.direction();
     this.boostHeld = !!this.boosterButton?.held;
+    // 진화로 단계 템포가 오르면 곧바로 빨라지지 않고 서서히 따라간다(나는 가만히 있는데 맵이 늘어나 더 느려 보인다).
+    if (this.pace !== this.paceTarget) this.pace = easePace(this.pace, this.paceTarget, dt);
     const sim = dt * CONFIG.tempo * this.pace;
     const simStart = stress ? performance.now() : 0;
     this.simulate(sim, direction);

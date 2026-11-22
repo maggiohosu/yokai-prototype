@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { Enemy } from '../src/game/enemy.js';
 import { Player } from '../src/game/player.js';
-import { growthGain, rivalSizeCap, sizeSpeedMultiplier } from '../src/systems/balance.js';
+import { carryDecay, evolveCarrySize, growthGain, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier } from '../src/systems/balance.js';
+import { followPlayer, zoomFor, zoomFloor } from '../src/game/camera.js';
 import { enemySizeCap } from '../src/systems/growthCap.js';
 
 // Phaser 없이 Enemy·Player를 만드는 가짜 씬(이미지·텍스트만 흉내 낸다). 맞수·성장 둔화가 게임 객체에 제대로 연결됐는지 본다.
@@ -167,4 +168,93 @@ test('Enemy.step: 적도 크기가 클수록 느리다(배회 속도로 비교)'
   const small = speedOf(CONFIG.player.startSize), big = speedOf(150);
   assert.ok(small > 0 && big > 0);
   assert.ok(Math.abs(big / small - sizeSpeedMultiplier(150)) < 1e-6, `비 ${big / small}`);
+});
+
+// ---- 진화: 맵이 더 커져서 내가 작고 느려 보이게(사용자 지시 2026-11-23) ----
+test('carryDecay: 진화 직후 이어 가는 크기는 tauSec마다 e분의 1로 줄고, 입력이 이상해도 0 이상이다', () => {
+  const { tauSec, carry } = CONFIG.balance.evolveSlow;
+  assert.ok(Math.abs(carryDecay(100, tauSec) - 100 / Math.E) < 1e-9);
+  assert.equal(carryDecay(100, 0), 100);
+  assert.equal(carryDecay(0, 10), 0);
+  assert.equal(carryDecay(NaN, 10), 0);
+  assert.equal(carryDecay(100, -5), 100);
+  assert.ok(carryDecay(100, 1000) < 1e-6);
+  assert.equal(evolveCarrySize(100), 100 * carry);
+  assert.equal(evolveCarrySize(-3), 0);
+});
+
+test('진화 직후 플레이어는 직전 크기 기준으로 느리다가 서서히 빨라진다', () => {
+  const player = new Player(fakeScene(), 'mimul', { speed: 200 });
+  const dir = { x: 1, y: 0 };
+  const distance = (pl) => { const x = pl.x; pl.step(dir, 0.1); return pl.x - x; };
+  player.setSize(CONFIG.player.startSize);
+  const fresh = distance(player); // 진화한 적 없는 시작 크기: 감속 없음
+  player.carryOnEvolve(100); // 크기 100에서 진화, 크기는 시작 크기로 돌아온 상태
+  const right = distance(player);
+  assert.ok(Math.abs(right - 20 * sizeSpeedMultiplier(100)) < 0.02, '직후는 크기 100 기준: ' + right);
+  assert.ok(right < fresh * 0.55, '진화 직후는 느리다');
+  let last = right;
+  for (let i = 0; i < 20; i++) {
+    for (let k = 0; k < 100; k++) player.step({ x: 0, y: 0 }, 0.5); // 제자리에서 시간이 흐른다
+    const d = distance(player);
+    assert.ok(d >= last - 1e-9, '시간이 지나며 빨라진다');
+    last = d;
+  }
+  assert.ok(Math.abs(last - fresh) < 0.01, '충분히 지나면 원래 속도: ' + last);
+  assert.ok(player.carry < 1e-6);
+  // 크기가 이어 가는 값보다 커지면 크기가 기준이다
+  player.carry = 30;
+  player.setSize(60);
+  assert.ok(Math.abs(distance(player) - 20 * sizeSpeedMultiplier(60)) < 0.02);
+});
+
+test('followPlayer.expand: 진화로 크기가 돌아가도 카메라는 확대되지 않고 물러선 채 머물다가, 자라서 따라잡으면 풀린다', () => {
+  globalThis.window = { devicePixelRatio: 1 };
+  try {
+    const camera = {
+      zoom: 1, width: 1264, height: 625,
+      setBounds() { return camera; }, setZoom(z) { camera.zoom = z; return camera; },
+      centerOn() { return camera; }, startFollow() { return camera; },
+    };
+    const clock = { now: 0 };
+    const scene = { cameras: { main: camera }, time: clock };
+    const player = new Player(fakeScene(), 'mimul', {});
+    player.stage = 1;
+    player.setSize(100);
+    const follow = followPlayer(scene, player);
+    const run = (seconds) => { for (let t = 0; t < seconds; t += 1 / 60) { clock.now += 1000 / 60; follow(1 / 60); } };
+    run(2);
+    const before = camera.zoom;
+    assert.ok(Math.abs(before - zoomFor(100, 1264, 625, 1)) < 1e-6);
+    // 진화: 단계가 오르고 크기가 시작 크기로 돌아간다 → 예전에는 여기서 배율이 약 3배로 커졌다(맵이 작아 보임)
+    player.stage = 2;
+    player.setSize(CONFIG.player.startSize);
+    follow.expand();
+    const natural = zoomFor(CONFIG.player.startSize, 1264, 625, 2);
+    assert.ok(natural > before * 1.5, '자연 배율은 크게 올라간다(이전 규칙이면 여기로 확대): ' + natural + ' vs ' + before);
+    let maxZoom = camera.zoom;
+    for (let t = 0; t < 4; t += 1 / 60) { clock.now += 1000 / 60; follow(1 / 60); maxZoom = Math.max(maxZoom, camera.zoom); }
+    assert.ok(maxZoom <= before + 1e-9, '진화하는 동안 확대되지 않는다');
+    const cap = Math.max(zoomFloor(1264, 625, 2), before * CONFIG.balance.view.evolveZoom);
+    assert.ok(Math.abs(camera.zoom - cap) < 1e-3, `물러선 채 머문다: ${camera.zoom} ≈ ${cap}`);
+    assert.ok(camera.zoom < before, '진화 전보다 멀리서 본다');
+    // 내가 충분히 자라서 크기 기준 배율이 cap 아래로 내려가면 평소처럼 따라간다
+    player.setSize(100);
+    run(3);
+    assert.ok(Math.abs(camera.zoom - zoomFor(100, 1264, 625, 2)) < 1e-3, '자라면 평소처럼 따라간다');
+    // 풀린 뒤 크기가 줄어도(피격 등) 예전 cap이 다시 걸리지 않는다
+    player.setSize(30);
+    run(3);
+    assert.ok(Math.abs(camera.zoom - zoomFor(30, 1264, 625, 2)) < 1e-3);
+  } finally {
+    delete globalThis.window;
+  }
+});
+
+test('stageZoom 재조정: 시작 크기에서 화면 속도(월드 속도 × 배율)가 단계마다 줄고, 시야는 월드를 넘지 않는다', () => {
+  const size = CONFIG.player.startSize;
+  const feel = (stage) => CONFIG.player.speed * CONFIG.balance.pace.baseMult * CONFIG.tempo * CONFIG.balance.pace.stageMult[stage] * zoomFor(size, 1264, 625, stage);
+  for (let stage = 2; stage <= 5; stage++) assert.ok(feel(stage) < feel(stage - 1), `stage ${stage}: ${feel(stage)} < ${feel(stage - 1)}`);
+  for (let stage = 1; stage <= 5; stage++) assert.ok(1264 / zoomFor(size, 1264, 625, stage) <= CONFIG.world.size);
+  assert.ok(stageZoomMultiplier(5) < stageZoomMultiplier(2));
 });

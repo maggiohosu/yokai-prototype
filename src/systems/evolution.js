@@ -97,6 +97,8 @@ function rank(p, cur, list, forms, useBranch) {
 // ① = C의 1위, ② = ①이 지금 줄기가 아니면 C 안의 지금 줄기 1위(줄기 유지), 지금 줄기면 C 안의 다른 줄기 1위.
 // 그래서 ①과 ②는 줄기가 항상 달라 3택은 늘 "능력을 바꿀지"를 묻는다. 지금 줄기가 없는 mimul은 ①과 다른 줄기 1위가 ②다.
 // ③ 미지 = 다음 단계 전체에서 ①·②를 뺀 나머지 중 균등 무작위(exclude에 ①②의 id를 싣는다. 실제 뽑기는 evolve가 한다).
+// ④~ 종족 자유 선택(사용자 지시 2026-11-23: 각 종족으로 더 자유롭게 변환): ①②에 없는 방위(청룡·백호·주작·현무)마다 식성과 무관하게
+// 그 방위의 입구 형태 중 점수 1위를 뒤에 더한다(species: true). 그래서 어느 종족으로든 바로 갈아탈 수 있다. ①②③의 순서와 내용은 그대로다.
 // rng는 호환용이다. 동점을 무작위로 깨지 않으므로 rng가 달라도 ①②는 같다.
 export function buildChoices(p, forms, { rng = Math.random } = {}) {
   const nextStage = p.stage + 1;
@@ -119,6 +121,14 @@ export function buildChoices(p, forms, { rng = Math.random } = {}) {
   const choices = [{ unknown: false, form: first }];
   if (second) choices.push({ unknown: false, form: second });
   choices.push({ unknown: true, exclude: choices.map((c) => c.form.id) });
+  const covered = new Set(choices.filter((c) => !c.unknown).map((c) => c.form.dir));
+  for (const dir of DIRS) {
+    if (covered.has(dir)) continue;
+    const ofDir = pool.filter((f) => f.dir === dir);
+    const entries = ofDir.filter((f) => f.entry);
+    const pick = rank(p, cur, entries.length ? entries : ofDir, forms, useBranch)[0];
+    if (pick) choices.push({ unknown: false, form: pick, species: true });
+  }
   return choices;
 }
 

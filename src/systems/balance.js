@@ -42,6 +42,27 @@ export function sizeSpeedMultiplier(size) {
   return Math.max(min, Math.pow(ref / Math.max(ref, s), exp));
 }
 
+// 진화 직후 이동 속도 기준 크기가 원래 크기로 돌아오는 속도: carry를 tauSec(시뮬레이션 초)마다 e분의 1씩 줄인다.
+export function carryDecay(carry, dtSim) {
+  const dt = Math.max(0, finite(dtSim, 0));
+  const value = Math.max(0, finite(carry, 0));
+  return value * Math.exp(-dt / cfg().evolveSlow.tauSec);
+}
+
+// 진화로 단계 템포(pace)가 바뀌면 곧바로 뛰지 않고 새 값으로 서서히 다가간다(시정수 evolveSlow.paceTauSec, 실제 초 dt).
+export function easePace(pace, target, dt) {
+  const p = finite(pace, target);
+  const t = finite(target, p);
+  const k = 1 - Math.exp(-Math.max(0, finite(dt, 0)) / cfg().evolveSlow.paceTauSec);
+  const next = p + (t - p) * k;
+  return Math.abs(t - next) < 1e-4 ? t : next;
+}
+
+// 진화할 때 이어 가는 크기(진화 직전 크기 × carry). 속도는 max(지금 크기, 이 값)로 정한다.
+export function evolveCarrySize(sizeBefore) {
+  return Math.max(0, finite(sizeBefore, 0)) * cfg().evolveSlow.carry;
+}
+
 // 단계가 오를 때마다 카메라가 한 칸 더 물러서는 배율(config balance.view.stageZoom). 1단계 1, 5단계 0.41.
 export function stageZoomMultiplier(stage) {
   const { stageZoom } = cfg().view;

@@ -5,7 +5,7 @@ import { preyValue } from '../src/systems/rules.js';
 import { zoomFor } from '../src/game/camera.js';
 import {
   ascension, createRivalState, growthDamping, growthGain, playerFeelMultiplier, playerSpeedMultiplier,
-  rivalPlan, rivalRetry, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier, tempoMultiplier, upkeep,
+  easePace, rivalPlan, rivalRetry, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier, tempoMultiplier, upkeep,
 } from '../src/systems/balance.js';
 
 const B = CONFIG.balance;
@@ -424,4 +424,27 @@ test('zoomFor(stage): 같은 크기라도 단계가 오르면 더 멀리서 보�
   // 단계가 높을수록 더 멀리까지 물러설 수 있다(한계가 같은 비율로 낮아진다)
   assert.ok(zoomFor(1e9, w, h, 5) < zoomFor(1e9, w, h, 1));
   assert.equal(zoomFor(1e9, 740, 360, 1), CONFIG.camera.minZoom);
+});
+
+test('easePace: 진화로 단계 템포가 바뀌어도 곧바로 뛰지 않고 시정수(실제 15초)로 서서히 새 값에 다가간다', () => {
+  const { paceTauSec } = B.evolveSlow;
+  const [from, to] = [tempoMultiplier(at(1)), tempoMultiplier(at(2))];
+  assert.equal(easePace(from, to, 0), from, '진화 순간에는 그대로');
+  near(easePace(from, to, paceTauSec), to + (from - to) / Math.E, 1e-9);
+  let pace = from, last = from;
+  for (let t = 0; t < 120; t += 1 / 60) {
+    pace = easePace(pace, to, 1 / 60);
+    assert.ok(pace >= last - 1e-12 && pace <= to + 1e-12, '단조 증가');
+    last = pace;
+  }
+  assert.equal(pace, to, '충분히 지나면 새 값에 닿는다');
+  // 낮아질 때도 같은 방식, 입력이 이상해도 깨지지 않는다
+  assert.ok(easePace(1, 0.5, 5) < 1 && easePace(1, 0.5, 5) > 0.5);
+  assert.equal(easePace(0.5, 0.5, 3), 0.5);
+  assert.ok(Number.isFinite(easePace(NaN, 0.6, 1)));
+  assert.equal(easePace(0.3, 0.6, NaN), 0.3);
+  // 장면은 dt가 작은 프레임을 여러 번 부르므로 한 번에 큰 dt를 주든 쪼개든 거의 같다
+  let split = from;
+  for (let i = 0; i < 100; i++) split = easePace(split, to, 0.1);
+  near(split, easePace(from, to, 10), 1e-9);
 });

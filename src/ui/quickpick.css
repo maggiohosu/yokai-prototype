@@ -11,7 +11,7 @@
   touch-action: manipulation; user-select: none; -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
-.qp-panel { display: grid; gap: 12px; width: min(560px, 100%); margin-block: auto; }
+.qp-panel { display: grid; gap: 12px; width: min(var(--qp-panel-w, 560px), 100%); margin-block: auto; }
 .qp-head {
   display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
   padding: 8px 12px; border-radius: 4px; background: var(--ink); color: var(--paper);
@@ -20,7 +20,7 @@
 .qp-wallet { color: var(--gold); font-size: 13px; }
 .qp-cards {
   display: grid; justify-content: center; gap: 8px;
-  grid-template-columns: repeat(var(--qp-count, 3), minmax(0, 176px));
+  grid-template-columns: repeat(var(--qp-cols, var(--qp-count, 3)), minmax(0, 176px));
 }
 .qp-card {
   --qp-accent: var(--ink);

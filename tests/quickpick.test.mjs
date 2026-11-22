@@ -45,12 +45,30 @@ test('요력이 모자란 카드는 뽑히지 않는다: 몸집·능력만 살 �
   }
 });
 
-test('요력이 충분하면 3장, 진화·몸집·능력이 하나씩 나온다(종류가 겹치지 않는다)', () => {
+test('진화를 살 수 있으면 진화 선택지를 모두 보여 주고(네 종족 포함) 진화하지 않을 카드 한 장을 곁들인다', () => {
   const { progress, run } = setup(5000);
   for (let seed = 1; seed <= 40; seed++) {
     const cards = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
+    const evolve = cards.filter((card) => card.kind === 'evolve');
+    const alt = cards.filter((card) => card.kind !== 'evolve');
+    assert.ok(evolve.length >= 3, '진화 선택지 3장 이상');
+    assert.equal(alt.length, 1, '진화하지 않을 카드 한 장');
+    assert.ok(['body', 'ability'].includes(alt[0].kind));
+    assert.deepEqual(kinds(cards), [...kinds(evolve), alt[0].kind], '진화 → 몸집·능력 순');
+    assert.equal(new Set(cards.map((card) => card.id)).size, cards.length, '같은 카드가 두 번 나오면 안 된다');
+    // 종족 자유 선택: 방위 네 곳을 모두 고를 수 있다
+    assert.deepEqual([...new Set(evolve.filter((card) => !card.unknown).map((card) => card.form.dir))].sort(), ['east', 'north', 'south', 'west']);
+    assert.ok(evolve.some((card) => card.unknown), '미지의 진화도 있다');
+  }
+});
+
+test('진화를 살 수 없으면 종류가 겹치지 않는 3장(몸집·능력)이 나온다', () => {
+  const { progress, run } = setup(5000, { stage: 4, formId: 'gumiho' }); // 5단계 진화 8,000
+  for (let seed = 1; seed <= 20; seed++) {
+    const cards = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
+    assert.ok(!kinds(cards).includes('evolve'));
     assert.equal(cards.length, L.quickCardCount);
-    assert.deepEqual(kinds(cards), ['evolve', 'body', 'ability']);
+    assert.deepEqual(kinds(cards), ['body', 'ability', 'ability']);
   }
 });
 
