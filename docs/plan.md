@@ -79,3 +79,11 @@
 - src/ui/LevelUpView.js: LevelUpView(progress, forms, run, { getFormImage, save, onEvolve, onBody, onAbility, onResume }).
 - src/art/creature.js: drawCreature(scene, 'mimul', { dir }) → 방위 색 미물 텍스처 키. src/art/marks.js: drawStageMark(g, actor, playerStage, t).
 - src/game/hud.js: hud.setGauge(current, target, label).
+
+## 변경 이력 3 (사용자 결정, 2026-11-23)
+- 진화 단계 3 → 5단계(4·5단계는 용·신선 쪽). 형태 약 170종(1단계 8 / 2단계 24 / 3단계 60 / 4단계 50 / 5단계 28). 산해경 원문·도감 조사(docs/research-bestiary.md) 기반.
+- 강화: 능력치 3종 유지 + 강화 성공 시 붙는 부가 옵션 약 30종(수치 효과만, 고유 기능 금지).
+- 그림: 검색 이미지는 참고만, 부품 조립식으로 새로 그림. ComfyUI + IPAdapter로 같은 그림체의 참고 시안을 뽑아 디자인 참고로 쓴다(게임에 직접 넣지 않음).
+- 판 안 성장: 요력이 기준에 닿으면 화면 가운데 카드 3장(카드 하나 = 결과 하나: 특정 형태 진화 / 몸집 ×1.2 / 능력 +1). 탭하면 바로 적용하고 게임이 이어진다. 판 안 능력 강화는 실패·퇴화 없이 확정 +1(비용은 더 높게). 확률 강화는 판 사이 허브에서만.
+- 화면: 가로(landscape) 진행. 좌하단 고정 이동 스틱(손가락이 캐릭터를 가리지 않게), 우하단 발사 버튼. 터치 방향 반응 20ms.
+- UI의 'AI 티' 제거: unslop·hallmark 기준 감사와 정리(docs/design-audit.md).

@@ -29,8 +29,8 @@ export function LevelUpView(progress, forms, run, {
 
   const identity = el('div', 'yk-identity');
   const heading = el('div');
-  heading.append(el('p', 'yk-overline', '판 안 성장 · ' + progress.stage + '단계 ' + (form?.name ?? '요괴')),
-    el('h2', 'yk-title', '성장할 때!'));
+  heading.append(el('h2', 'yk-title', '성장할 때!'),
+    el('p', 'yk-caption', (form?.name ?? '요괴') + ' ' + progress.stage + '단계'));
   identity.append(heading);
   if (form) identity.append(formImage(getFormImage, form, progress.grade));
   const wallet = el('div', 'yk-wallet');
@@ -98,7 +98,7 @@ export function LevelUpView(progress, forms, run, {
         return;
       }
       onAbility?.(stat, { ...outcome, degradeChoice: 'A' });
-      say(statNames[stat] + ' 강화가 +' + progress.enh[stat] + '이 되었어요.');
+      say(statNames[stat] + ' 강화 +' + progress.enh[stat]);
       render();
     });
   }
@@ -107,14 +107,14 @@ export function LevelUpView(progress, forms, run, {
     const card = el('article', 'yk-card yk-lv-card');
     const head = el('div', 'yk-line');
     head.append(el('h3', 'yk-stat-name', '진화'),
-      el('strong', 'yk-level yk-lv-stage', option.available ? progress.stage + '→' + (progress.stage + 1) + '단계' : '3단계'));
+      el('strong', 'yk-level yk-lv-stage', option.available ? progress.stage + ' → ' + (progress.stage + 1) + '단계' : '3단계'));
     card.append(head);
-    const action = button(option.available ? '진화하기 · 요력 ' + number(option.cost) : '최고 단계',
-      () => chooseEvolve(option), 'yk-primary');
+    const action = button(option.available ? '진화 (요력 ' + number(option.cost) + ')' : '최고 단계',
+      () => chooseEvolve(option));
     action.disabled = !option.available || progress.yoryeok < option.cost;
     card.dataset.off = String(action.disabled);
     card.append(el('p', 'yk-cost', option.available
-      ? '모습이 바뀌고 크기는 처음으로 돌아가요.' : '더 진화할 수 없어요.'), action);
+      ? '새 모습이 되면 시작 크기로 돌아가요.' : '마지막 모습에 도달했어요.'), action);
     return card;
   }
 
@@ -123,10 +123,10 @@ export function LevelUpView(progress, forms, run, {
     const head = el('div', 'yk-line');
     head.append(el('h3', 'yk-stat-name', '몸집 강화'),
       el('strong', 'yk-level yk-lv-stage', '+' + run.bodyLevel));
-    const action = button('몸집 키우기 · 요력 ' + number(option.cost), chooseBody, 'yk-primary');
+    const action = button('몸집 키우기 (요력 ' + number(option.cost) + ')', chooseBody);
     action.disabled = progress.yoryeok < option.cost;
     card.dataset.off = String(action.disabled);
-    card.append(head, el('p', 'yk-cost', '크기 ×' + option.mult + ' 확정, 이번 판만'), action);
+    card.append(head, el('p', 'yk-cost', '이번 판 크기 ' + option.mult + '배 확정'), action);
     return card;
   }
 
@@ -142,13 +142,13 @@ export function LevelUpView(progress, forms, run, {
       const odds = el('span', 'yk-lv-odds');
       for (const [key, value] of Object.entries(item.odds)) {
         const cell = el('span');
-        cell.append(el('i', '', outcomeNames[key]), el('b', '', number(value) + '%'));
+        cell.append(el('span', '', outcomeNames[key]), el('b', '', number(value) + '%'));
         odds.append(cell);
       }
       node.append(odds);
     }
-    node.setAttribute('aria-label', statNames[item.stat] + ' +' + item.level + (max ? ' 최고 레벨' : ' 강화 · 요력 ' + number(item.cost) +
-      ' · ' + Object.entries(item.odds).map(([key, value]) => outcomeNames[key] + ' ' + number(value) + '%').join(' · ')));
+    node.setAttribute('aria-label', statNames[item.stat] + ' +' + item.level + (max ? ' 최고 레벨' : ' 강화, 요력 ' + number(item.cost) +
+      ', ' + Object.entries(item.odds).map(([key, value]) => outcomeNames[key] + ' ' + number(value) + '%').join(', ')));
     return node;
   }
 
@@ -160,7 +160,7 @@ export function LevelUpView(progress, forms, run, {
     const buttons = option.stats.map(statButton);
     stats.append(...buttons);
     card.dataset.off = String(buttons.every(node => node.disabled));
-    card.append(head, el('p', 'yk-cost', '하나를 골라 도전해요. 실패하거나 퇴화할 수 있어요.'), stats);
+    card.append(head, el('p', 'yk-cost', '강화에 실패하거나 퇴화할 수 있어요.'), stats);
     return card;
   }
 

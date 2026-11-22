@@ -4,10 +4,11 @@
     <meta charset="utf-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <meta name="theme-color" content="#263e35" />
-    <title>요괴 키우기 · 미물에서 용까지</title>
+    <meta name="theme-color" content="#233e33" />
+    <title>요괴 키우기 (미물에서 용까지)</title>
+    <meta name="description" content="사방 들판에서 미물을 움직여 요괴를 먹고, 몸집을 키우고, 새로운 모습으로 진화하세요." />
     <link rel="icon" href="data:," />
     <link rel="stylesheet" href="./src/style.css" />
     <link rel="stylesheet" href="./src/ui/overlay.css" />
@@ -29,10 +30,10 @@
       <div id="phaser-host"></div>
       <section class="hud" aria-label="플레이 현황">
         <div class="identity">
-          <span class="portrait"><img id="avatar" alt="" /></span>
+          <span id="avatar-slot" class="portrait"></span>
           <div><small>1단계</small><strong>미물</strong></div>
         </div>
-        <div class="stat"><small>현재 크기</small><strong id="size">–</strong></div>
+        <div class="stat"><small>현재 크기</small><strong id="size"></strong></div>
         <div class="stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
         <div class="growth-gauge" id="growth-gauge" hidden>
           <label for="growth-meter">다음 성장까지</label>
@@ -41,15 +42,17 @@
         </div>
       </section>
       <aside class="mini" aria-label="현재 위치">
-        <div class="mini-title"><span class="compass" aria-hidden="true">✦</span> 사방 지도</div>
+        <div class="mini-title">사방 지도</div>
         <canvas id="map" aria-label="사방 구역과 플레이어의 위치"></canvas>
         <div class="location"><span id="region-seal"></span><span id="area"></span></div>
       </aside>
       <div class="help">
-        <span class="keys"
-          ><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>또는</span><kbd>↑</kbd><kbd>←</kbd
-          ><kbd>↓</kbd><kbd>→</kbd> 이동 · 화면을 눌러도 이동</span
-        ><span class="touch-help">화면을 눌러 그 방향으로 이동 · 오른쪽 버튼 발사</span>
+        <span class="keys">
+          <span><kbd>WASD</kbd> 또는 방향키로 이동</span>
+          <span>누른 쪽으로 이동</span>
+          <span><kbd>스페이스</kbd> 발사</span>
+        </span>
+        <span class="touch-help">들판을 누른 쪽으로 이동</span>
       </div>
     </main>
     <main id="gallery" hidden>
@@ -64,11 +67,15 @@
     </main>
     <div id="joystick" aria-hidden="true" hidden><i></i></div>
     <div id="loading" role="status">들판을 펼치는 중…</div>
-    <section id="result" role="dialog" aria-modal="true" aria-labelledby="end-title" hidden>
+    <noscript><div class="script-required">들판을 열려면 브라우저에서 JavaScript를 켜 주세요.</div></noscript>
+    <dialog id="result" aria-labelledby="end-title" hidden>
       <div class="result-paper">
-        <span class="result-stamp" aria-hidden="true">終</span>
-        <h2 id="end-title">판 종료</h2>
+        <div class="result-heading">
+          <span class="result-stamp" aria-hidden="true">終</span>
+          <h2 id="end-title">판 종료</h2>
+        </div>
         <p id="killer"></p>
+        <p id="run-reward" class="run-reward" hidden></p>
         <dl>
           <div>
             <dt>먹은 수</dt>
@@ -79,11 +86,11 @@
             <dd id="final-size"></dd>
           </div>
         </dl>
-        <button id="restart" type="button">다음 판 시작 <span aria-hidden="true">→</span></button>
-        <button id="hub" type="button">강화·진화</button>
+        <button id="restart" type="button" autofocus>다음 판 시작</button>
+        <button id="hub" type="button">강화와 진화</button>
         <a href="./index.html?gallery=1">요괴 도감</a>
       </div>
-    </section>
+    </dialog>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.90.0/dist/phaser.min.js"></script>
     <script type="module" src="./src/main.js"></script>
   </body>

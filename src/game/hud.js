@@ -3,9 +3,16 @@ import { regionAt } from './world.js';
 
 const byId = (id) => document.getElementById(id);
 const number = (size) => Number(size.toFixed(1)).toString();
-const miniColors = { north: '#bbcdd1', east: '#b8d7bd', south: '#e8b8a0', west: '#e8d9b5' };
+function mapPalette() {
+  const theme = getComputedStyle(document.documentElement);
+  const token = name => theme.getPropertyValue('--' + name).trim();
+  return {
+    north: token('map-north'), east: token('map-east'), south: token('map-south'), west: token('map-west'),
+    grid: token('map-grid'), view: token('map-view'), ink: token('ink'), paper: token('paper'), serif: token('serif'),
+  };
+}
 
-function drawMap(ctx, player, view) {
+function drawMap(ctx, player, view, palette) {
   const s = ctx.canvas.width,
     m = s / 2,
     scale = s / CONFIG.world.size;
@@ -16,14 +23,14 @@ function drawMap(ctx, player, view) {
     south: [s, s, 0, s],
     west: [0, s, 0, 0],
   })) {
-    ctx.fillStyle = miniColors[dir];
+    ctx.fillStyle = palette[dir];
     ctx.beginPath();
     ctx.moveTo(m, m);
     ctx.lineTo(vertices[0], vertices[1]);
     ctx.lineTo(vertices[2], vertices[3]);
     ctx.fill();
   }
-  ctx.strokeStyle = '#526d5840';
+  ctx.strokeStyle = palette.grid;
   ctx.lineWidth = 1;
   for (let i = 1; i < 8; i++) {
     const v = (s * i) / 8;
@@ -34,8 +41,8 @@ function drawMap(ctx, player, view) {
     ctx.lineTo(s, v);
     ctx.stroke();
   }
-  ctx.fillStyle = '#304f49';
-  ctx.font = 'bold ' + Math.round(s * 0.12) + 'px serif';
+  ctx.fillStyle = palette.ink;
+  ctx.font = 'bold ' + Math.round(s * 0.12) + 'px ' + palette.serif;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   for (const [label, x, y] of [
@@ -45,20 +52,24 @@ function drawMap(ctx, player, view) {
     ['西', 0.13, 0.5],
   ])
     ctx.fillText(label, x * s, y * s);
-  ctx.strokeStyle = '#38544f88';
+  ctx.strokeStyle = palette.view;
   ctx.lineWidth = 2;
   ctx.strokeRect(view.x * scale, view.y * scale, view.width * scale, view.height * scale);
   ctx.beginPath();
-  ctx.fillStyle = '#284638';
+  ctx.fillStyle = palette.ink;
   ctx.arc(player.x * scale, player.y * scale, s * 0.035, 0, Math.PI * 2);
   ctx.fill();
-  ctx.strokeStyle = '#fff9e5';
+  ctx.strokeStyle = palette.paper;
   ctx.lineWidth = 3;
   ctx.stroke();
 }
 
 export class Hud {
   constructor() {
+    const portrait = new Image();
+    portrait.id = 'avatar';
+    portrait.alt = '';
+    byId('avatar-slot').replaceChildren(portrait);
     this.size = byId('size');
     this.eaten = byId('eaten');
     this.area = byId('area');
@@ -70,7 +81,9 @@ export class Hud {
     this.map = byId('map');
     this.map.width = this.map.height = CONFIG.render.mapPixels;
     this.ctx = this.map.getContext('2d');
+    this.palette = mapPalette();
     this.result = byId('result');
+    this.result.oncancel = event => event.preventDefault();
     this.result.hidden = true;
     this.lastSize = '';
     this.lastEaten = -1;
@@ -106,18 +119,24 @@ export class Hud {
       this.area.textContent = REGIONS[region].land;
       byId('region-seal').textContent = { east: '東', west: '西', south: '南', north: '北' }[region];
     }
-    drawMap(this.ctx, player, view);
+    drawMap(this.ctx, player, view, this.palette);
   }
   end(player, killer, { onRestart, onHub } = {}, run = null) {
     byId('final-eaten').textContent = player.eaten;
     byId('final-size').textContent = number(player.maxSize);
-    byId('killer').textContent = (killer.message ?? killer.name + '에게 먹혔습니다.') + (run ? ' 요력 +' + number(run.yoryeok) + (run.drops ? ' · 여의주 ' + run.drops + '개 획득' : '') : '');
+    byId('killer').textContent = killer.message ?? killer.name + '에게 먹혔습니다.';
+    const reward = byId('run-reward');
+    reward.hidden = !run;
+    reward.textContent = run ? '획득한 요력 ' + number(run.yoryeok) + (run.drops ? ', 여의주 ' + run.drops + '개' : '') : '';
     this.result.hidden = false;
+    this.result.showModal();
     const button = byId('restart'),
       hub = byId('hub');
     const once = (el, fn) => {
       el.onclick = () => {
         button.onclick = hub.onclick = null;
+        this.result.close();
+        this.result.hidden = true;
         fn?.();
       };
     };

@@ -15,17 +15,17 @@ export const statNames = { growth: '크기 성장', speed: '이동 속도', sign
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
 
 export function attemptText(attempt) {
-  if (attempt.protectedUsed) return '보호권 1장 사용 · +' + attempt.from + ' 유지';
-  if (attempt.needsChoice) return '퇴화 · 방식 선택';
-  if (attempt.from === attempt.to) return '실패 · +' + attempt.to + ' 유지';
-  return outcomeNames[attempt.result] + ' · +' + attempt.from + ' → +' + attempt.to;
+  if (attempt.protectedUsed) return '보호권 1장으로 +' + attempt.from + ' 유지';
+  if (attempt.needsChoice) return '퇴화 방식을 고르세요';
+  if (attempt.from === attempt.to) return '실패, +' + attempt.to + ' 유지';
+  return outcomeNames[attempt.result] + ', +' + attempt.from + '에서 +' + attempt.to + '로';
 }
 
 function stopText(reason, progress, stat) {
   if (reason === 'max') {
     if (progress.enh[stat] === ENHANCE.success.length) return '최고 레벨 도달';
-    if (ENHANCE.singleAttemptGrades.includes(progress.grade)) return progress.grade + '등급은 한 번씩 강화해요.';
-    return '연속 시도 한도에 도달했어요.';
+    if (ENHANCE.singleAttemptGrades.includes(progress.grade)) return progress.grade + '등급은 한 번씩 강화할 수 있어요';
+    return '연속 강화 한도 도달';
   }
   return { target: '목표 도달', gold: '요력 부족', great: '대성공으로 중단', degrade: '퇴화로 중단' }[reason];
 }
@@ -46,13 +46,13 @@ export function degradeDialog(parent, progress, stat, onChoice) {
     modal.remove();
     onChoice(choice);
   };
-  const b = button('B. 강화 유지하고 역진화', () => select('B'));
+  const b = button('강화 유지하고 역진화', () => select('B'));
   b.disabled = progress.stage <= 1;
   const from = progress.enh[stat];
-  modal.append(el('p', 'yk-overline', statNames[stat] + ' +' + from),
-    el('h2', 'yk-section-title', '퇴화 방식을 고르세요'),
-    el('p', 'yk-intro', '강화를 1 낮추거나, 지금의 강화를 지키고 이전 진화 단계로 돌아갈 수 있어요.'),
-    button('A. 강화 낮추기 · +' + from + ' → +' + (from - 1), () => select('A'), 'yk-primary'), b);
+  modal.append(el('h2', 'yk-section-title', '퇴화 선택'),
+    el('p', 'yk-caption', statNames[stat] + ' +' + from),
+    el('p', 'yk-intro', '강화를 한 칸 낮추거나 이전 모습으로 돌아갈 수 있어요.'),
+    button('강화를 +' + (from - 1) + '로 낮추기', () => select('A'), 'yk-primary'), b);
   if (b.disabled) modal.append(el('p', 'yk-hint', '1단계에서는 역진화할 수 없어요.'));
   parent.append(modal);
   modal.showModal();
@@ -63,8 +63,8 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   const form = forms.find(item => item.id === progress.formId);
   const identity = el('div', 'yk-identity');
   const heading = el('div');
-  heading.append(el('p', 'yk-overline', '판 사이 정비 · ' + progress.stage + '단계'),
-    el('h2', 'yk-title', (form?.name ?? '요괴') + ' · ' + progress.grade + '등급'));
+  heading.append(el('h2', 'yk-title', (form?.name ?? '요괴') + ' 정비'),
+    el('p', 'yk-caption', progress.stage + '단계 ' + progress.grade + '등급'));
   identity.append(heading);
   if (form) identity.append(formImage(getFormImage, form, progress.grade));
   const wallet = el('div', 'yk-wallet');
@@ -128,7 +128,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   function commit(message, tone = '') {
     save(progress);
     clearFeedback();
-    // 결과가 정해진 뒤 그 결과의 색으로 짧게 튀어 오른다(모션: Opus)
+    // 계산이 끝난 결과만 알림에 표시한다.
     setStatus(message, tone);
     status.classList.remove('yk-flash');
     void status.offsetWidth;
@@ -144,7 +144,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         requestEvolution();
       } else {
         save(progress);
-        setStatus(statNames[stat] + ' 강화가 +' + progress.enh[stat] + '이 되었어요.');
+        setStatus(statNames[stat] + ' 강화 +' + progress.enh[stat]);
         render();
       }
     });
@@ -177,7 +177,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         window.setTimeout(showNext, 80);
       } else {
         playingLog = false;
-        setStatus(statNames[stat] + ' ' + attempts.length + '회 · ' + stopText(reason, progress, stat), autoTone[reason] ?? '');
+        setStatus(statNames[stat] + ' ' + attempts.length + '회, ' + stopText(reason, progress, stat), autoTone[reason] ?? '');
         render();
         askDegrade();
       }
@@ -193,14 +193,14 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     head.append(el('h3', 'yk-stat-name', statNames[stat]), el('strong', 'yk-level', '+' + level));
     card.append(head);
     if (!Number.isFinite(cost)) {
-      card.append(el('p', 'yk-hint', '최고 레벨이에요.'));
+      card.append(el('p', 'yk-hint', '최고 레벨'));
       return card;
     }
     const odds = getEnhanceOdds(progress, stat);
-    card.append(el('p', 'yk-cost', '다음 +' + (level + 1) + ' · 요력 ' + number(cost)),
+    card.append(el('p', 'yk-cost', '다음 +' + (level + 1) + '에 필요한 요력 ' + number(cost)),
       OddsTable('다음 ' + statNames[stat] + ' 강화 확률', Object.entries(odds).map(([key, value]) => [outcomeNames[key], value])));
     const controls = el('div', 'yk-enhance-actions');
-    const single = button('강화', () => enhance(stat), 'yk-primary');
+    const single = button('강화', () => enhance(stat));
     const picker = el('select', 'yk-select');
     picker.setAttribute('aria-label', statNames[stat] + ' 연속 강화 목표');
     const target = Math.max(level + 1, targets[stat] ?? level + 1);
@@ -213,7 +213,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const auto = button('연속 강화', () => runAuto(stat, Number(picker.value)));
     function updateTarget() {
       targets[stat] = Number(picker.value);
-      auto.setAttribute('aria-label', statNames[stat] + ' 연속 강화 · 목표 +' + picker.value);
+      auto.setAttribute('aria-label', statNames[stat] + ' 목표 +' + picker.value + '까지 연속 강화');
     }
     picker.addEventListener('change', updateTarget);
     updateTarget();
@@ -234,34 +234,37 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     let tone = attemptTone[result.result] ?? (result.result === 'break' ? 'bad' : '');
     if (result.result === 'success') {
       recordTreasureSuccess(progress);
-      message = '강화 성공 · ' + treasureTitle(result.to);
+      message = '강화 성공, ' + treasureTitle(result.to);
     } else if (result.result === 'break') {
       progress.treasure = null;
       progress.shards += result.shards;
       message = '여의주가 깨졌어요. 파편 +' + result.shards;
     } else {
-      message = '강화 실패 · +' + result.from + ' 유지';
+      message = '강화 실패, +' + result.from + ' 유지';
     }
     commit(message, tone);
   }
   function sellButton(slot, item) {
-    return button('판매 · ' + number(sellPrice(item.level)) + ' 요력', () => {
+    return button('판매 (요력 ' + number(sellPrice(item.level)) + ')', () => {
       const price = sell(progress, slot);
-      if (price) commit(treasureTitle(item.level) + ' 판매 · 요력 +' + number(price), 'good');
+      if (price) commit(treasureTitle(item.level) + ' 판매로 요력 +' + number(price), 'good');
     });
   }
   function statLine(level) {
     const a = treasureStats(level);
     const b = level < TREASURE.success.length ? treasureStats(level + 1) : null;
-    const arrow = (x, y) => (b && x !== y ? x + '→' + y : x);
+    const arrow = (x, y) => (b && x !== y ? x + ' → ' + y : x);
     const m = (v) => '×' + v.toFixed(2);
     const homing = (s) => (s.homing > 0 ? '있음' : '없음');
-    return [
-      '방향 ' + arrow(a.ways, b?.ways) + ' · 방향당 ' + arrow(a.perWay, b?.perWay) + '개',
-      '속도 ' + arrow(m(a.speedMult), b && m(b.speedMult)),
-      '파워 ' + arrow(m(a.damage / TREASURE.damageBase), b && m(b.damage / TREASURE.damageBase)),
-      '유도 ' + arrow(homing(a), b && homing(b)),
-    ].join(' · ');
+    const stats = el('dl', 'yk-attributes');
+    for (const [label, value] of [
+      ['발사 방향', arrow(a.ways, b?.ways)],
+      ['방향당 구슬', arrow(a.perWay, b?.perWay) + '개'],
+      ['속도', arrow(m(a.speedMult), b && m(b.speedMult))],
+      ['파워', arrow(m(a.damage / TREASURE.damageBase), b && m(b.damage / TREASURE.damageBase))],
+      ['유도', arrow(homing(a), b && homing(b))],
+    ]) stats.append(el('dt', '', label), el('dd', '', value));
+    return stats;
   }
 
   function treasurePanel() {
@@ -271,16 +274,16 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     if (item) {
       const title = el('h3', 'yk-orb-title', treasureTitle(item.level));
       equipped.append(title);
-      equipped.append(el('p', 'yk-cost', statLine(item.level)));
+      equipped.append(statLine(item.level));
       const cost = upgradeCost(item.level);
       const controls = el('div', 'yk-actions');
       if (Number.isFinite(cost)) {
-        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + ' · 요력 ' + number(cost)), upgradeOdds(item.level));
-        const up = button('강화', upgrade, 'yk-primary');
+        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOdds(item.level));
+        const up = button('강화', upgrade);
         up.disabled = cost > progress.yoryeok;
         controls.append(up);
       } else {
-        equipped.append(el('p', 'yk-hint', '최고 레벨이에요.'));
+        equipped.append(el('p', 'yk-hint', '최고 레벨'));
       }
       controls.append(sellButton('equipped', item));
       equipped.append(controls);
@@ -288,7 +291,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       equipped.append(el('p', 'yk-intro', '장착한 여의주가 없어요.'));
     }
     const inventory = el('section', 'yk-card');
-    inventory.append(el('h3', 'yk-stat-name', '보관함 · ' + progress.inventory.length + '/' + TREASURE.inventorySlots));
+    inventory.append(el('h3', 'yk-stat-name', '보관함 ' + progress.inventory.length + '/' + TREASURE.inventorySlots));
     const slots = el('ol', 'yk-slots');
     for (let i = 0; i < TREASURE.inventorySlots; i++) {
       const stored = progress.inventory[i];
@@ -310,11 +313,11 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const count = Math.floor(progress.shards / TREASURE.shardsPerProtect);
     const exchange = button(count ? '보호권 ' + count + '장으로 교환' : '보호권 교환', () => {
       const gained = exchangeShards(progress);
-      if (gained) commit('파편 교환 · 보호권 +' + gained, 'good');
+      if (gained) commit('보호권 ' + gained + '장 교환', 'good');
     });
     exchange.disabled = !count;
     shards.append(exchange);
-    body.append(equipped, inventory, shards, disclosure('여의주 획득 확률 보기',
+    body.append(equipped, inventory, shards, disclosure('여의주 획득 확률',
       OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
         [['직접 먹기', dropChance() * 100], ['여의주로 처치', dropChance({ killedByTreasure: true }) * 100]])));
   }
@@ -338,7 +341,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const cost = evolutionCost(progress.stage + 1);
     evolveButton.disabled = playingLog || (!progress.pendingDevolve && !canEvolve(progress));
     evolveButton.textContent = progress.pendingDevolve ? '다시 진화하기' :
-      Number.isFinite(cost) ? '진화하기 · ' + number(cost) + ' 요력' : '최고 진화 단계';
+      Number.isFinite(cost) ? '진화 (요력 ' + number(cost) + ')' : '최고 진화 단계';
   }
   render();
   askDegrade();

@@ -26,7 +26,7 @@ function affinity(progress) {
     const amount = progress.diet[dir];
     const row = el('div');
     const label = el('div', 'yk-line');
-    label.append(el('span', '', region.name + ' · ' + region.color), el('strong', '', number(amount)));
+    label.append(el('span', '', region.name + ' (' + region.color + ')'), el('strong', '', number(amount)));
     const track = el('div', 'yk-track');
     const fill = el('span');
     fill.dataset.dir = dir;
@@ -55,7 +55,7 @@ function affinity(progress) {
 
 function gradeTable(progress) {
   const sum = Object.values(progress.enh).reduce((total, value) => total + value, 0);
-  return disclosure('등급 확률표 보기', OddsTable('본체 강화를 반영한 등급 확률', Object.entries(gradeOdds(sum))));
+  return disclosure('등급별 확률', OddsTable('본체 강화를 반영한 등급 확률', Object.entries(gradeOdds(sum))));
 }
 
 export function EvolveView(progress, forms, { onDone, getFormImage, save = saveProgress } = {}) {
@@ -79,10 +79,10 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
   dialog.addEventListener('cancel', event => { event.preventDefault(); finish(); });
   const next = progress.stage + 1;
   header.append(
-    el('p', 'yk-overline', progress.stage + '단계 · ' + (current?.name ?? '요괴') + ' · ' + progress.grade + '등급'),
     el('h2', 'yk-title', choices.length ? next + '단계 진화' : '마지막 진화 단계'),
+    el('p', 'yk-caption', (current?.name ?? '요괴') + ' ' + progress.stage + '단계 ' + progress.grade + '등급'),
   );
-  if (previous) body.append(el('p', 'yk-notice', '역진화로 ' + previous.form.name + '의 모습으로 돌아왔어요.'));
+  if (previous) body.append(el('p', 'yk-notice', previous.form.name + '의 모습으로 돌아왔어요.'));
   const budget = el('div', 'yk-wallet');
   budget.append(el('span', '', '보유 요력 ' + number(progress.yoryeok)),
     el('strong', '', choices.length ? '진화 비용 ' + number(cost) : '최고 단계'));
@@ -93,13 +93,13 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
     result = evolve(progress, choice, catalog);
     save(progress);
     const { form, grade, firstDiscovery } = result;
-    header.replaceChildren(el('p', 'yk-overline', form.stage + '단계'), el('h2', 'yk-title', '진화 완료'));
+    header.replaceChildren(el('h2', 'yk-title', '진화 완료'), el('p', 'yk-caption', form.stage + '단계'));
     const reveal = el('section', 'yk-reveal');
     const art = formImage(getFormImage, form, grade);
     art.dataset.grade = grade;
     reveal.append(art, el('strong', 'yk-grade-label', grade + '등급'),
       el('h3', 'yk-form-name', form.name), el('p', 'yk-description', form.desc));
-    if (firstDiscovery) reveal.append(el('p', 'yk-discovery', '최초 발견 · 보호권 +1'));
+    if (firstDiscovery) reveal.append(el('p', 'yk-discovery', '첫 발견으로 보호권 1장 획득'));
     body.replaceChildren(reveal, gradeTable(progress));
     body.scrollTop = 0;
     const done = button('확인', finish, 'yk-primary');
@@ -115,7 +115,7 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
       card.disabled = !canEvolve(progress);
       if (choice.unknown) {
         card.classList.add('yk-mystery');
-        card.append(el('span', 'yk-portrait', '???'), el('strong', '', '미지의 진화'));
+        card.append(el('span', 'yk-portrait', '?'), el('strong', '', '미지의 진화'));
       } else {
         // 등급은 선택 이후에 정해지므로 미리보기에는 테두리가 없는 F를 쓴다.
         card.append(formImage(getFormImage, choice.form, 'F'), el('strong', '', choice.form.name));
@@ -125,9 +125,9 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
     }
     body.append(cards);
     const pool = catalog.filter(form => form.stage === next);
-    body.append(disclosure('미지의 진화 확률 보기 · 각각 1/' + pool.length,
+    body.append(disclosure('미지의 진화 확률 (각 1/' + pool.length + ')',
       OddsTable('각 모습이 나올 확률', pool.map(form => [form.name, 100 / pool.length]))));
-    if (!canEvolve(progress)) footer.append(el('p', 'yk-hint', '요력 ' + number(cost - progress.yoryeok) + '이 더 필요해요.'));
+    if (!canEvolve(progress)) footer.append(el('p', 'yk-hint', '요력 ' + number(cost - progress.yoryeok) + ' 부족'));
   }
   body.append(gradeTable(progress));
   footer.append(button('돌아가기', finish));
