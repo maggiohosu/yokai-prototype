@@ -47,7 +47,7 @@ export class Enemy extends Actor {
     this.special = false;
     this.label = this.scene.add
       .text(0, 0, CONFIG.balance.rival.label, {
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: CONFIG.font.family,
         fontStyle: 'bold',
         fontSize: '11px',
         color: '#fff9df',

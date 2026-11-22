@@ -81,8 +81,17 @@ function showTitle() {
   return import('./ui/TitleView.js').then(({ TitleView }) => new Promise(resolve => TitleView({ onStart: resolve })));
 }
 
+// Phaser 글자는 만들 때 한 번 그려지므로 글꼴이 오기 전에 만들면 대체 글꼴로 굳는다. 프리텐다드가 올 때까지 잠깐(최대 timeoutMs) 기다린다.
+// 못 받아도(오프라인 등) 게임은 대체 글꼴로 그대로 시작한다.
+function fontsReady() {
+  const { load, loadText, timeoutMs } = CONFIG.font;
+  const request = document.fonts?.load ? document.fonts.load(load, loadText).catch(() => {}) : Promise.resolve();
+  return Promise.race([request, new Promise((resolve) => setTimeout(resolve, timeoutMs))]);
+}
+
 async function start() {
   if (!window.Phaser) throw new Error('Phaser CDN');
+  const fonts = fontsReady();
   // 시작 화면이 떠 있는 동안 장면 코드를 미리 불러온다.
   const sceneModule = gallery ? import('./scenes/GalleryScene.js') : import('./scenes/PlayScene.js');
   sceneModule.catch(() => {});
@@ -93,6 +102,7 @@ async function start() {
   updateDensity();
   window.addEventListener('resize', updateDensity);
   const Scene = gallery ? (await sceneModule).GalleryScene : (await sceneModule).PlayScene;
+  await fonts;
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'phaser-host',

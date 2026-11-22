@@ -1,5 +1,6 @@
 import { CONFIG, REGIONS } from '../config.js';
 import { canEat } from '../systems/rules.js';
+import { worldFor } from '../systems/worldScale.js';
 
 const { world } = CONFIG;
 const directions = Object.keys(REGIONS);
@@ -148,10 +149,18 @@ function mapPattern(scene) {
   return key;
 }
 
+// 월드 바닥을 그린다. 돌려주는 { destroy }로 지우고 다시 그릴 수 있다(진화로 맵이 커질 때).
+// 바닥 무늬는 tileSprite 하나라 월드가 커져도 가볍다. 경계선은 월드 배율만큼 굵게 그려 멀리서도 보이게 한다.
 export function drawWorld(scene) {
   const s = world.size,
     m = s / 2;
-  const ground = scene.add.graphics().setDepth(-3);
+  const made = [];
+  const track = (object) => {
+    made.push(object);
+    return object;
+  };
+  const widen = Math.max(1, s / worldFor(1).size);
+  const ground = track(scene.add.graphics().setDepth(-3));
   for (const [dir, points] of Object.entries({
     north: [0, 0, s, 0, m, m],
     east: [s, 0, s, s, m, m],
@@ -159,18 +168,12 @@ export function drawWorld(scene) {
     west: [0, 0, 0, s, m, m],
   }))
     ground.fillStyle(REGIONS[dir].floor).fillTriangle(...points);
-  const tile = world.patternTile,
-    key = mapPattern(scene);
-  for (let x = 0; x < s; x += tile)
-    for (let y = 0; y < s; y += tile) {
-      const cell = scene.add.image(x, y, key).setOrigin(0).setDepth(-2);
-      if (x + tile > s || y + tile > s) cell.setCrop(0, 0, Math.min(tile, s - x), Math.min(tile, s - y));
-    }
-  ground.lineStyle(world.boundaryWidth, 0x697d69).strokeRect(0, 0, s, s);
-  ground.lineStyle(2, 0xfff7d7).strokeRect(9, 9, s - 18, s - 18);
+  track(scene.add.tileSprite(0, 0, s, s, mapPattern(scene)).setOrigin(0).setDepth(-2));
+  ground.lineStyle(world.boundaryWidth * widen, 0x697d69).strokeRect(0, 0, s, s);
+  ground.lineStyle(2 * widen, 0xfff7d7).strokeRect(9 * widen, 9 * widen, s - 18 * widen, s - 18 * widen);
 
   // 시작 지점의 방위반은 움직이는 동안에도 방향과 거리를 가늠할 수 있는 지형지물이다.
-  const dial = scene.add.graphics().setDepth(-1).setPosition(m, m);
+  const dial = track(scene.add.graphics().setDepth(-1).setPosition(m, m));
   for (const r of [91, 98]) dial.lineStyle(1.3, 0x728575, 0.28).strokeCircle(0, 0, r);
   for (let i = 0; i < 32; i++) {
     const a = (i * Math.PI) / 16,
@@ -185,10 +188,18 @@ export function drawWorld(scene) {
     [0, 114, '南'],
     [-114, 0, '西'],
   ]) {
-    scene.add
-      .text(m + x, m + y, char, { fontFamily: 'serif', fontSize: '15px', color: '#6d8170', resolution: 2 })
-      .setOrigin(0.5)
-      .setAlpha(0.65)
-      .setDepth(-1);
+    track(
+      scene.add
+        .text(m + x, m + y, char, { fontFamily: CONFIG.font.family, fontSize: '15px', color: '#6d8170', resolution: 2 })
+        .setOrigin(0.5)
+        .setAlpha(0.65)
+        .setDepth(-1),
+    );
   }
+  return {
+    destroy() {
+      for (const object of made) object.destroy();
+      made.length = 0;
+    },
+  };
 }

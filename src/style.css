@@ -1,3 +1,10 @@
+/* 글꼴: 프리텐다드(눈누 694번, SIL OFL 1.1). 가변 폰트라 굵기 45~930을 한 파일로 쓴다. 한자는 시스템 글꼴로 대체된다. */
+@font-face {
+  font-family: 'PretendardVariable';
+  src: url('https://cdn.jsdelivr.net/gh/Project-Noonnu/2611030106@font-variable-694/variable-694/PretendardVariable.woff2') format('woff2');
+  font-weight: 45 930;
+  font-display: swap;
+}
 /* Hallmark · built: the project · redesign: polish · shape: App screen · genre: playful · theme: 사방 들판 · signature: 방위 인장 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S5 R4 V3 · weakest: V, 표본과 강화 수치를 각각 도감 면과 장부의 행에 배치했다. */
 :root {
@@ -25,8 +32,9 @@
   --west: #a08a58;
   --south: #b2624f;
   --north: #526773;
-  --serif: 'Batang', 'AppleMyungjo', 'Nanum Myeongjo', Georgia, serif;
-  --sans: 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+  --font: 'PretendardVariable', 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  --serif: var(--font); /* 제목용 이름은 그대로 두고 글꼴만 하나로 통일했다 */
+  --sans: var(--font);
   font-family: var(--sans);
   font-variant-numeric: tabular-nums;
   color: var(--ink);

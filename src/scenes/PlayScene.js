@@ -21,6 +21,7 @@ import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenanc
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
 import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
+import { applyWorldScale } from '../systems/worldScale.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
@@ -37,7 +38,6 @@ export class PlayScene extends Phaser.Scene {
   create(data = {}) {
     // 형태 171종을 부팅 때 모두 굽지 않는다(휴대폰 메모리). 필요할 때 drawCreature가 한 번 굽는다.
     for (const dir of Object.keys(REGIONS)) drawCreature(this, 'mimul', { dir });
-    drawWorld(this);
     this.fx = new Fx(this);
     const debug = new URLSearchParams(location.search).get('debug');
     const preview = debug === 'hub' || debug === 'evolve';
@@ -51,6 +51,9 @@ export class PlayScene extends Phaser.Scene {
     if (!sandbox) this.registry.set('progress', this.progress);
     this.simTime = 0; // 시뮬레이션 시계(초). 상태이상 타이머가 이 시계로 돈다 — 판 안 카드로 멈춘 동안에는 서 있다.
     this.stress = stressMode === 'abilities' ? this.setupStress(new URLSearchParams(location.search)) : null;
+    // 단계마다 맵이 커진다(balance.map): 판을 그 단계의 월드 크기·적 수로 열고 바닥을 그린다. 시험 판(?stress)은 1단계 월드로 고정한다.
+    applyWorldScale(this.stress ? 1 : this.progress.stage);
+    this.worldView = drawWorld(this);
     this.playerStats = playerStats(this.progress);
     this.pace = this.playerStats.pace;
     this.paceTarget = this.pace; // 단계 템포의 목표값. 판 안 진화로 바뀌면 this.pace가 서서히 따라간다(balance.easePace)
@@ -216,8 +219,9 @@ export class PlayScene extends Phaser.Scene {
     p.grade = this.progress.grade;
     p.sprite.setTexture(drawCreature(this, p.formId));
     p.setSize(CONFIG.levelUp.evolveResetSize);
-    // 진화는 '나와 적이 함께 자라서 맵이 더 커진' 것으로 보이게 한다: 카메라는 확대되지 않고 물러서고, 속도도 직전 크기 기준으로 이어 간다.
+    // 진화는 '나와 적이 함께 자라서 맵이 더 커진' 것으로 보이게 한다: 맵이 실제로 커지고, 카메라는 확대되지 않고 물러서고, 속도도 직전 크기 기준으로 이어 간다.
     if (!this.stress) {
+      this.growWorld();
       this.follow?.expand?.();
       p.carryOnEvolve?.(sizeBefore);
     }
@@ -226,6 +230,24 @@ export class PlayScene extends Phaser.Scene {
     this.makePlayerMarker();
     this.refreshIdentity();
     this.fx.burst(p.x, p.y, 0xfff1b8, 30, 1.6);
+  }
+  // 진화로 단계가 오르면 맵이 커진다(balance.map). 옛 월드가 새 월드의 한가운데에 놓이도록 모두 옮기고(방위 경계와 방위반은 그대로 한가운데),
+  // 바닥을 다시 그리고, 새 땅은 보충으로 채운다. 날아가던 구슬·장판은 지운다.
+  growWorld() {
+    const before = CONFIG.world.size;
+    const { size } = applyWorldScale(this.progress.stage);
+    if (size === before) return;
+    const shift = (size - before) / 2;
+    for (const actor of [this.player, ...this.enemies]) {
+      actor.sprite.x += shift;
+      actor.sprite.y += shift;
+    }
+    this.combat.clearEffects();
+    this.enemyFire.clear();
+    this.worldView?.destroy();
+    this.worldView = drawWorld(this);
+    this.follow?.rebound?.();
+    this.refillTime = 0;
   }
   // 판 안 카드·진화 화면·HUD 초상화는 도감과 같은 128px 썸네일(formId → dataURL 캐시)을 쓴다.
   formImage(formId) {
@@ -298,7 +320,7 @@ export class PlayScene extends Phaser.Scene {
     this.marker.lineStyle(glow != null ? 4 : 2.5, glow ?? 0x68854f, glow != null ? 0.95 : 0.75).strokeEllipse(0, 0, 100, 42);
     this.nameTag = this.add
       .text(0, 0, '나 · ' + FORM_BY_ID[this.progress.formId].name, {
-        fontFamily: 'system-ui, sans-serif',
+        fontFamily: CONFIG.font.family,
         fontStyle: 'bold',
         fontSize: '11px',
         color: '#fff9df',

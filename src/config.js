@@ -1,5 +1,8 @@
 // 크기와 거리는 월드 단위, 속도는 초당 월드 단위다. size는 충돌 원의 반지름이다.
 export const CONFIG = {
+  // 글꼴(사용자 지시 2026-11-23): 모든 글자를 프리텐다드로. 눈누 694번(SIL OFL 1.1, 상업적 사용·수정·재배포 가능) 가변 웹폰트를 src/style.css의 @font-face로 불러온다.
+  // 프리텐다드에는 한자가 없어서 北東南西·終 같은 한자는 뒤의 시스템 글꼴로 나온다. Phaser 글자는 이 목록을 쓴다(CSS는 style.css의 --font).
+  font: { family: "'PretendardVariable', 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif", load: "600 16px 'PretendardVariable'", loadText: '요괴 키우기 0123456789 北東南西終', timeoutMs: 3000 },
   // 게임 템포 배율(사용자 지시 2026-11-22: 3배). 이동·적 AI·발사체·쿨타임·보충에 곱한다.
   tempo: 3.9, // 사용자 지시: 3 → 3.9(1.3배, 2026-11-23)
   world: {
@@ -133,14 +136,18 @@ export const CONFIG = {
     //   배율 = (ref / max(ref, 크기))^exp, 최소 min. ref는 시작 크기(진화 직후 크기)라 그 아래에서는 1이다. 크기 150이면 약 0.43배.
     sizeSlow: { ref: 28 / 3, exp: 0.3, min: 0.25 },
     // 종족(단계)이 바뀌면 '나와 적이 함께 자라서 맵이 더 커진' 것처럼 보이게 한다(사용자 지시 2026-11-23): 단계가 오를 때마다 카메라가 한 칸 더 물러선다.
-    // stageZoom: 판을 그 단계로 시작할 때의 화면 배율 곱(시작 크기에서 화면 속도가 단계마다 줄도록 잡았다: 368 → 331 → 309 → 276 → 243 px/초, 이동 속도 레벨 0).
-    //   시야가 월드보다 넓어지지 않는 선까지만 물러선다(camera.zoomFor).
-    // 판 안 진화(크기가 시작 크기로 돌아간다)는 evolveZoom: 진화하는 순간 카메라는 확대되지 않고 직전 배율 × evolveZoom까지 물러선 채로 머문다(evolveExpandSec 동안 천천히).
-    //   내가 다시 자라서 크기 기준 배율이 그 아래로 내려가면 평소처럼 따라간다. 나는 가만히 있는데 맵이 늘어나 더 작고 더 느리게 보인다.
-    view: { stageZoom: { 1: 1, 2: 0.5, 3: 0.33, 4: 0.25, 5: 0.2 }, evolveZoom: 0.4, evolveExpandSec: 1.6, expandSmoothRate: 2.5 },
+    // stageZoom: 판을 그 단계로 시작할 때의 화면 배율 곱. 시야 너비가 1단계의 1, 1.3, 1.6, 1.9, 2.2배가 되게 잡았다.
+    //   (사용자 지시 2026-11-23: 시야가 너무 넓다 → 처음 값 [1, .5, .33, .25, .2](시야 1~5배)의 늘어나는 폭을 30%로 줄임. 시야가 월드보다 넓어지지 않는 선까지만 물러선다: camera.zoomFor)
+    // 판 안 진화(크기가 시작 크기로 돌아간다)는 evolveZoom: 진화하는 순간 카메라는 확대되지 않고 직전 배율 × evolveZoom(시야 ×1.45)까지 물러선 채로 머문다(evolveExpandSec 동안 천천히).
+    //   (처음 0.4 = 시야 ×2.5의 늘어나는 폭 +150%를 30%인 +45%로 줄임.) 내가 다시 자라서 크기 기준 배율이 그 아래로 내려가면 평소처럼 따라간다.
+    view: { stageZoom: { 1: 1, 2: 0.77, 3: 0.62, 4: 0.53, 5: 0.45 }, evolveZoom: 0.69, evolveExpandSec: 1.6, expandSmoothRate: 2.5 },
     // 진화 직후 이동 속도: 크기가 시작 크기로 돌아가도 속도는 곧바로 빨라지지 않는다. 진화 직전 크기 × carry를 기준으로 시작해 tauSec(시뮬레이션 초)마다 e분의 1씩 원래 크기 기준으로 돌아온다.
     // 단계 템포(stageMult)도 새 값으로 곧바로 뛰지 않고 paceTauSec(실제 초)의 시정수로 서서히 따라간다: 세상이 막 넓어진 직후에는 모든 것이 느리게 시작한다.
     evolveSlow: { carry: 1, tauSec: 45, paceTauSec: 15 },
+    // 단계마다 맵이 커진다(사용자 지시 2026-11-23, src/systems/worldScale.js). 월드 크기 = world.size × stageScale[단계], 적 수 = world.population × 배율^populationExp.
+    // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고 새 땅을 보충으로 채운다.
+    // 4000 → 6000 → 8000 → 10400 → 13200. 적 수 72 → 108 → 144 → 187 → 238(화면에 보이는 적이 너무 적어지지 않게 면적의 제곱근에 가깝게 늘림).
+    map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 }, populationExp: 1 },
     // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
     // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.
     // 맞수의 몸집 상한은 플레이어 × capVsPlayer(절대 상한은 enemy.growthCap.maxSize). 이름표는 label.

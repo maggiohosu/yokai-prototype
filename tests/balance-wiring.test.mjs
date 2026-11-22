@@ -238,10 +238,14 @@ test('followPlayer.expand: 진화로 크기가 돌아가도 카메라는 확대�
     const cap = Math.max(zoomFloor(1264, 625, 2), before * CONFIG.balance.view.evolveZoom);
     assert.ok(Math.abs(camera.zoom - cap) < 1e-3, `물러선 채 머문다: ${camera.zoom} ≈ ${cap}`);
     assert.ok(camera.zoom < before, '진화 전보다 멀리서 본다');
-    // 내가 충분히 자라서 크기 기준 배율이 cap 아래로 내려가면 평소처럼 따라간다
+    // 내가 충분히 자라서 크기 기준 배율이 cap 아래로 내려가면 평소처럼 따라간다(아직 cap 위인 크기에서는 cap에 머문다)
     player.setSize(100);
     run(3);
-    assert.ok(Math.abs(camera.zoom - zoomFor(100, 1264, 625, 2)) < 1e-3, '자라면 평소처럼 따라간다');
+    assert.ok(zoomFor(100, 1264, 625, 2) > cap && Math.abs(camera.zoom - cap) < 1e-3, '아직 cap 위: 그대로 머문다');
+    player.setSize(150);
+    run(3);
+    assert.ok(zoomFor(150, 1264, 625, 2) < cap);
+    assert.ok(Math.abs(camera.zoom - zoomFor(150, 1264, 625, 2)) < 1e-3, '자라면 평소처럼 따라간다');
     // 풀린 뒤 크기가 줄어도(피격 등) 예전 cap이 다시 걸리지 않는다
     player.setSize(30);
     run(3);
@@ -251,10 +255,20 @@ test('followPlayer.expand: 진화로 크기가 돌아가도 카메라는 확대�
   }
 });
 
-test('stageZoom 재조정: 시작 크기에서 화면 속도(월드 속도 × 배율)가 단계마다 줄고, 시야는 월드를 넘지 않는다', () => {
+test('단계가 바뀐 뒤 시야: 1단계의 1, 1.3, 1.6, 1.9, 2.2배(처음 값의 늘어나는 폭의 30%)이고 월드를 넘지 않는다', () => {
   const size = CONFIG.player.startSize;
-  const feel = (stage) => CONFIG.player.speed * CONFIG.balance.pace.baseMult * CONFIG.tempo * CONFIG.balance.pace.stageMult[stage] * zoomFor(size, 1264, 625, stage);
-  for (let stage = 2; stage <= 5; stage++) assert.ok(feel(stage) < feel(stage - 1), `stage ${stage}: ${feel(stage)} < ${feel(stage - 1)}`);
-  for (let stage = 1; stage <= 5; stage++) assert.ok(1264 / zoomFor(size, 1264, 625, stage) <= CONFIG.world.size);
-  assert.ok(stageZoomMultiplier(5) < stageZoomMultiplier(2));
+  const view = (stage) => 1264 / zoomFor(size, 1264, 625, stage);
+  const widths = [1, 2, 3, 4, 5].map((stage) => view(stage) / view(1));
+  [1, 1.3, 1.6, 1.9, 2.2].forEach((expected, i) => assert.ok(Math.abs(widths[i] - expected) / expected < 0.02, `stage ${i + 1}: ${widths[i]} ≈ ${expected}`));
+  // 처음 값(stageZoom 1, .5, .33, .25, .2 → 시야 1~5배)이 늘리던 폭의 30% 이하만 늘린다
+  const originalWidths = [1, 1 / 0.5, 1 / 0.33, 1 / 0.25, 1 / 0.2];
+  for (let i = 1; i < 5; i++) assert.ok(widths[i] - 1 <= 0.31 * (originalWidths[i] - 1), `stage ${i + 1}: +${((widths[i] - 1) * 100).toFixed(0)}% ≤ 30% of +${((originalWidths[i] - 1) * 100).toFixed(0)}%`);
+  for (let stage = 1; stage <= 5; stage++) assert.ok(view(stage) <= CONFIG.world.size);
+  for (let stage = 2; stage <= 5; stage++) assert.ok(stageZoomMultiplier(stage) < stageZoomMultiplier(stage - 1));
+});
+
+test('진화하는 순간 시야는 직전의 ×1.45까지만 넓어진다(처음 ×2.5의 늘어나는 폭의 30%)', () => {
+  const { evolveZoom } = CONFIG.balance.view;
+  assert.ok(Math.abs(1 / evolveZoom - 1.45) < 0.01, '시야 배율 ' + 1 / evolveZoom);
+  assert.ok(1 / evolveZoom - 1 <= 0.31 * (2.5 - 1));
 });

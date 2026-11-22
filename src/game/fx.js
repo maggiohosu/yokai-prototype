@@ -61,7 +61,7 @@ export class Fx {
     if (!t) {
       if (this.texts.length >= 8) t = this.texts.reduce((a, b) => (a.life < b.life ? a : b));
       else {
-        const obj = this.scene.add.text(0, 0, '', { fontFamily: 'system-ui, sans-serif', fontStyle: 'bold', fontSize: '15px', color, stroke: '#2b3d33', strokeThickness: 4, resolution: 2 }).setOrigin(0.5).setDepth(6);
+        const obj = this.scene.add.text(0, 0, '', { fontFamily: CONFIG.font.family, fontStyle: 'bold', fontSize: '15px', color, stroke: '#2b3d33', strokeThickness: 4, resolution: 2 }).setOrigin(0.5).setDepth(6);
         t = { obj };
         this.texts.push(t);
       }
