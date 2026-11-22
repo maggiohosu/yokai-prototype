@@ -20,7 +20,7 @@ export const CONFIG = {
     refillInterval: 0.5,
     refillBatch: 4,
   },
-  player: { startSize: 28, speed: 218 },
+  player: { startSize: 28, speed: 262 }, // 사용자 지시: 218 → 262(1.2배, 2026-11-23)
   enemy: {
     // 생성 시점 플레이어 반지름의 배수. 후반에도 맵에 들어갈 수 있는 크기로 제한한다.
     sizes: [
