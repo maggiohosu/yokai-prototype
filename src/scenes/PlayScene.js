@@ -12,6 +12,7 @@ import { followPlayer } from '../game/camera.js';
 import { Hud } from '../game/hud.js';
 import { Combat } from '../game/combat.js';
 import { FireButton } from '../game/fireButton.js';
+import { BoosterButton, boosterMult, createBooster, stepBoosterSim } from '../game/booster.js';
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
@@ -88,6 +89,14 @@ export class PlayScene extends Phaser.Scene {
     this.fireButton = new FireButton(arena, () => {
       if (this.scene.isActive() && !this.ended) this.fireRequested = true;
     });
+    // 부스터: 게이지는 판마다 가득 시작한다(scene.restart마다 create가 다시 돈다).
+    this.booster = createBooster();
+    this.boostMult = boosterMult(this.progress, FORM_BY_ID[this.progress.formId]);
+    this.boostHeld = false;
+    this.boostSec = 0; // 이번 프레임에 실제로 가속한 시뮬레이션 시간
+    this.boostFx = { active: false, clock: 0 };
+    this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    this.boosterButton = new BoosterButton(arena);
     this.follow = followPlayer(this, this.player);
     this.hud = new Hud();
     const avatar = document.getElementById('avatar');
@@ -126,6 +135,7 @@ export class PlayScene extends Phaser.Scene {
     }
     this.paused = true;
     this.joystick?.suspend();
+    this.boosterButton?.suspend();
     this.quickPick = QuickPick(cards, {
       yoryeok: this.progress.yoryeok,
       getFormImage: (id) => this.formImage(id),
@@ -145,6 +155,7 @@ export class PlayScene extends Phaser.Scene {
       this.fireRequested = false;
       this.paused = false;
       this.joystick?.resume();
+      this.boosterButton?.resume();
     }
   }
   // 결과는 게임 화면에 떠오르는 글자로 짧게만 보여준다.
@@ -166,10 +177,11 @@ export class PlayScene extends Phaser.Scene {
       this.fx.floatText(p.x, p.y - p.size * 2.1, QUICK_STAT_NAMES[result.stat] + ' +1 (Lv ' + result.to + ')', '#c4f7e6');
     }
   }
-  // 진화·능력 강화 뒤에 다시 계산하는 한 곳: 능력치와 속도 곡선(템포 × f, 이동 속도 × f), 생명력 최대치.
+  // 진화·능력 강화 뒤에 다시 계산하는 한 곳: 능력치와 속도 곡선(템포 × f, 이동 속도 × f), 생명력 최대치, 부스터 배율.
   recalcPace() {
     this.playerStats = playerStats(this.progress);
     this.pace = this.playerStats.pace;
+    this.boostMult = boosterMult(this.progress, FORM_BY_ID[this.progress.formId]);
     Object.assign(this.player.stats, { speed: this.playerStats.speed, areaGain: this.playerStats.areaGain });
   }
   // 판 안 진화·역진화: 형태·단계·등급을 바꾸고 크기는 시작 크기로 되돌린다.
@@ -205,8 +217,10 @@ export class PlayScene extends Phaser.Scene {
   releaseControls() {
     this.joystick?.destroy();
     this.fireButton?.destroy();
+    this.boosterButton?.destroy();
     this.joystick = null;
     this.fireButton = null;
+    this.boosterButton = null;
   }
   makePlayerMarker() {
     this.marker = this.add.graphics().setDepth(1);
@@ -335,14 +349,41 @@ export class PlayScene extends Phaser.Scene {
     g.arc(x, y, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac, false);
     g.strokePath();
   }
+  // 부스터 연출: 가속하며 움직이는 동안 플레이어 뒤쪽으로 옅은 먼지를 흘린다(Fx.burst 재사용, 실제 시간 기준). 모션 줄이기 설정이면 끈다.
+  boostTrail(dt, direction, boosting) {
+    const fx = this.boostFx;
+    const speed = Math.hypot(direction.x, direction.y);
+    const live = boosting && speed > 0.2 && !this.reducedMotion;
+    if (!live) {
+      fx.active = false;
+      fx.clock = 0;
+      return;
+    }
+    const t = CONFIG.booster.trail;
+    const p = this.player;
+    const power = t.power * Math.max(1, p.size / 40);
+    if (!fx.active) {
+      fx.active = true;
+      this.fx.burst(p.x, p.y, t.color, t.startCount, power * 1.6);
+    }
+    fx.clock += dt;
+    if (fx.clock < t.interval) return;
+    fx.clock = 0;
+    const back = (p.size * t.back) / speed;
+    this.fx.burst(p.x - direction.x * back, p.y - direction.y * back, t.color, t.count, power);
+  }
   // 템포: 시뮬레이션(이동·AI·발사·쿨타임·보충)에만 CONFIG.tempo를 곱한다. 연출·카메라·HUD는 실제 시간.
   // 빨라진 물체가 서로 통과하지 않게 한 프레임을 maxStep 이하의 작은 단계로 나눠 계산한다.
   simulate(sim, direction) {
     const steps = Math.max(1, Math.ceil(sim / CONFIG.render.maxStep));
     const h = sim / steps;
+    this.boostSec = 0;
     for (let i = 0; i < steps && !this.ended; i++) {
       const grid = buildGrid(this.enemies, CONFIG.hunt.detect);
-      this.player.step(direction, h);
+      // 부스터는 플레이어 이동에만 배율을 곱한다(적 AI·발사체·쿨타임은 그대로). 게이지는 화면 시간(h ÷ 템포 ÷ 속도 곡선)으로 닳는다.
+      const boost = stepBoosterSim(this.booster, { pressed: this.boostHeld, h, scale: CONFIG.tempo * this.pace, max: CONFIG.booster.maxSec });
+      this.boostSec += boost.boostSec;
+      this.player.step(direction, h, boost.boostSec, this.boostMult);
       this.combat.step(direction, h, i === 0 && this.fireRequested);
       for (const enemy of this.enemies) {
         enemy.step(this.player, h, grid);
@@ -366,11 +407,15 @@ export class PlayScene extends Phaser.Scene {
       if (this.paused) return;
     }
     const direction = this.joystick.direction();
+    this.boostHeld = !!this.boosterButton?.held;
     const sim = dt * CONFIG.tempo * this.pace;
     this.simulate(sim, direction);
     if (this.ended) return;
+    const boosting = this.boostSec > 0;
+    this.boosterButton?.update(this.booster, CONFIG.booster.maxSec, boosting);
+    this.boostTrail(dt, direction, boosting);
     for (const enemy of this.enemies) this.fx.animateActor(enemy, dt, enemy.vx, enemy.vy);
-    const sp = this.playerStats.speed;
+    const sp = this.playerStats.speed * (boosting ? this.boostMult : 1);
     this.fx.animateActor(this.player, dt, direction.x * sp, direction.y * sp);
     this.fx.update(dt, this.player, this.progress.grade);
     this.combat.draw();

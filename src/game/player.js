@@ -10,8 +10,9 @@ export class Player extends Actor {
     this.maxSize = this.size;
     this.sprite.setDepth(2);
   }
-  step(direction, dt) {
-    const distance = this.stats.speed * dt;
+  // boostSec: dt 중 부스터로 가속한 시간(0~dt), boostMult: 그때의 배율. 적·발사체에는 영향이 없다.
+  step(direction, dt, boostSec = 0, boostMult = 1) {
+    const distance = this.stats.speed * (dt + boostSec * (boostMult - 1));
     this.move(direction.x * distance, direction.y * distance);
   }
   eat(prey) {

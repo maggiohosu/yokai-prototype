@@ -104,6 +104,23 @@ export const CONFIG = {
   //   × (0.5 × (단계-1)/(maxStage-1) + 0.5 × 이동 속도 강화 레벨/maxSpeedLevel).
   // f는 게임 템포(tempo × f)와 플레이어 이동 속도(player.speed × f)에 모두 곱한다.
   pace: { minMult: 1 / 3, maxMult: 1.5, maxStage: 5, maxSpeedLevel: 10 },
+  // 부스터(플레이어 전용, src/game/booster.js; 사용자 결정 2026-11-23). 누르는 동안 플레이어 이동 속도(속도 곡선 적용 후)에만 배율을 곱한다. 적·발사체는 그대로.
+  // 배율 = baseMult × 줄기 보정 + 이동 속도 강화 레벨 × perSpeedLevel. 줄기 보정 = 형태 데이터의 선택 필드 boostMult → 아래 formMult[형태 id] → 1.
+  // 게이지(maxSec)·회복·지연은 화면 시간(초)으로 계산하고(템포·속도 곡선과 무관), 0이 되면 가속이 끝나 minRestartSec 이상 찰 때까지 다시 켜지지 않는다.
+  // 뗀 직후 regenDelaySec는 회복하지 않고, 그 뒤 빈 상태에서 가득 차기까지 regenFullSec. 누르고 있는 동안은 회복하지 않는다.
+  booster: {
+    maxSec: 2, minRestartSec: 0.4, regenFullSec: 5, regenDelaySec: 0.5,
+    baseMult: 1.3, perSpeedLevel: 0.02,
+    // 임시 값(방위·몸 특징 기준): 범·새 몸은 빠르게, 거북은 느리게, 나머지 1.0.
+    // 진화 줄기 설계(docs/design-forms-abilities.md)가 나오면 줄기별 form.boostMult로 바꾸고 이 표는 지운다.
+    formMult: {
+      mimul: 1, littleSnake: 1, littleTiger: 1.1, littleBird: 1.1, littleTurtle: 0.9,
+      hillFox: 1, imugi: 1, crane: 1.15, boYi: 1, skyHound: 1.15, whiteDeer: 1,
+      biFang: 1.1, dokkaebi: 1, attendant: 1, waterSpirit: 1, dueoksini: 1, darkTurtle: 0.9,
+    },
+    // 가속 중 연출(실제 시간 기준, Fx.burst 재사용): 플레이어 뒤쪽으로 옅은 먼지를 흘린다.
+    trail: { color: 0xe7cb8a, interval: 0.045, count: 2, power: 0.5, back: 0.9, startCount: 6 }, // color = :root의 --gold
+  },
   // 등급은 겉모습을 빛·테두리 색으로만 표현한다(F는 테두리 없음)
   gradeGlow: { 'S+': 0xff6fd8, S: 0xffc53d, A: 0xa46bff, B: 0x4a9dff, C: 0x63b863, D: 0x9aa0a6, E: 0xa0785a, F: null },
   // 모션 그래픽. 끄기: 숨쉬기 breathAmount=0, 먹기 팝 punchScale=1, 번쩍임 flashSeconds=0, 흔들림 shakeIntensity=0, 기울기 maxTilt=0

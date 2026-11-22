@@ -245,6 +245,34 @@ kbd { font: 600 12px var(--sans); color: var(--ink); }
 }
 .fire-button[aria-disabled='true'] > span { background: var(--ink-hover); }
 .fire-button:active > span { background: var(--ink-soft); }
+/* 부스터: 발사 버튼 위쪽. 색·테두리는 발사 버튼과 같고, 둘레 원호(--gauge)가 남은 게이지다.
+   가로 폰(높이 약 390)에서는 발사 버튼 바로 위가 오른쪽 위 지도 상자(.field-atlas)와 겹치므로,
+   지도 상자(너비 82 = .mini 80 + 테두리) 왼쪽으로 12px 비껴 놓는다. 오른쪽·아래 여백은 안전 영역을 반영한 --right·--bottom을 쓴다. */
+.booster-button {
+  --booster-size: clamp(72px, 21dvh, 84px);
+  position: absolute;
+  right: calc(var(--right) + 82px + 12px);
+  bottom: calc(var(--bottom) + var(--fire-size) + 10px);
+  width: var(--booster-size); height: var(--booster-size);
+  padding: 5px; border: 2px solid var(--ink); border-radius: 50%;
+  color: var(--paper);
+  background: conic-gradient(var(--gold) var(--gauge, 100%), var(--ink-hover) 0);
+  touch-action: none; cursor: pointer;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+.booster-button > span {
+  display: grid; align-content: center; justify-items: center; gap: 4px;
+  width: 100%; height: 100%; border-radius: 50%; background: var(--ink);
+  font: 600 14px/1 var(--sans);
+}
+.booster-button > span::before {
+  content: ''; display: block; width: 24px; height: 16px;
+  background: var(--gold);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpath d='M1 1h4l7 7-7 7H1l7-7zM12 1h4l7 7-7 7h-4l7-7z'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 16'%3E%3Cpath d='M1 1h4l7 7-7 7H1l7-7zM12 1h4l7 7-7 7h-4l7-7z'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.booster-button[aria-disabled='true'] > span { background: var(--ink-hover); }
+.booster-button[aria-pressed='true'] > span { background: var(--ink-soft); }
 .reversal-notice {
   position: absolute; left: 50%; top: 32%; transform: translateX(-50%);
   width: max-content; border: 2px solid var(--ink); padding: 4px 12px;
