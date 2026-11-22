@@ -41,6 +41,8 @@ export const CONFIG = {
     chaseSpeed: 108,
     // 초반 적 이동 속도 배율(플레이어 진화 단계별, 사용자 지시 2026-11-23: 초반 70%). 없는 단계는 1.
     earlySpeedMult: { 1: 0.7, 2: 0.85 },
+    // 적 몸집 상한(src/systems/growthCap.js). 크기 ≤ min(maxSize, max(minCap, 플레이어 크기 × maxSizeVsPlayer)), 몸집 강화는 maxBodyLevel번까지.
+    growthCap: { maxSizeVsPlayer: 2.5, minCap: 70, maxSize: 600, maxBodyLevel: 3 },
     wanderSpeed: 39,
     turnRate: 4,
     wanderInterval: [1.25, 3.4],

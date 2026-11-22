@@ -5,6 +5,7 @@ import { rollSpecial } from './enemyFire.js';
 import { drawCreature } from '../art/creature.js';
 import { Actor } from './actor.js';
 import { between } from './world.js';
+import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
 import { evolutionCost, rollGrade } from '../systems/evolution.js';
 import { bodyCostAt, newDiet, nextProgress, pickEvolution, preyInfoOf, preyValue } from '../systems/rules.js';
 
@@ -48,6 +49,7 @@ export class Enemy extends Actor {
   // 먹으면 면적이 늘고, 먹이 점수만큼 요력과 식성이 쌓인다. 진화·강화를 했으면 'evolve'|'body', 아니면 null.
   eat(prey, rng = Math.random) {
     super.eat(prey);
+    this.capSize();
     this.reversed = false;
     this.yoryeok += preyValue(preyInfoOf(prey));
     if (prey.dir in this.diet) this.diet[prey.dir] += prey.size;
@@ -61,12 +63,19 @@ export class Enemy extends Actor {
       if (!form) return null;
       this.evolveTo(form, rng);
     } else if (action === 'body') {
+      if (!canEnemyBodyUp(this.bodyLevel)) return null; // 상한: 남은 요력은 진화용으로 모아 둔다
       this.yoryeok -= bodyCostAt(this.bodyLevel);
       this.bodyLevel++;
       this.reversed = false;
       this.setSize(this.size * CONFIG.levelUp.bodyMult);
+      this.capSize();
     }
     return action;
+  }
+  // 화면을 다 채우는 적이 생기지 않게 플레이어 크기 기준 상한으로 자른다.
+  capSize() {
+    const cap = enemySizeCap(this.scene?.player?.size);
+    if (this.size > cap) this.setSize(cap);
   }
   evolveTo(form, rng = Math.random) {
     const [min, max] = CONFIG.enemy.evolveJitter;
