@@ -21,7 +21,7 @@ import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenanc
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
 import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
-import { applyWorldScale } from '../systems/worldScale.js';
+import { applyWorldScale, growthTarget } from '../systems/worldScale.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
@@ -235,8 +235,9 @@ export class PlayScene extends Phaser.Scene {
   // 바닥을 다시 그리고, 새 땅은 보충으로 채운다. 날아가던 구슬·장판은 지운다.
   growWorld() {
     const before = CONFIG.world.size;
+    // 판 안에서는 맵을 줄이지 않는다(강화 유지 역진화 등): 적·플레이어가 경계 밖으로 밀리는 것을 막는다.
+    if (!growthTarget(this.progress.stage, before)) return;
     const { size } = applyWorldScale(this.progress.stage);
-    if (size === before) return;
     const shift = (size - before) / 2;
     for (const actor of [this.player, ...this.enemies]) {
       actor.sprite.x += shift;

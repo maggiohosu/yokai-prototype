@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
-import { applyWorldScale, stageWorldScale, worldFor } from '../src/systems/worldScale.js';
+import { applyWorldScale, growthTarget, stageWorldScale, worldFor } from '../src/systems/worldScale.js';
 import { zoomFloor, zoomFor } from '../src/game/camera.js';
 import { drawWorld, regionAt } from '../src/game/world.js';
 import { Actor } from '../src/game/actor.js';
@@ -114,4 +114,21 @@ test('drawWorld: 바닥 무늬는 tileSprite 하나이고, 돌려준 destroy가 
   const last = scene.created.filter((o) => o.kind === 'tileSprite').at(-1);
   assert.deepEqual(last.args.slice(0, 4), [0, 0, 13200, 13200]);
   again.destroy();
+});
+
+test('growthTarget: 판 안에서는 맵이 커지기만 한다(정비 역진화로 낮은 단계가 되어도 줄이지 않는다)', () => {
+  // 진화(커지는 경우): 새 월드를 돌려준다
+  assert.deepEqual(growthTarget(2, 4000), worldFor(2));
+  assert.equal(growthTarget(3, 6000).size, 8000);
+  assert.equal(growthTarget(5, 10400).size, 13200);
+  // 같은 크기·작아지는 경우(2→1단계 역진화, 5→4단계 등): null이라 월드를 건드리지 않는다
+  assert.equal(growthTarget(2, 6000), null);
+  assert.equal(growthTarget(1, 6000), null);
+  assert.equal(growthTarget(4, 13200), null);
+  // 확인만 하므로 CONFIG.world는 바뀌지 않는다(applyWorldScale을 먼저 부르면 바뀐다)
+  applyWorldScale(2);
+  growthTarget(5, CONFIG.world.size);
+  growthTarget(1, CONFIG.world.size);
+  assert.equal(CONFIG.world.size, 6000);
+  assert.equal(CONFIG.world.population, 108);
 });

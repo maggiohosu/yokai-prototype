@@ -30,6 +30,13 @@ export function worldFor(stage) {
   };
 }
 
+// 판 안에서는 맵이 커지기만 한다: 진화로 더 큰 월드가 되면 그 월드를 돌려주고, 아니면(정비 역진화로 낮은 단계가 되어도) null이다.
+// 맵을 줄이면 적과 플레이어가 새 경계 밖으로 밀리기 때문이다. 부르는 쪽은 null이면 applyWorldScale을 부르지 않는다(부르면 CONFIG.world가 바뀐다).
+export function growthTarget(stage, currentSize) {
+  const next = worldFor(stage);
+  return next.size > currentSize ? next : null;
+}
+
 // CONFIG.world를 그 단계의 값으로 바꾸고 새 값을 돌려준다. 같은 단계로 여러 번 불러도 같다.
 export function applyWorldScale(stage) {
   const next = worldFor(stage);

@@ -5,6 +5,8 @@ import { Enemy } from '../src/game/enemy.js';
 import { Player } from '../src/game/player.js';
 import { carryDecay, evolveCarrySize, growthGain, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier } from '../src/systems/balance.js';
 import { followPlayer, zoomFor, zoomFloor } from '../src/game/camera.js';
+import { EnemyFire } from '../src/game/enemyFire.js';
+import { makeWorld } from './fixtures-abilities.mjs';
 import { enemySizeCap } from '../src/systems/growthCap.js';
 
 // Phaser 없이 Enemy·Player를 만드는 가짜 씬(이미지·텍스트만 흉내 낸다). 맞수·성장 둔화가 게임 객체에 제대로 연결됐는지 본다.
@@ -271,4 +273,34 @@ test('진화하는 순간 시야는 직전의 ×1.45까지만 넓어진다(처�
   const { evolveZoom } = CONFIG.balance.view;
   assert.ok(Math.abs(1 / evolveZoom - 1.45) < 0.01, '시야 배율 ' + 1 / evolveZoom);
   assert.ok(1 / evolveZoom - 1 <= 0.31 * (2.5 - 1));
+});
+
+// ---- 진화로 맵이 커질 때(growWorld) 남은 효과를 지운다 ----
+test('Combat.clearEffects: 구슬·구름·와류를 비우고 번개·고리는 만료시킨다(옛 좌표에 남아 엉뚱한 자리에서 작동하지 않는다)', () => {
+  const w = makeWorld({ formId: 'mimul' });
+  const { combat, scene } = w;
+  const now = scene.simTime;
+  combat.orbs.push({ x: 100, y: 100 }, { x: 300, y: 300 });
+  combat.clouds.push({ x: 50, y: 50, r: 80, until: now + 5 });
+  combat.vortices.push({ x: 60, y: 60, r: 90, until: now + 5 });
+  for (const b of combat.bolts.slice(0, 3)) Object.assign(b, { until: now + 1, life: 0.12, x1: 1, y1: 1, x2: 5, y2: 5 });
+  for (const ring of combat.rings.slice(0, 3)) Object.assign(ring, { until: now + 1, life: 0.15, x: 7, y: 7, r: 30 });
+  combat.clearEffects();
+  assert.equal(combat.orbs.length, 0);
+  assert.equal(combat.clouds.length, 0);
+  assert.equal(combat.vortices.length, 0);
+  // 그리기는 until <= now를 건너뛴다. life가 0이 아니어야 (until - now) / life가 무한대가 되지 않는다.
+  assert.ok(combat.bolts.every((b) => b.until <= now), '번개 만료');
+  assert.ok(combat.rings.every((r) => r.until <= now), '고리 만료');
+  assert.ok(combat.bolts.every((b) => b.life > 0) && combat.rings.every((r) => r.life > 0), 'life는 0으로 두지 않는다');
+});
+
+test('EnemyFire.clear: 구슬과 함께 플레이어 위치 기록·속도 추정도 비운다(맵이 커져 플레이어가 순간 이동해도 조준이 튀지 않는다)', () => {
+  const fire = Object.create(EnemyFire.prototype);
+  Object.assign(fire, { orbs: [{}, {}], prev: { x: 100, y: 100 }, vx: 4000, vy: -3000 });
+  fire.clear();
+  assert.equal(fire.orbs.length, 0);
+  assert.equal(fire.prev, null);
+  assert.equal(fire.vx, 0);
+  assert.equal(fire.vy, 0);
 });

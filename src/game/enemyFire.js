@@ -115,8 +115,12 @@ export class EnemyFire {
       g.fillCircle(o.x, o.y, cfg.orbRadius * 0.45);
     }
   }
+  // 구슬을 지운다. 플레이어 위치 기록(prev)과 속도 추정도 비운다: 진화로 맵이 커져 플레이어가 순간 이동하면 속도 추정이 튀어 앞질러 조준이 빗나간다.
   clear() {
     this.orbs.length = 0;
+    this.prev = null;
+    this.vx = 0;
+    this.vy = 0;
   }
   destroy() {
     this.orbs.length = 0;

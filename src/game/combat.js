@@ -787,8 +787,14 @@ export class Combat {
     if (this.counters.burn > 0) this.stepBurn(now, dt);
   }
 
-  // 진화·판 끝에 남은 효과 그림을 지운다.
+  // 진화(맵이 커지며 모두 옮겨질 때)·판 끝에 남은 효과(구슬·구름·와류·번개·고리)를 지운다. 절대 좌표라 옮겨진 뒤에는 엉뚱한 자리에서 작동하기 때문이다.
   clearEffects() {
+    this.orbs.length = 0;
+    this.clouds.length = 0;
+    this.vortices.length = 0;
+    // 번개·고리는 until을 0으로 만료시킨다(그리기는 until <= now를 건너뛴다. life만 0으로 두면 (until - now) / life가 무한대가 되어 옛 자리에 그려진다).
+    for (const b of this.bolts) b.until = 0;
+    for (const ring of this.rings) ring.until = 0;
     this.graphics.clear();
     this.statusGfx.clear();
   }
