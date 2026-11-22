@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Select-String *)",
+      "PowerShell(Get-Content *)",
+      "PowerShell(Get-ChildItem *)",
+      "PowerShell(Set-Location *)",
+      "Bash(go vet *)",
+      "mcp__agent-desktop__desktop_screenshot"
+    ]
+  }
+}
