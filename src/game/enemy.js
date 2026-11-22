@@ -7,6 +7,7 @@ import { Actor } from './actor.js';
 import { between, clamp } from './world.js';
 import { initStatus, isAlly, isDisabled, nowOf, slowFactor } from './status.js';
 import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
+import { rivalSizeCap, sizeSpeedMultiplier } from '../systems/balance.js';
 import { evolutionCost, rollGrade } from '../systems/evolution.js';
 import { bodyCostAt, newDiet, nextProgress, pickEvolution, preyInfoOf, preyValue } from '../systems/rules.js';
 
@@ -39,6 +40,34 @@ export class Enemy extends Actor {
     this.special = rollSpecial(size, this.stage);
     initStatus(this); // 상태이상 필드(빙결·위협·작열·파사인·둔화·밀림·매혹)를 숫자로 고정해 둔다
   }
+  // 맞수 대요괴(balance.rivalPlan): 플레이어와 같은 단계·비슷한 크기로 주기적으로 나오는 적. 몸집 상한은 플레이어 × capVsPlayer이고,
+  // 같은 단계 규칙이 깨지지 않게 자가 진화·몸집 강화를 하지 않으며 구슬을 쏘는 특수 적도 되지 않는다. 이름표(label)는 PlayScene이 매 프레임 따라가게 한다.
+  markRival() {
+    this.rival = true;
+    this.special = false;
+    this.label = this.scene.add
+      .text(0, 0, CONFIG.balance.rival.label, {
+        fontFamily: 'system-ui, sans-serif',
+        fontStyle: 'bold',
+        fontSize: '11px',
+        color: '#fff9df',
+        backgroundColor: '#7a3b2e',
+        padding: { x: 7, y: 3 },
+        resolution: 2,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(3);
+    this.followLabel();
+  }
+  followLabel() {
+    if (!this.label) return;
+    this.label.setPosition(this.x, this.y + this.size * 1.18).setScale(Math.max(1, this.size / 46));
+  }
+  destroy() {
+    this.label?.destroy();
+    this.label = null;
+    super.destroy();
+  }
   // 와류·대풍이 미는 이동. 방향 뒤집기 없이 위치만 바꾼다(월드 안으로 자른다).
   push(dx, dy) {
     const margin = Math.min(this.size, CONFIG.world.size / 2);
@@ -68,6 +97,7 @@ export class Enemy extends Actor {
   // 한 번에 한 가지만 한다(진화 우선). 남은 요력은 다음 먹기에서 이어서 쓴다.
   // 자가 진화는 플레이어 단계 + enemy.selfEvolveLead까지만 한다(rules.nextProgress).
   autoProgress(rng = Math.random) {
+    if (this.rival) return null; // 맞수는 플레이어와 같은 단계를 지킨다(진화·몸집 강화 없음)
     const action = nextProgress(this, this.scene.player?.stage);
     if (action === 'evolve') {
       const form = pickEvolution(this, FORMS, rng);
@@ -85,7 +115,8 @@ export class Enemy extends Actor {
   }
   // 화면을 다 채우는 적이 생기지 않게 플레이어 크기 기준 상한으로 자른다.
   capSize() {
-    const cap = enemySizeCap(this.scene?.player?.size);
+    const playerSize = this.scene?.player?.size;
+    const cap = this.rival && playerSize > 0 ? rivalSizeCap(playerSize) : enemySizeCap(playerSize);
     if (this.size > cap) this.setSize(cap);
   }
   evolveTo(form, rng = Math.random) {
@@ -116,7 +147,8 @@ export class Enemy extends Actor {
       return;
     }
     const early = ai.earlySpeedMult?.[player.stage ?? 1] ?? 1; // 초반에는 적이 느리다
-    const slow = slowFactor(this, now); // 선무 구름 안에서는 느려진다
+    // 선무 구름 안에서는 느려지고, 크기가 클수록 느리다(balance.sizeSpeedMultiplier: 플레이어와 같은 규칙).
+    const slow = slowFactor(this, now) * sizeSpeedMultiplier(this.size);
     if (this.size >= player.size) this.reversed = false;
     const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt, now) : null;
     const dir = intentDirection(this, intent);

@@ -74,16 +74,25 @@ function updateDensity() {
   host.style.setProperty('--inverse-density', 1 / ratio);
 }
 
+// 시작 화면(저장 칸 고르기). 고른 칸은 지금 슬롯으로 기억되고 PlayScene이 그 칸을 읽는다.
+// ?gallery=1과 시험 주소(?debug, ?stress)는 건너뛴다.
+const skipTitle = gallery || ['debug', 'stress'].some(key => new URLSearchParams(location.search).has(key));
+function showTitle() {
+  return import('./ui/TitleView.js').then(({ TitleView }) => new Promise(resolve => TitleView({ onStart: resolve })));
+}
+
 async function start() {
   if (!window.Phaser) throw new Error('Phaser CDN');
+  // 시작 화면이 떠 있는 동안 장면 코드를 미리 불러온다.
+  const sceneModule = gallery ? import('./scenes/GalleryScene.js') : import('./scenes/PlayScene.js');
+  sceneModule.catch(() => {});
+  if (!skipTitle) await showTitle();
   while (!gallery && portrait.matches) {
     await new Promise(resolve => portrait.addEventListener('change', resolve, { once: true }));
   }
   updateDensity();
   window.addEventListener('resize', updateDensity);
-  const Scene = gallery
-    ? (await import('./scenes/GalleryScene.js')).GalleryScene
-    : (await import('./scenes/PlayScene.js')).PlayScene;
+  const Scene = gallery ? (await sceneModule).GalleryScene : (await sceneModule).PlayScene;
   const game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'phaser-host',

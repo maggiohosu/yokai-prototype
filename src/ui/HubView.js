@@ -7,9 +7,11 @@ import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
 import { recordTreasureSuccess } from '../systems/progress.js';
-import { dropChance, equip, exchangeShards, sell, sellPrice, treasureStats, treasureTitle, tryUpgrade, upgradeCost } from '../systems/treasure.js';
+import { dropChance, equip, exchangeShards, hasPaid, saleValue, sell, treasureStats, treasureTitle, tryUpgrade, upgradeCost } from '../systems/treasure.js';
+import { blockerText, buy, buyBlocker, shopCatalog } from '../systems/shop.js';
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
+import { playEnhanceFx, playSellFx, preloadEnhanceSounds } from './enhanceFx.js';
 
 export const statNames = { growth: '크기 성장', speed: '이동 속도', vitality: '생명력' };
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
@@ -58,8 +60,9 @@ export function degradeDialog(parent, progress, stat, onChoice) {
   modal.showModal();
 }
 
-export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress, getFormImage } = {}) {
-  const { dialog, header, body, footer, close } = openOverlay('판 사이 정비');
+// inRun: true면 판 중 [정비]로 연 화면이다. 아래 버튼이 [게임으로 돌아가기]가 되고, 이때 onPlay는 '같은 판 재개'다.
+export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress, getFormImage, inRun = false } = {}) {
+  const { dialog, header, body, footer, close } = openOverlay(inRun ? '판 중 정비' : '판 사이 정비');
   const form = forms.find(item => item.id === progress.formId);
   const identity = el('div', 'yk-identity');
   const heading = el('div');
@@ -76,7 +79,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   const tabs = el('div', 'yk-tabs');
   tabs.setAttribute('role', 'group');
   tabs.setAttribute('aria-label', '정비 항목');
-  for (const [key, label] of [['body', '본체 강화'], ['treasure', '여의주']]) {
+  for (const [key, label] of [['body', '본체 강화'], ['treasure', '여의주'], ['shop', '상점']]) {
     const item = button(label, () => {
       if (tab === key || playingLog || progress.pendingDegrade) return;
       tab = key;
@@ -101,7 +104,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     close();
     callback?.(...args);
   }
-  const playButton = button('다음 판 시작', () => leave(onPlay), 'yk-primary');
+  const playButton = button(inRun ? '게임으로 돌아가기' : '다음 판 시작', () => leave(onPlay), 'yk-primary');
   const evolveButton = button('진화하기', () => requestEvolution());
   function requestEvolution() {
     if (progress.pendingDevolve) leave(onEvolve, { devolve: true });
@@ -223,9 +226,10 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     return card;
   }
 
+  let upgradeFx = null;
   function upgrade() {
     const item = progress.treasure;
-    if (!item) return;
+    if (!item || upgradeFx) return;
     const cost = upgradeCost(item.level);
     if (progress.yoryeok < cost) return;
     const result = tryUpgrade(item);
@@ -242,13 +246,32 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     } else {
       message = '강화 실패, +' + result.from + ' 유지';
     }
-    commit(message, tone);
+    // 결과는 위에서 정해졌다. 연출 전에 저장해 새로고침으로 다시 굴릴 수 없게 하고, 연출은 그 결과만 보여준다.
+    save(progress);
+    upgradeFx = playEnhanceFx(result, {
+      shake: dialog,
+      sub: result.result === 'success' ? treasureTitle(result.to) : undefined,
+      onDone() {
+        upgradeFx = null;
+        commit(message, tone);
+        const again = body.querySelector('[data-fx="upgrade"]');
+        if (again && !again.disabled) again.focus({ preventScroll: true });
+      },
+    });
   }
   function sellButton(slot, item) {
-    return button('판매 (요력 ' + number(sellPrice(item.level)) + ')', () => {
+    const control = button((hasPaid(item) ? '판매 (본전까지 요력 ' : '판매 (요력 ') + number(saleValue(item)) + ')', () => {
+      const origin = control.getBoundingClientRect();
+      const before = progress.yoryeok;
       const price = sell(progress, slot);
-      if (price) commit(treasureTitle(item.level) + ' 판매로 요력 +' + number(price), 'good');
+      if (!price) return;
+      commit(treasureTitle(item.level) + ' 판매로 요력 +' + number(price), 'good');
+      playSellFx({
+        origin, host: dialog, amount: price, from: before, to: progress.yoryeok,
+        wallet: wallet.querySelector('strong'), format: (v) => '요력 ' + number(v), label: '+' + number(price),
+      });
     });
+    return control;
   }
   function statLine(level) {
     const a = treasureStats(level);
@@ -268,6 +291,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   }
 
   function treasurePanel() {
+    preloadEnhanceSounds();
     const equipped = el('section', 'yk-card');
     const item = progress.treasure;
     equipped.append(el('p', 'yk-label', '장착한 여의주'));
@@ -280,6 +304,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       if (Number.isFinite(cost)) {
         equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOdds(item.level));
         const up = button('강화', upgrade);
+        up.dataset.fx = 'upgrade';
         up.disabled = cost > progress.yoryeok;
         controls.append(up);
       } else {
@@ -296,7 +321,8 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     for (let i = 0; i < TREASURE.inventorySlots; i++) {
       const stored = progress.inventory[i];
       const slot = el('li');
-      slot.append(el('span', 'yk-slot-no', String(i + 1)), el('strong', '', stored ? treasureTitle(stored.level) : '빈 칸'));
+      slot.append(el('span', 'yk-slot-no', String(i + 1)),
+        el('strong', '', stored ? treasureTitle(stored.level) + (hasPaid(stored) ? ' (상점)' : '') : '빈 칸'));
       if (stored) {
         const controls = el('div', 'yk-actions');
         controls.append(button(item ? '장착 바꾸기' : '장착', () => {
@@ -322,6 +348,45 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         [['직접 먹기', dropChance() * 100], ['여의주로 처치', dropChance({ killedByTreasure: true }) * 100]])));
   }
 
+  function purchase(level) {
+    const result = buy(progress, level);
+    if (!result.ok) {
+      setStatus(blockerText[result.reason], 'bad');
+      return;
+    }
+    commit(treasureTitle(level) + ' 구매, 요력 ' + number(result.price) + ' 사용', 'good');
+  }
+  function shopPanel() {
+    const orbs = el('section', 'yk-card');
+    const used = progress.inventory.length;
+    orbs.append(el('h3', 'yk-stat-name', '여의주'),
+      el('p', 'yk-cost', '산 여의주는 보관함에 들어가요. 보관함 ' + used + '/' + TREASURE.inventorySlots),
+      el('p', 'yk-cost', '상점에서 산 여의주는 산 값과 강화에 쓴 요력까지만 돌려받아요.'));
+    if (used >= TREASURE.inventorySlots) {
+      orbs.append(el('p', 'yk-notice', blockerText.full + '. 여의주를 팔거나 장착해서 칸을 비워 주세요.'));
+    }
+    const list = el('ol', 'yk-shop');
+    for (const { level, price } of shopCatalog()) {
+      const stats = treasureStats(level);
+      const row = el('li', 'yk-shop-item');
+      const info = el('div', 'yk-shop-info');
+      info.append(el('strong', '', treasureTitle(level)),
+        el('span', 'yk-hint', stats.ways + '방향, 방향당 ' + stats.perWay + '개'));
+      const blocker = buyBlocker(progress, level);
+      if (blocker === 'funds') info.append(el('span', 'yk-hint', '요력 ' + number(price - progress.yoryeok) + ' 모자라요'));
+      const buyButton = button('구매 (요력 ' + number(price) + ')', () => purchase(level));
+      buyButton.setAttribute('aria-label', treasureTitle(level) + ' 구매, 요력 ' + number(price));
+      buyButton.disabled = !!blocker;
+      row.append(info, buyButton);
+      list.append(row);
+    }
+    orbs.append(list);
+    const patch = el('section', 'yk-card');
+    patch.append(el('h3', 'yk-stat-name', '보패'),
+      el('p', 'yk-intro', '새로운 무기를 준비하고 있어요. 곧 열려요.'));
+    body.append(orbs, patch);
+  }
+
   function render() {
     wallet.replaceChildren(el('strong', '', '요력 ' + number(progress.yoryeok)),
       el('span', '', '보호권 ' + number(progress.protect) + '장'));
@@ -332,6 +397,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const scroll = body.scrollTop;
     body.replaceChildren();
     if (tab === 'treasure') treasurePanel();
+    else if (tab === 'shop') shopPanel();
     else {
       for (const stat of ENHANCE.stats) body.append(statCard(stat));
     }

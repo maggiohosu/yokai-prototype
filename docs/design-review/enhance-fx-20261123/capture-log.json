@@ -1,0 +1,356 @@
+{
+  "shots": [
+    {
+      "name": "success-base-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-base-1-420ms.jpg",
+      "t": 432,
+      "phase": "charge",
+      "tier": "base",
+      "kind": "success",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-base-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-base-2-1000ms.jpg",
+      "t": 1220,
+      "phase": "reveal",
+      "tier": "base",
+      "kind": "success",
+      "title": "+6 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-base-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-base-3-1500ms.jpg",
+      "t": 1517,
+      "phase": "reveal",
+      "tier": "base",
+      "kind": "success",
+      "title": "+6 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-gold-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-gold-1-420ms.jpg",
+      "t": 432,
+      "phase": "charge",
+      "tier": "gold",
+      "kind": "success",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-gold-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-gold-2-1000ms.jpg",
+      "t": 1006,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "success",
+      "title": "+10 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-gold-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-gold-3-1500ms.jpg",
+      "t": 1504,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "success",
+      "title": "+10 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-grand-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-grand-1-420ms.jpg",
+      "t": 431,
+      "phase": "charge",
+      "tier": "grand",
+      "kind": "success",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-grand-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-grand-2-1000ms.jpg",
+      "t": 1007,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "success",
+      "title": "+14 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "success-grand-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\success-grand-3-1500ms.jpg",
+      "t": 1504,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "success",
+      "title": "+14 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "fail-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\fail-1-420ms.jpg",
+      "t": 430,
+      "phase": "charge",
+      "tier": "gold",
+      "kind": "fail",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "fail-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\fail-2-1000ms.jpg",
+      "t": 1013,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "fail",
+      "title": "실패",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "fail-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\fail-3-1500ms.jpg",
+      "t": 1516,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "fail",
+      "title": "실패",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-1-420ms.jpg",
+      "t": 425,
+      "phase": "charge",
+      "tier": "gold",
+      "kind": "break",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-2-1000ms.jpg",
+      "t": 1007,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "break",
+      "title": "파괴",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-3-1500ms.jpg",
+      "t": 1502,
+      "phase": "reveal",
+      "tier": "gold",
+      "kind": "break",
+      "title": "파괴",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-grand-1-420ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-grand-1-420ms.jpg",
+      "t": 436,
+      "phase": "charge",
+      "tier": "grand",
+      "kind": "break",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-grand-2-1000ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-grand-2-1000ms.jpg",
+      "t": 1023,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "break",
+      "title": "파괴",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "break-grand-3-1500ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\break-grand-3-1500ms.jpg",
+      "t": 1520,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "break",
+      "title": "파괴",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "skip-1-charge",
+      "file": "docs\\design-review\\enhance-fx-20261123\\skip-1-charge.jpg",
+      "t": 216,
+      "phase": "charge",
+      "tier": "base",
+      "kind": "success",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "skip-2-after-tap",
+      "file": "docs\\design-review\\enhance-fx-20261123\\skip-2-after-tap.jpg",
+      "t": 418,
+      "phase": "reveal",
+      "tier": "base",
+      "kind": "success",
+      "title": "+7 성공",
+      "skipped": "true",
+      "status": ""
+    },
+    {
+      "name": "skip-3-closed",
+      "file": "docs\\design-review\\enhance-fx-20261123\\skip-3-closed.jpg",
+      "t": 1104,
+      "phase": null,
+      "tier": null,
+      "kind": null,
+      "title": null,
+      "skipped": null,
+      "status": "강화 성공, +7 여의주"
+    },
+    {
+      "name": "sell-1-150ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\sell-1-150ms.jpg",
+      "t": 170,
+      "phase": null,
+      "tier": null,
+      "kind": null,
+      "title": null,
+      "skipped": null,
+      "status": "+10 바람 여의주 판매로 요력 +5,000"
+    },
+    {
+      "name": "sell-2-480ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\sell-2-480ms.jpg",
+      "t": 624,
+      "phase": null,
+      "tier": null,
+      "kind": null,
+      "title": null,
+      "skipped": null,
+      "status": "+10 바람 여의주 판매로 요력 +5,000"
+    },
+    {
+      "name": "sell-3-850ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\sell-3-850ms.jpg",
+      "t": 1120,
+      "phase": null,
+      "tier": null,
+      "kind": null,
+      "title": null,
+      "skipped": null,
+      "status": "+10 바람 여의주 판매로 요력 +5,000"
+    },
+    {
+      "name": "reduced-120ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\reduced-120ms.jpg",
+      "t": 121,
+      "phase": "charge",
+      "tier": "grand",
+      "kind": "success",
+      "title": "",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "reduced-450ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\reduced-450ms.jpg",
+      "t": 461,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "success",
+      "title": "+14 성공",
+      "skipped": null,
+      "status": ""
+    },
+    {
+      "name": "reduced-900ms",
+      "file": "docs\\design-review\\enhance-fx-20261123\\reduced-900ms.jpg",
+      "t": 911,
+      "phase": "reveal",
+      "tier": "grand",
+      "kind": "success",
+      "title": "+14 성공",
+      "skipped": null,
+      "status": ""
+    }
+  ],
+  "results": [
+    {
+      "scenario": "success-base",
+      "level": 6,
+      "shards": 0,
+      "status": "강화 성공, +6 여의주",
+      "focused": "upgrade"
+    },
+    {
+      "scenario": "success-gold",
+      "level": 10,
+      "shards": 0,
+      "status": "강화 성공, +10 바람 여의주",
+      "focused": "upgrade"
+    },
+    {
+      "scenario": "success-grand",
+      "level": 14,
+      "shards": 0,
+      "status": "강화 성공, +14 하늘 여의주",
+      "focused": "upgrade"
+    },
+    {
+      "scenario": "fail",
+      "level": 9,
+      "shards": 0,
+      "status": "강화 실패, +9 유지",
+      "focused": "upgrade"
+    },
+    {
+      "scenario": "break",
+      "level": null,
+      "shards": 11,
+      "status": "여의주가 깨졌어요. 파편 +11",
+      "focused": "BODY"
+    },
+    {
+      "scenario": "break-grand",
+      "level": null,
+      "shards": 25,
+      "status": "여의주가 깨졌어요. 파편 +14",
+      "focused": "BODY"
+    },
+    {
+      "scenario": "skip",
+      "closedAfterSecondTap": true
+    },
+    {
+      "scenario": "sell",
+      "before": 999999,
+      "after": 1004999,
+      "gained": 5000
+    }
+  ],
+  "logs": []
+}

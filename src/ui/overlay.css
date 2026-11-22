@@ -190,3 +190,22 @@
 @media (prefers-reduced-motion: reduce) {
   .yk-reveal .yk-portrait, .yk-flash { animation: none; }
 }
+/* 상점: 한 줄에 여의주 하나(이름과 구성, 오른쪽에 구매 버튼) */
+.yk-shop { list-style: none; padding: 0; margin-top: 8px; }
+.yk-shop-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) 132px; align-items: center; gap: 8px;
+  padding-block: 8px; border-bottom: 1px solid var(--line);
+}
+.yk-shop-info { display: grid; gap: 2px; min-width: 0; font-size: 14px; }
+.yk-shop-item .yk-button { white-space: nowrap; }
+.yk-card > .yk-notice { margin-top: 8px; color: var(--stamp); }
+/* 판 중 [정비] 버튼(src/game/maintButton.js): 화면 위쪽, 오른쪽 위 도감 버튼 바로 왼쪽. 엄지 영역(아래쪽 스틱·발사·부스터)과 겹치지 않는다. */
+.field-maint {
+  position: absolute; top: var(--top); right: calc(var(--right) + 88px); z-index: 3;
+  min-width: 56px; min-height: 44px; padding: 4px 12px;
+  border: 1px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--paper);
+  font: 600 14px/1.2 var(--sans); cursor: pointer; touch-action: manipulation;
+}
+.field-maint:is(:hover, :active):enabled { background: var(--ink-hover); }
+.field-maint:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.field-maint:disabled { border-color: var(--line-dark); background: var(--sheet); color: var(--muted); cursor: default; }

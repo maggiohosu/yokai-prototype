@@ -47,13 +47,17 @@ export class Hud {
       this.eaten.textContent = player.eaten;
     }
   }
-  end(player, killer, { onRestart, onHub } = {}, run = null) {
+  // victory = { title, reward }: 승천처럼 이긴 판의 결과(제목과 보상 요력). 없으면 평소 종료 결과다.
+  // 꾸미기는 디자인 담당 몫이라 기능만 둔다: 제목 글자, 보상 줄, 결과 창의 data-outcome('ascension' | 'defeat').
+  end(player, killer, { onRestart, onHub } = {}, run = null, victory = null) {
+    byId('end-title').textContent = victory ? victory.title : '판 종료';
+    this.result.dataset.outcome = victory ? 'ascension' : 'defeat';
     byId('final-eaten').textContent = player.eaten;
     byId('final-size').textContent = number(player.maxSize);
     byId('killer').textContent = killer.message ?? killer.name + '에게 먹혔습니다.';
     const reward = byId('run-reward');
     reward.hidden = !run;
-    reward.textContent = run ? '획득한 요력 ' + number(run.yoryeok) + (run.drops ? ', 여의주 ' + run.drops + '개' : '') : '';
+    reward.textContent = run ? '획득한 요력 ' + number(run.yoryeok) + (run.drops ? ', 여의주 ' + run.drops + '개' : '') + (victory ? ' · ' + victory.title + ' 보상 ' + number(victory.reward) : '') : '';
     this.result.hidden = false;
     this.result.showModal();
     const button = byId('restart'),

@@ -31,11 +31,22 @@ export function upgradeCost(level) {
   return level === maxLevel ? Infinity : Math.round(priceAt(TREASURE.costPrices ?? TREASURE.prices, level + 1) * TREASURE.upgradeCostRatio);
 }
 
+// 상점에서 산 여의주에는 paid(산 값 + 강화에 쓴 요력)가 붙는다. 상점품 본전 상한(docs/design-weapons.md 4-4):
+// 판매가 = min(표 판매가, paid). paid가 없는 드롭 여의주는 표 판매가 그대로라 '강화해서 팔기'가 이익이다.
+export const hasPaid = (treasure) => Number.isFinite(treasure?.paid) && treasure.paid >= 0;
+
+export function saleValue(treasure) {
+  const table = sellPrice(treasure.level);
+  return hasPaid(treasure) ? Math.min(table, treasure.paid) : table;
+}
+
 // 호출자가 비용을 지불한다. break면 소유 슬롯에서 여의주를 제거하고 shards를 적립한다.
+// 상점품(paid)이면 시도할 때마다(성공·실패 모두) 그 강화비를 paid에 더한다.
 export function tryUpgrade(treasure, { rng = Math.random } = {}) {
   const from = treasure.level;
   checkLevel(from);
   if (from === maxLevel) throw new RangeError('이미 최고 강화 레벨입니다.');
+  if (hasPaid(treasure)) treasure.paid += upgradeCost(from);
   if (rng() * 100 < TREASURE.success[from]) {
     treasure.level = from + 1;
     return { result: 'success', from, to: treasure.level, shards: 0 };
@@ -103,7 +114,7 @@ export function equip(state, index) {
 export function sell(state, slot) {
   const treasure = slot === 'equipped' ? state.treasure : itemAt(state, slot);
   if (!validLevel(treasure?.level)) return 0;
-  const price = sellPrice(treasure.level);
+  const price = saleValue(treasure);
   if (slot === 'equipped') state.treasure = null;
   else state.inventory.splice(slot, 1);
   state.yoryeok += price;

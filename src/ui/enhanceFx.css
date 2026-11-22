@@ -1,0 +1,214 @@
+/* 여의주 강화·판매 연출. 단계: data-phase = charge → reveal → done, 강도: data-tier = base | gold | grand. */
+.ykfx {
+  --p: 0;
+  --orb: clamp(92px, 26vmin, 168px);
+  --orb-hi: #f4fbf2;
+  --orb-mid: #9fd3b4;
+  --orb-lo: #2f5d4a;
+  --orb-glow: #bdf0d0;
+  --title: #fffbe9;
+  --title-glow: #9fe0bd;
+  position: fixed; inset: 0; z-index: 2147483000;
+  width: 100vw; height: 100dvh; max-width: none; max-height: none;
+  margin: 0; padding: 0; border: 0; overflow: hidden;
+  background: transparent; color: var(--paper, #faf6e9);
+  font-family: var(--sans, system-ui, sans-serif);
+  user-select: none; -webkit-user-select: none; touch-action: none; cursor: pointer;
+  outline: none;
+}
+.ykfx::backdrop { background: transparent; }
+.ykfx[data-tier='gold'] {
+  --orb-hi: #fffaf0; --orb-mid: #f1cf7c; --orb-lo: #7a5516; --orb-glow: #ffd98a;
+  --title: #ffe7a3; --title-glow: #ffb84a;
+}
+.ykfx[data-tier='grand'] {
+  --orb: clamp(110px, 32vmin, 210px);
+  --orb-hi: #ffffff; --orb-mid: #ffe39a; --orb-lo: #a8701a; --orb-glow: #fff0c2;
+  --title: #fff3cf; --title-glow: #ffcf5a;
+}
+
+.ykfx-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 46%, #1c372be8 0, #08120ef7 72%);
+  -webkit-backdrop-filter: blur(4px) saturate(.7);
+  backdrop-filter: blur(4px) saturate(.7);
+  opacity: calc(0.82 + var(--p) * 0.18);
+  animation: ykfx-veil-in 160ms ease-out both;
+}
+.ykfx[data-tier='gold'] .ykfx-veil { background: radial-gradient(circle at 50% 46%, #2e2511ec 0, #0b0904f8 72%); }
+.ykfx[data-full='true'] .ykfx-veil { background: radial-gradient(circle at 50% 46%, #2a1e09f2 0, #030201fd 70%); }
+
+.ykfx-canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+.ykfx-stage {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: clamp(8px, 3vmin, 20px);
+  padding: 16px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left));
+  pointer-events: none;
+}
+.ykfx-orb-box { position: relative; width: var(--orb); aspect-ratio: 1; flex: none; }
+.ykfx-orb {
+  position: absolute; inset: 0; border-radius: 50%;
+  background:
+    radial-gradient(circle at 34% 28%, var(--orb-hi) 0 9%, transparent 24%),
+    radial-gradient(circle at 50% 55%, var(--orb-mid) 0, var(--orb-lo) 78%, #10201a 100%);
+  box-shadow:
+    0 0 calc(12px + var(--p) * 70px) calc(var(--p) * 14px) var(--orb-glow),
+    inset -8px -12px 24px #0006, inset 6px 8px 18px #fff4;
+  transform: scale(calc(1 + var(--p) * 0.07));
+  filter: brightness(calc(1 + var(--p) * 0.45));
+}
+.ykfx-aura {
+  position: absolute; inset: -38%; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 8%, var(--orb-glow) 12%, transparent 20% 46%, var(--orb-glow) 52%, transparent 60% 100%);
+  -webkit-mask: radial-gradient(circle, transparent 38%, #000 42%, transparent 70%);
+  mask: radial-gradient(circle, transparent 38%, #000 42%, transparent 70%);
+  opacity: calc(var(--p) * 0.85);
+  animation: ykfx-spin 900ms linear infinite;
+}
+
+.ykfx-words { display: grid; justify-items: center; text-align: center; gap: 4px; min-height: 1em; }
+.ykfx-words p { margin: 0; }
+.ykfx-stake {
+  font: 600 clamp(15px, 4vmin, 20px)/1.2 var(--sans, system-ui);
+  color: #f4f0dfcc; letter-spacing: .04em; font-variant-numeric: tabular-nums;
+}
+.ykfx-title {
+  font: 700 calc(clamp(40px, 12vmin, 84px) * var(--text-scale, 1))/1.05 var(--serif, serif);
+  color: var(--title);
+  text-shadow: 0 0 18px var(--title-glow), 0 2px 0 #0008;
+  white-space: nowrap;
+}
+.ykfx-title:empty, .ykfx-sub:empty { display: none; }
+.ykfx-sub { font: 600 clamp(14px, 3.6vmin, 19px)/1.3 var(--sans, system-ui); color: #f4f0dfe6; }
+.ykfx-hint {
+  position: absolute; left: 0; right: 0; bottom: max(12px, env(safe-area-inset-bottom));
+  margin: 0; text-align: center; font-size: 13px; color: #f4f0df99; pointer-events: none;
+}
+
+.ykfx-flash { position: absolute; inset: 0; pointer-events: none; opacity: 0; }
+
+.ykfx-rays {
+  position: absolute; left: 50%; top: 46%;
+  width: 120vmin; height: 120vmin; translate: -50% -50%;
+  background: repeating-conic-gradient(from 0deg, #ffe7a033 0 3.5deg, transparent 4.5deg 14deg);
+  -webkit-mask: radial-gradient(circle, #000 0 12%, transparent 56%);
+  mask: radial-gradient(circle, #000 0 12%, transparent 56%);
+  opacity: 0; pointer-events: none;
+}
+.ykfx[data-full='true'] .ykfx-rays { width: 260vmax; height: 260vmax; }
+
+/* 결과 */
+.ykfx[data-phase='reveal'] .ykfx-stake { display: none; }
+.ykfx[data-phase='reveal'] .ykfx-aura { opacity: 0; transition: opacity 200ms; }
+.ykfx[data-phase='reveal'] .ykfx-orb { transform: none; }
+.ykfx[data-phase='reveal'] .ykfx-title { animation: ykfx-slam 460ms cubic-bezier(.2, 1.5, .35, 1) both; }
+.ykfx[data-phase='reveal'] .ykfx-sub { animation: ykfx-rise 360ms 200ms ease-out both; }
+
+.ykfx[data-phase='reveal']:is([data-kind='success'], [data-kind='great']) .ykfx-orb {
+  animation: ykfx-burst 700ms ease-out both;
+}
+.ykfx[data-phase='reveal']:is([data-kind='success'], [data-kind='great']) .ykfx-flash {
+  background: radial-gradient(circle at 50% 46%, #fffef6 0, #fff3c4cc 28%, transparent 62%);
+  animation: ykfx-flash 520ms ease-out both;
+}
+.ykfx[data-phase='reveal'][data-full='true']:is([data-kind='success'], [data-kind='great']) .ykfx-flash {
+  background: #fffdf2;
+  animation: ykfx-flash 700ms ease-out both;
+}
+.ykfx[data-phase='reveal'][data-kind='great'] .ykfx-flash { animation: ykfx-flash-twice 900ms ease-out both; }
+.ykfx[data-phase='reveal']:is([data-tier='gold'], [data-tier='grand'], [data-kind='great']):is([data-kind='success'], [data-kind='great']) .ykfx-rays {
+  animation: ykfx-rays-in 500ms ease-out both, ykfx-spin 9s linear infinite;
+}
+.ykfx[data-phase='reveal']:is([data-tier='gold'], [data-tier='grand']):is([data-kind='success'], [data-kind='great']) .ykfx-title {
+  background: linear-gradient(100deg, #b87a1c 0%, #ffe9a6 30%, #fffdf2 45%, #f6c55a 60%, #a8681a 100%);
+  background-size: 240% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  text-shadow: none;
+  filter: drop-shadow(0 0 14px var(--title-glow)) drop-shadow(0 3px 0 #3a2508);
+  animation: ykfx-slam 460ms cubic-bezier(.2, 1.5, .35, 1) both, ykfx-shine 1400ms 300ms ease-in-out both;
+}
+.ykfx[data-phase='reveal'][data-tier='grand']:is([data-kind='success'], [data-kind='great']) .ykfx-title {
+  animation: ykfx-slam-big 620ms cubic-bezier(.2, 1.4, .35, 1) both, ykfx-shine 1400ms 300ms ease-in-out both;
+}
+
+.ykfx[data-kind='fail'][data-phase='reveal'] .ykfx-orb {
+  filter: grayscale(.55) brightness(.72);
+  animation: ykfx-thud 300ms ease-out both;
+}
+.ykfx[data-kind='fail'][data-phase='reveal'] .ykfx-title {
+  color: #d8d3bf; text-shadow: 0 2px 0 #0009;
+  animation: ykfx-drop 420ms cubic-bezier(.3, 1.4, .5, 1) both;
+}
+
+.ykfx[data-kind='break'][data-phase='reveal'] .ykfx-orb { filter: brightness(.85) saturate(.7); }
+.ykfx[data-kind='break'][data-broken='true'] .ykfx-orb,
+.ykfx[data-kind='break'][data-broken='true'] .ykfx-crack { opacity: 0; transition: opacity 90ms; }
+.ykfx[data-kind='break'][data-phase='reveal'] .ykfx-flash {
+  background: radial-gradient(circle at 50% 46%, #ffd9cc 0, #b2412a99 36%, transparent 70%);
+  animation: ykfx-flash 600ms 170ms ease-out both;
+}
+.ykfx[data-kind='break'][data-phase='reveal'] .ykfx-title {
+  padding: 2px 16px 6px; border: 4px solid #e0705a; border-radius: 6px;
+  color: #ffb9a6; text-shadow: 0 0 16px #b2412a;
+  rotate: -6deg;
+  animation: ykfx-stamp 420ms 160ms cubic-bezier(.2, 1.6, .4, 1) both;
+}
+
+.ykfx-crack { position: absolute; inset: -6%; width: 112%; height: 112%; pointer-events: none; clip-path: circle(44.6%); }
+.ykfx-crack path { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
+.ykfx-crack-line { stroke: #10201a; stroke-width: 2.2; animation: ykfx-draw 200ms calc(var(--i) * 30ms) ease-out forwards; }
+.ykfx-crack-glow { stroke: #fff8e0; stroke-width: 4.5; opacity: .55; animation: ykfx-draw 200ms calc(var(--i) * 30ms) ease-out forwards; }
+.ykfx[data-kind='break'] .ykfx-crack-line { stroke-width: 2.8; animation-duration: 150ms; }
+
+.ykfx[data-phase='done'] { opacity: 0; transition: opacity 150ms ease-in; pointer-events: none; }
+
+/* 판매 */
+.ykfx-sell { position: fixed; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; }
+.ykfx-pop {
+  position: fixed; translate: -50% -50%;
+  font: 700 22px/1 var(--sans, system-ui); color: #8a5f16;
+  text-shadow: 0 1px 0 #fffbe9, 0 0 10px #ffe3a0; white-space: nowrap;
+  animation: ykfx-pop 1150ms ease-out both;
+}
+.ykfx-sell[data-big='true'] .ykfx-pop { font-size: 30px; color: #a86d0e; }
+.ykfx-bump { display: inline-block; animation: ykfx-bump 560ms cubic-bezier(.2, 1.8, .4, 1); }
+
+@keyframes ykfx-spin { to { rotate: 360deg; } }
+@keyframes ykfx-veil-in { from { opacity: 0; } }
+@keyframes ykfx-slam { 0% { opacity: 0; scale: 2.4; } 60% { opacity: 1; } 100% { opacity: 1; scale: 1; } }
+@keyframes ykfx-slam-big { 0% { opacity: 0; scale: 3.2; filter: blur(6px); } 55% { opacity: 1; filter: none; } 100% { opacity: 1; scale: 1; } }
+@keyframes ykfx-rise { from { opacity: 0; translate: 0 10px; } to { opacity: 1; translate: 0 0; } }
+@keyframes ykfx-burst { 0% { scale: 1.28; filter: brightness(2.6); } 100% { scale: 1; filter: brightness(1.15); } }
+@keyframes ykfx-flash { 0% { opacity: var(--flash, .6); } 100% { opacity: 0; } }
+@keyframes ykfx-flash-twice { 0% { opacity: 1; } 30% { opacity: 0; } 45% { opacity: .8; } 100% { opacity: 0; } }
+@keyframes ykfx-rays-in { from { opacity: 0; scale: .4; } to { opacity: 1; scale: 1; } }
+@keyframes ykfx-shine { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@keyframes ykfx-thud { 0% { translate: 0 -6px; } 40% { translate: 0 3px; } 100% { translate: 0 0; } }
+@keyframes ykfx-drop { 0% { opacity: 0; translate: 0 -18px; } 100% { opacity: 1; translate: 0 0; } }
+@keyframes ykfx-stamp { 0% { opacity: 0; scale: 1.9; } 100% { opacity: 1; scale: 1; } }
+@keyframes ykfx-draw { to { stroke-dashoffset: 0; } }
+@keyframes ykfx-pop {
+  0% { opacity: 0; scale: .4; translate: -50% -50%; }
+  18% { opacity: 1; scale: 1.25; translate: -50% -115%; }
+  30% { scale: 1; }
+  78% { opacity: 1; scale: 1; translate: -50% -150%; }
+  100% { opacity: 0; scale: 1; translate: -50% -185%; }
+}
+@keyframes ykfx-bump { 0% { scale: 1; } 35% { scale: 1.3; color: #ffe3a0; text-shadow: 0 0 10px #ffcf5a; } 100% { scale: 1; } }
+
+/* 동작 줄이기: 흔들림·날아가는 입자·번쩍임 없이 색과 글자만 바꾼다. */
+.ykfx[data-reduced='true'] .ykfx-aura,
+.ykfx[data-reduced='true'] .ykfx-rays,
+.ykfx[data-reduced='true'] .ykfx-flash { display: none; }
+.ykfx[data-reduced='true'] .ykfx-orb { transform: none; }
+.ykfx[data-reduced='true'] :is(.ykfx-orb, .ykfx-title, .ykfx-sub, .ykfx-crack path) { animation: none !important; }
+.ykfx[data-reduced='true'] .ykfx-crack path { stroke-dashoffset: 0; }
+.ykfx[data-reduced='true'] .ykfx-title { rotate: 0deg; }
+.ykfx-sell[data-reduced='true'] .ykfx-pop { animation: ykfx-fade 900ms ease-out both; translate: -50% -120%; }
+@keyframes ykfx-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .ykfx-bump { animation: none; }
+  .ykfx[data-phase='done'] { transition: none; }
+}

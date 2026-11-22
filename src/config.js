@@ -45,7 +45,7 @@ export const CONFIG = {
     earlyUntilSize: 70 / 3,
     earlyWeights: [0.35, 0.15, 0.5],
     stage3Size: 31 / 3,
-    maxSpawnSize: 140,
+    maxSpawnSize: 140 / 3, // 시작 크기 1/3(커밋 25c7d7f) 때 환산이 빠져 있던 값을 balance 1단계에서 140 → 140/3으로 맞췄다(docs/balance-v4.md 4절). 되돌리려면 140.
     detect: 290,
     fleeSpeed: 130,
     chaseSpeed: 108,
@@ -103,7 +103,7 @@ export const CONFIG = {
     reversalFleeSeconds: 1.2,
     reversalNoticeMs: 800,
   },
-  // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 pace 곡선, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
+  // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 balance.pace, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
   progression: { growthPerLevel: 0.08 },
   // 생명력(사용자 결정 2026-11-23): 나를 먹을 수 있는 적과 겹쳐 있는 동안 게이지(초, 시뮬레이션 시간)가 줄고,
   // 그동안은 먹히지 않는다. 0이 된 순간에도 겹쳐 있으면 먹힌다. 닿지 않으면 regenDelaySec 뒤부터 회복한다.
@@ -114,10 +114,34 @@ export const CONFIG = {
     hitDrainSec: 0.5, // 특수 적 구슬 한 방이 깎는 게이지. 모자란 비율만큼만 크기를 줄인다
     arcColor: 0x48765e, warnColor: 0xd6453d, arcWidth: 4, arcPad: 7, flashHz: 6, // 원호 게이지(두께·간격은 화면 픽셀)
   },
-  // 성장에 따른 속도 곡선(사용자 결정 2026-11-23). 배율 f = minMult + (maxMult - minMult)
-  //   × (0.5 × (단계-1)/(maxStage-1) + 0.5 × 이동 속도 강화 레벨/maxSpeedLevel).
-  // f는 게임 템포(tempo × f)와 플레이어 이동 속도(player.speed × f)에 모두 곱한다.
-  pace: { minMult: 1 / 3, maxMult: 1.5, maxStage: 5, maxSpeedLevel: 10 },
+  // 진화 단계(1~5)와 이동 속도 강화 레벨(0~10)의 상한. 속도 곡선은 아래 balance.pace가 맡는다(예전 f 곡선 minMult·maxMult는 없앴다).
+  pace: { maxStage: 5, maxSpeedLevel: 10 },
+  // 고레벨 밸런스(사용자 결정 2026-11-23, 계획서 '변경 이력 4', 순수 규칙은 src/systems/balance.js).
+  // 시간 단위 '초': 크기 유지비(upkeep.rate)는 시뮬레이션 시간(실제 시간 × tempo × stageMult[단계]), 맞수 간격(rival.interval)은 실제 시간이다.
+  // 값은 초안이며 docs/balance-v4.md에 근거·표가 있다.
+  balance: {
+    // 속도: stageMult는 게임 템포(tempo × stageMult)에만, 플레이어 이동 속도에는 baseMult × (1 + speedPerLevel × 이동 속도 강화 레벨)만 곱한다.
+    // baseMult는 초반이 너무 쉬워지지 않게 하면서 L0 플레이어가 도망치는 먹이(도망 130)보다 느리지 않게 하는 기본값(조정자 결정 2026-11-23: 0.45 → 0.5):
+    // 1단계 플레이어 ≈ 170(예전 113의 1.5배, 1단계 추격 적의 약 1.73배). 5단계·+10 / 1단계 체감은 baseMult가 약분되어 1.1 × 1.4 / (1/3) ≈ 4.6배다.
+    pace: { stageMult: { 1: 1 / 3, 2: 0.6, 3: 0.85, 4: 1.0, 5: 1.1 }, baseMult: 0.5, speedPerLevel: 0.04, maxStage: 5, maxSpeedLevel: 10 },
+    // 아래 크기 값(refSize·start·targetSize·rewardPerSize)은 플레이어·적이 예전의 1/3 크기에서 시작하도록 바뀐 뒤(커밋 25c7d7f)의 값이다(예전 수치 ÷ 3).
+    // 성장 둔화: 먹을 때 면적 증가에 (refSize / max(refSize, 크기))^exp를 곱한다. refSize 이하에서는 예전 식 그대로다.
+    growth: { refSize: 150 / 3, exp: 0.5 },
+    // 크기 유지비: start 이상이면 초당 rate × (크기 - start)만큼 줄고, start 아래로는 내려가지 않는다(균형점에서 멈춤).
+    upkeep: { start: 250 / 3, rate: 0.02 },
+    // 크기별 감속(사용자 지시 2026-11-23: 크기가 클수록 이동 속도가 느려진다). 플레이어·적 모두 자기 크기로 곱한다:
+    //   배율 = (ref / max(ref, 크기))^exp, 최소 min. ref는 시작 크기(진화 직후 크기)라 그 아래에서는 1이다. 크기 150이면 약 0.43배.
+    sizeSlow: { ref: 28 / 3, exp: 0.3, min: 0.25 },
+    // 종족(단계)이 바뀌면 '나와 적이 함께 자라서 맵이 더 커진' 것처럼 보이게 한다(사용자 지시 2026-11-23): 단계가 오를 때마다 카메라가 한 칸 더 물러선다.
+    // 화면 배율에 stageZoom[단계]를 곱한다(그만큼 나는 더 작고 더 느리게 보인다). 시야가 월드보다 넓어지지 않는 선까지만 물러선다(camera.zoomFor).
+    view: { stageZoom: { 1: 1, 2: 0.8, 3: 0.64, 4: 0.51, 5: 0.41 } },
+    // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
+    // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.
+    // 맞수의 몸집 상한은 플레이어 × capVsPlayer(절대 상한은 enemy.growthCap.maxSize). 이름표는 label.
+    rival: { minStage: 4, interval: 25, maxAlive: 2, sizeMin: 0.8, sizeMax: 1.3, capVsPlayer: 1.3, label: '맞수' },
+    // 승천: 5단계에서 크기가 targetSize에 닿으면 판 승리. 보상 요력 = baseReward + rewardPerSize × 크기(150에서 390,000 ≈ 5단계 크기 100 적 4마리). title은 결과 창 제목.
+    ascension: { stage: 5, targetSize: 150, baseReward: 300000, rewardPerSize: 600, title: '승천' },
+  },
   // 부스터(플레이어 전용, src/game/booster.js; 사용자 결정 2026-11-23). 누르는 동안 플레이어 이동 속도(속도 곡선 적용 후)에만 배율을 곱한다. 적·발사체는 그대로.
   // 배율 = baseMult × 줄기 보정 + 이동 속도 강화 레벨 × perSpeedLevel. 줄기 보정 = form.stem → src/data/stems.js의 boostMult → 1.0(줄기 없는 mimul).
   // 게이지(maxSec)·회복·지연은 화면 시간(초)으로 계산하고(템포·속도 곡선과 무관), 0이 되면 가속이 끝나 minRestartSec 이상 찰 때까지 다시 켜지지 않는다.
@@ -128,6 +152,11 @@ export const CONFIG = {
     // 가속 중 연출(실제 시간 기준, Fx.burst 재사용): 플레이어 뒤쪽으로 옅은 먼지를 흘린다.
     trail: { color: 0xe7cb8a, interval: 0.045, count: 2, power: 0.5, back: 0.9, startCount: 6 }, // color = :root의 --gold
   },
+  // 상점(src/systems/shop.js; 사용자 결정 2026-11-23). 여의주 +minLevel~+maxLevel을 요력으로 산다.
+  // 구매가 = 같은 레벨 판매가 × priceMult(반올림). 1보다 커서 사서 바로 팔면 손해다.
+  // 사서 강화해 파는 이익은 본전 상한으로 막는다(조정자 결정 2026-11-23, docs/design-weapons.md 4-4):
+  // 산 여의주에는 paid(구매가 + 강화에 쓴 요력)가 붙고 판매가는 min(표 판매가, paid)다. 드롭 여의주는 표 판매가 그대로다.
+  shop: { priceMult: 2.5, minLevel: 0, maxLevel: 5 },
   // 등급은 겉모습을 빛·테두리 색으로만 표현한다(F는 테두리 없음)
   gradeGlow: { 'S+': 0xff6fd8, S: 0xffc53d, A: 0xa46bff, B: 0x4a9dff, C: 0x63b863, D: 0x9aa0a6, E: 0xa0785a, F: null },
   // 모션 그래픽. 끄기: 숨쉬기 breathAmount=0, 먹기 팝 punchScale=1, 번쩍임 flashSeconds=0, 흔들림 shakeIntensity=0, 기울기 maxTilt=0

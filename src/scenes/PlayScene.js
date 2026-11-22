@@ -16,8 +16,11 @@ import { Hud } from '../game/hud.js';
 import { Combat } from '../game/combat.js';
 import { FireButton } from '../game/fireButton.js';
 import { BoosterButton, boosterMult, createBooster, stepBoosterSim } from '../game/booster.js';
+import { MaintButton } from '../game/maintButton.js';
+import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenance.js';
 import { loadProgress, saveProgress } from '../state/save.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
+import { ascension, createRivalState, rivalPlan, rivalRetry, upkeep } from '../systems/balance.js';
 import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
@@ -91,6 +94,7 @@ export class PlayScene extends Phaser.Scene {
     this.nextColor = colorPicker();
     this.ended = false;
     this.refillTime = 0;
+    this.rivalState = createRivalState(); // 맞수 대요괴 타이머(실제 초)와 살아 있는 수(balance.rivalPlan)
     this.hudTime = 0;
     const arena = document.getElementById('arena');
     this.joystick = new Joystick(document);
@@ -110,6 +114,8 @@ export class PlayScene extends Phaser.Scene {
     this.boostFx = { active: false, clock: 0 };
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.boosterButton = new BoosterButton(arena);
+    this.maintenance = null; // 정비 화면이 열려 있는 동안 { before }
+    this.maintButton = new MaintButton(arena, () => this.openMaintenance());
     this.follow = followPlayer(this, this.player);
     this.hud = new Hud();
     const avatar = document.getElementById('avatar');
@@ -192,7 +198,7 @@ export class PlayScene extends Phaser.Scene {
       this.fx.floatText(p.x, p.y - p.size * 2.1, QUICK_STAT_NAMES[result.stat] + ' +1 (Lv ' + result.to + ')', '#c4f7e6');
     }
   }
-  // 진화·능력 강화 뒤에 다시 계산하는 한 곳: 능력치와 속도 곡선(템포 × f, 이동 속도 × f), 생명력 최대치, 부스터 배율.
+  // 진화·능력 강화 뒤에 다시 계산하는 한 곳: 능력치, 템포 곡선(pace = 단계별 tempoMultiplier)과 플레이어 이동 속도(baseMult × 강화 레벨), 생명력 최대치, 부스터 배율.
   recalcPace() {
     this.playerStats = playerStats(this.progress);
     this.pace = this.playerStats.pace;
@@ -230,13 +236,52 @@ export class PlayScene extends Phaser.Scene {
       onEvolve: () => openEvolve(),
     });
   }
+  // [정비] 버튼: 판을 멈추고(성장 카드와 같은 방식: 스틱·부스터 입력을 놓고 발사 요청을 비운다) 정비 화면을 판 중 모드로 연다.
+  // 닫으면 같은 판이 이어진다(closeMaintenance). 판이 끝났거나 성장 카드가 열려 있으면 열지 않는다.
+  openMaintenance() {
+    if (this.ended || this.paused || this.maintenance) return;
+    this.maintenance = { before: snapshotForMaintenance(this.progress) };
+    this.paused = true;
+    this.fireRequested = false;
+    this.joystick?.suspend();
+    this.boosterButton?.suspend();
+    this.maintButton?.setDisabled(true);
+    this.showMaintenanceHub();
+  }
+  // 진화 화면에서 돌아올 때도 이 화면으로 돌아온다.
+  showMaintenanceHub() {
+    const getFormImage = (formId) => this.formImage(formId);
+    const save = this.saveProgress;
+    HubView(this.progress, FORMS, {
+      getFormImage, save, inRun: true,
+      onPlay: () => this.closeMaintenance(),
+      onEvolve: () => EvolveView(this.progress, FORMS, { getFormImage, save, onDone: () => this.showMaintenanceHub() }),
+    });
+  }
+  closeMaintenance() {
+    const { before } = this.maintenance;
+    const { formChanged } = finishMaintenance(this.progress, this.level, before, performance.now() / 1000);
+    // 진화·역진화를 했으면 판 안 진화와 같이 크기만 처음으로. 강화한 능력치·속도·생명력·부스터 배율은 항상 다시 계산한다.
+    if (formChanged) this.applyForm();
+    this.recalcPace();
+    this.refreshIdentity();
+    this.saveProgress(this.progress);
+    this.maintenance = null;
+    this.fireRequested = false;
+    this.paused = false;
+    this.joystick?.resume();
+    this.boosterButton?.resume();
+    this.maintButton?.setDisabled(false);
+  }
   releaseControls() {
     this.joystick?.destroy();
     this.fireButton?.destroy();
     this.boosterButton?.destroy();
+    this.maintButton?.destroy();
     this.joystick = null;
     this.fireButton = null;
     this.boosterButton = null;
+    this.maintButton = null;
   }
   makePlayerMarker() {
     this.marker = this.add.graphics().setDepth(1);
@@ -261,7 +306,9 @@ export class PlayScene extends Phaser.Scene {
     const pos = spawnPoint(this.player, this.enemies, size, { ...options, stage });
     if (!pos) return false;
     const dir = this.nextColor(regionAt(pos.x, pos.y));
-    this.enemies.push(new Enemy(this, pos, size, dir, stage));
+    const enemy = new Enemy(this, pos, size, dir, stage);
+    if (options.rival) enemy.markRival(); // 맞수 대요괴: 이름표 '맞수', 진화 없음, 몸집 상한 플레이어 × 1.3
+    this.enemies.push(enemy);
     return true;
   }
   seedEnemies() {
@@ -282,7 +329,8 @@ export class PlayScene extends Phaser.Scene {
       if (!this.spawn(size, { near, initial: true, stage })) this.spawn(size, { initial: true, stage });
     }
   }
-  endRun(killer) {
+  // victory = { title, reward }: 승천처럼 이긴 판(결과 창에 승리 제목과 보상 요력). 없으면 평소 종료.
+  endRun(killer, victory = null) {
     this.ended = true;
     this.releaseControls();
     this.combat.clearEffects();
@@ -291,13 +339,22 @@ export class PlayScene extends Phaser.Scene {
     this.hud.end(this.player, killer, {
       onRestart: () => this.scene.restart({ progress: this.progress }),
       onHub: () => this.openHub(),
-    }, this.run);
+    }, this.run, victory);
     // 매혹한 요괴가 번 요력은 획득한 요력에 이미 들어 있다. 결과 창에 따로 적는다(설계 4-4).
     const reward = document.getElementById('run-reward');
     if (reward && this.run.allyYoryeok > 0) reward.textContent += ' (매혹한 요괴가 번 요력 ' + Math.round(this.run.allyYoryeok) + ' 포함)';
     this.events.emit('runEnd', {
       eaten: this.player.eaten, maxSize: this.player.maxSize, killerFormId: killer.id ?? null,
+      ascended: !!victory, reward: victory?.reward ?? 0,
     });
+  }
+  // 승천(balance.ascension): 5단계에서 목표 크기에 닿으면 판을 이기고 끝낸다. 보상 요력을 지급·저장하고 결과 창에 승리 제목을 띄운다.
+  ascend({ reward }) {
+    const title = CONFIG.balance.ascension.title;
+    this.progress.yoryeok += reward;
+    this.saveProgress(this.progress);
+    this.fx.burst(this.player.x, this.player.y, 0xffe27a, 40, 2);
+    this.endRun({ name: title, message: '크기 ' + Number(this.player.size.toFixed(1)) + '에 닿아 ' + title + '했습니다.' }, { title, reward });
   }
   // 특수 적 구슬에 맞으면 크기(=체력)가 줄고, 일정 크기 아래면 판 종료.
   applyEnemyHits(hits) {
@@ -550,6 +607,16 @@ export class PlayScene extends Phaser.Scene {
       }
       this.resolveMeals(grid, h);
       if (this.ended) break;
+      if (!this.stress) {
+        // 승천은 먹은 직후에 판정한다(유지비가 목표 직전의 크기를 깎지 못하게). 그다음 크기 유지비: start 위에서는 초당 조금씩 준다.
+        const win = ascension(this.progress, this.player.size);
+        if (win) {
+          this.ascend(win);
+          break;
+        }
+        const kept = upkeep(this.player.size, h);
+        if (kept !== this.player.size) this.player.setSize(kept);
+      }
       this.applyEnemyHits(this.enemyFire.step(h, this.player, this.combat.shield));
     }
     this.fireRequested = false;
@@ -587,7 +654,10 @@ export class PlayScene extends Phaser.Scene {
     const boosting = this.boostSec > 0;
     this.boosterButton?.update(this.booster, CONFIG.booster.maxSec, boosting);
     this.boostTrail(dt, direction, boosting);
-    for (const enemy of this.enemies) this.fx.animateActor(enemy, dt, enemy.vx, enemy.vy);
+    for (const enemy of this.enemies) {
+      this.fx.animateActor(enemy, dt, enemy.vx, enemy.vy);
+      if (enemy.rival) enemy.followLabel();
+    }
     const sp = this.playerStats.speed * (boosting ? this.boostMult : 1);
     this.fx.animateActor(this.player, dt, direction.x * sp, direction.y * sp);
     this.fx.update(dt, this.player, this.progress.grade);
@@ -613,6 +683,12 @@ export class PlayScene extends Phaser.Scene {
       this.refillTime = CONFIG.world.refillInterval;
       const count = Math.min(CONFIG.world.refillBatch, CONFIG.world.population - this.enemies.length);
       for (let i = 0; i < count; i++) this.spawn(spawnSize(size), { view });
+    }
+    // 맞수 대요괴(balance.rivalPlan): 4·5단계에서 실제 25초마다, 동시 최대 2마리. 시험 판(?stress)은 적 구성을 직접 정하므로 건너뛴다.
+    if (!this.stress) {
+      this.rivalState.alive = this.enemies.reduce((n, e) => n + (e.rival && e.sprite.active ? 1 : 0), 0);
+      const plan = rivalPlan(this.player.stage ?? 1, this.player.size, this.rivalState, sim);
+      if (plan && !this.spawn(plan.size, { view, stage: plan.stage, rival: true })) rivalRetry(this.rivalState);
     }
     this.hudTime -= dt;
     if (this.hudTime <= 0) {
