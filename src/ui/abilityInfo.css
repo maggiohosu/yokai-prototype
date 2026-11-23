@@ -86,16 +86,9 @@
   .qp-cards > .ai-cell:nth-child(3) > .qp-card { animation-delay: 0.06s; }
 }
 
-/* ---- HUD 좌상단 내 캐릭터(초상): 누르면 판이 멈추고 능력 안내가 열린다. .hud는 pointer-events:none이라 이 칸만 켠다. ---- */
-.hud .identity[role='button'] {
-  position: relative; pointer-events: auto; cursor: pointer;
-  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-}
-.hud .identity[role='button']::after { content: ''; position: absolute; inset: -8px 0; } /* 눌리는 높이를 HUD 칸만큼(44px 이상) */
-.hud .identity[role='button']:hover { background: var(--sheet); }
-.hud .identity[role='button']:active { background: var(--sheet); }
-.hud .identity[role='button']:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
-.hud .identity[role='button'] strong::after { content: ' ⓘ'; color: var(--muted); font: 400 13px/1 var(--sans); }
+/* 초상 단추는 HUD가 접혀도 같은 크기의 터치 영역을 유지한다. */
+.hud:not(.is-collapsed) .identity:is(:hover,:active) { background: var(--sheet); }
+.hud .identity strong::after { content: ' ⓘ'; color: var(--muted); font: 400 13px/1 var(--sans); }
 
 /* 도감 카드는 이제 크게 보기가 아니라 능력 안내를 연다. */
 #cards .card, #cards .specimen { cursor: pointer; }

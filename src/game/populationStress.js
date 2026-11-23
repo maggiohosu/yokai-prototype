@@ -70,7 +70,7 @@ export class PopulationStress {
       this.done = true;
       const report = {
         done: true, stage: this.stage, weapon: this.weapon, seed: this.seed, population: this.population,
-        initialCount: this.initialCount, initialStages: this.initialStages, minSimStartCount: this.popMin,
+        worldSize: CONFIG.world.size, initialCount: this.initialCount, initialStages: this.initialStages, minSimStartCount: this.popMin,
         frames: FRAMES, warmup: WARMUP, fires: scene.combat.wc.fires - this.startFires,
         hits: scene.combat.wc.hits - this.startHits, steps: scene.simSteps,
         intervalMs: summary(this.intervals), simMs: summary(this.sim), spawnMs: summary(this.spawns),

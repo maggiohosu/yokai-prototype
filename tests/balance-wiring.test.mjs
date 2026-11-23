@@ -4,7 +4,7 @@ import { CONFIG } from '../src/config.js';
 import { Enemy } from '../src/game/enemy.js';
 import { Player } from '../src/game/player.js';
 import { carryDecay, easePace, evolveCarrySize, growthGain, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier, startPace, tempoMultiplier } from '../src/systems/balance.js';
-import { worldFor } from '../src/systems/worldScale.js';
+import { applyWorldScale, worldFor } from '../src/systems/worldScale.js';
 import { followPlayer, zoomFor, zoomFloor } from '../src/game/camera.js';
 import { EnemyFire } from '../src/game/enemyFire.js';
 import { makeWorld } from './fixtures-abilities.mjs';
@@ -164,7 +164,8 @@ test('Enemy.step: 적도 크기가 클수록 느리다(배회 속도로 비교)'
   const player = { size: 50, stage: 5, x: 0, y: 0 };
   const speedOf = (size) => {
     const scene = fakeScene();
-    const enemy = new Enemy(scene, { x: 2000, y: 2000 }, size, 'east', 5);
+    const mid = CONFIG.world.size / 2;
+    const enemy = new Enemy(scene, { x: mid, y: mid }, size, 'east', 5);
     enemy.wanderTime = 10;
     enemy.wanderAngle = 0; // +x 방향 배회
     enemy.step(player, 1 / 60, null);
@@ -221,6 +222,7 @@ test('진화 연출: 카메라는 직전보다 확대되지 않고 물러섰다�
   globalThis.window = { devicePixelRatio: 1 };
   try {
     for (const stage of [2, 5]) {
+      applyWorldScale(stage - 1);
       const camera = {
         zoom: 1, width: 1264, height: 625,
         setBounds() { return camera; }, setZoom(z) { camera.zoom = z; return camera; },
@@ -238,6 +240,8 @@ test('진화 연출: 카메라는 직전보다 확대되지 않고 물러섰다�
       const startZoom = zoomFor(CONFIG.player.startSize, 1264, 625, 1); // 처음 시작 화면의 배율
       // 진화: 단계가 오르고 크기가 시작 크기로 돌아간다 → 연출 없이는 여기서 배율이 확 커진다(맵이 작아 보임)
       player.stage = stage;
+      applyWorldScale(stage);
+      follow.rebound();
       player.setSize(CONFIG.player.startSize);
       follow.expand();
       assert.ok(startZoom > before * 1.5, '연출 없이는 시작 화면 배율(' + startZoom + ')로 곧바로 확대된다');
@@ -259,6 +263,7 @@ test('진화 연출: 카메라는 직전보다 확대되지 않고 물러섰다�
     }
   } finally {
     delete globalThis.window;
+    applyWorldScale(1);
   }
 });
 

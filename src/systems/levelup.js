@@ -81,7 +81,7 @@ export function quickStatNote(stat) {
   const percent = (value) => Math.round(value * 1000) / 10;
   if (stat === 'growth') return '먹을 때 ' + percent(CONFIG.progression.growthPerLevel) + '% 더 자람';
   if (stat === 'speed') return '더 빨라짐(진화와 함께 속도 곡선이 올라감)';
-  if (stat === 'vitality') return '큰 요괴에게 물려도 ' + CONFIG.vitality.perLevelSec + '초 더 버팀';
+  if (stat === 'vitality') return '굶어도 몸집이 줄기까지 ' + CONFIG.vitality.perLevelSec + '초 더';
   return '';
 }
 const KIND_ORDER = { evolve: 0, body: 1, ability: 2 };

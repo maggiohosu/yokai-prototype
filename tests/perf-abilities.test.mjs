@@ -7,7 +7,7 @@ import { buildGrid } from '../src/game/enemyAI.js';
 import { applyBurn, applyMark, applySlow, tryFear, tryFreeze } from '../src/game/status.js';
 import { fakeEnemy, fakePlayer, makeWorld } from './fixtures-abilities.mjs';
 
-// 설계 4-6: 적 72 + 구슬 120 + 모든 상한을 채운 상태로 300단계 → 능력 처리 추가 시간 평균 ≤ 0.25ms/단계(개발 PC).
+// 설계 4-6: 구슬·능력 상한을 채운 상태로 300단계 → 능력 처리 추가 시간 평균 ≤ 0.25ms/단계(개발 PC).
 // 템포 최대(3.9 × 1.5 = 5.85)에서 한 프레임 시뮬레이션은 약 0.0975초이고 6단계로 나뉘므로 단계 길이는 0.0975 / 6이다.
 const STEPS = 300;
 const H = 0.0975 / 6;
@@ -80,7 +80,7 @@ function fillCaps(w) {
     }
     for (const e of enemies) applySlow(e, now, long, 0.7);
   }
-  // 구슬 120발
+  // 구슬을 현재 동시 상한까지 채운다.
   let guard = 0;
   while (combat.orbs.length < CONFIG.combat.maxOrbs && guard++ < 20) {
     combat.cooldown = 0;
@@ -122,7 +122,7 @@ const best = (formId, filled, tries = 3) => {
   return result;
 };
 
-test('성능: 적 72 · 구슬 120 · 상한을 채운 상태에서 능력 16종 모두 추가 처리 시간 평균 ≤ 0.25ms/단계', (t) => {
+test(`성능: 구슬 ${CONFIG.combat.maxOrbs}발을 채운 상태에서 능력 16종 모두 추가 처리 시간 평균 ≤ 0.25ms/단계`, (t) => {
   best('mimul', true, 1); // 예열
   const base = best('mimul', true);
   t.diagnostic(`기준(능력 없음) ${base.ms.toFixed(3)}ms/단계, 구슬 최대 ${base.orbsMax}`);
@@ -144,7 +144,7 @@ test('성능: 적 72 · 구슬 120 · 상한을 채운 상태에서 능력 16종
   t.diagnostic(rows.join(' | '));
 });
 
-test('성능: 구슬 120발이 가득 찬 상태에서도 구슬·구름·소용돌이·진주·아군 상한이 지켜진다', () => {
+test('성능: 구슬이 가득 찬 상태에서도 구슬·구름·소용돌이·진주·아군 상한이 지켜진다', () => {
   for (const stem of STEMS) {
     const form = FORMS.find((f) => f.stem === stem.id && f.stage === 5 && f.entry);
     const r = measure(form.id, true);

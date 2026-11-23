@@ -5,10 +5,10 @@ export const CONFIG = {
     names: { easy: '이지', normal: '노말', hard: '하드' },
     notes: {
       easy: '작거나 낮은 단계의 적이 자주 나와요. 이동 속도 2배, 자동 발사로 플레이해요. 부스터는 없어요.',
-      normal: '기본 출현 확률로 플레이해요.',
+      normal: '1단계부터 덩치 큰 적이 자주 나와요.',
       hard: '높은 단계의 적이 자주 나와요. 같은 단계에서는 큰 적이 많아요.',
     },
-    mult: 1.4, hardLives: 10,
+    mult: 1.4, strongMult: 1.5, hardLives: 10,
     easy: { playerSpeedMult: 2, booster: false, autoFire: true },
   },
   // 글꼴(사용자 지시 2026-11-23): 모든 글자를 프리텐다드로. 눈누 694번(SIL OFL 1.1, 상업적 사용·수정·재배포 가능) 가변 웹폰트를 src/style.css의 @font-face로 불러온다.
@@ -17,7 +17,7 @@ export const CONFIG = {
   // 게임 템포 배율(사용자 지시 2026-11-22: 3배). 이동·적 AI·발사체·쿨타임·보충에 곱한다.
   tempo: 3.9, // 사용자 지시: 3 → 3.9(1.3배, 2026-11-23)
   world: {
-    size: 4000,
+    size: 2000, // 사용자 지시(2026-11-23): 맵 면적 1/4, 적 수 그대로
     population: 72,
     populationMult: 3, // 단계별 기본 인구를 반올림한 뒤 곱한다. 72·115·160·216·284 → 216·345·480·648·852.
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
@@ -38,7 +38,7 @@ export const CONFIG = {
   // 사용자 지시(2026-11-23): 플레이어와 적이 예전의 1/3 크기에서 시작한다. 크기에 묶인 값들도 함께 1/3(카메라는 camera.refSize 28 기준이라 화면에서도 1/3로 보인다).
   player: { startSize: 28 / 3, speed: 131 }, // 사용자 지시: 218 → 262(1.2배) → 131(나·적 기본 속도 0.5배, 2026-11-23)
   enemy: {
-    // 생성 시점 플레이어 반지름의 배수. 후반에도 맵에 들어갈 수 있는 크기로 제한한다.
+    // 생성 시점 플레이어 반지름의 배수. 아래 크기·단계 표는 난이도 배율을 곱하기 전의 가중치다.
     sizes: [
       { weight: 0.67, min: 0.5, max: 0.86 },
       { weight: 0.13, min: 0.92, max: 1.08 },
@@ -69,7 +69,7 @@ export const CONFIG = {
     // preyInner: 시작 때 내가 먹을 수 있는 적(위협이 아닌 적)은 시작 화면 안쪽(반지름 preyInner)부터 놓는다(위협은 safeStart 밖).
     // refillPad: 보충 고리는 화면 바깥에서 시작한다(안쪽 반지름 = max(refillRing[0], 화면 대각선 / 2 + refillPad)), 큰 화면에서도 고리가 화면에 가려지지 않는다.
     // evolveCull: 판 안 진화로 3단계 이상이 될 때 플레이어보다 낮은 단계의 멀리 있는(refillRing[0] 밖) 적을 이 비율만큼 지운다(보충이 stageWeights대로 더 강한 적을 채운다).
-    nearSpawn: { fromStage: 3, share: 0.75, startRing: [260, 1500], preyInner: 120, refillRing: [450, 1600], refillPad: 250, evolveCull: 0.85 },
+    nearSpawn: { fromStage: 3, share: 0.75, startRing: [260, 850], preyInner: 120, refillRing: [450, 1600], refillPad: 250, evolveCull: 0.85 },
     // 3단계 이후 적 크기 분포(작은/비슷한/큰 적 가중치, sizes의 weight 대신 쓴다). 5단계가 최고 단계라 적이 더 높은 단계가 될 수 없으므로
     // 나보다 큰 적(= 나를 먹을 수 있는 같은 단계 적)의 비율을 0.2 → 0.4로 올린다(사용자 지시 2026-11-23: 3단계 이후 적이 너무 약하다). 시작 직후는 earlyWeights가 먼저 적용된다.
     hardSizeWeights: [0.45, 0.15, 0.4],
@@ -97,8 +97,19 @@ export const CONFIG = {
   // 특수 적(3단계 일부)의 구슬(src/game/enemyFire.js). 속도·쿨타임은 템포 1배 기준.
   special: {
     rewardMult: 8, // 특수 적 처치 시 요력 배율(요력 대박)
-    chance: 0.3, range: 380, cooldown: 2.2, orbSpeed: 260, orbRadius: 7,
-    damageRatio: 0.12, minDamage: 2 / 3, maxOrbs: 24, deathSize: 14 / 3,
+    // 특수 적(구슬을 쏘는 적)은 5단계(pace.maxStage) 적만 될 수 있다(사용자 지시 2026-11-23, enemyFire.canBeSpecial). 1~4단계 적은 추첨하지 않는다.
+    // 난이도 × 플레이어 단계별 특수 적 추첨 확률(chance)·재발사 간격(cooldown, 템포 1배 기준 시뮬레이션 초). 1·2단계는 아래 공통 기본값(0.3·2.2)을 쓴다.
+    // 사용자 지시(2026-11-23): 이지·노말 3~5단계는 이지 3단계 수준(T3 = 분당 27.8발), 하드는 3단계 T3·4~5단계 이지 4단계 수준(T4 = 분당 83.7발)을 넘지 않는다.
+    // 5단계 적만 쏘게 바꾼 뒤에도 상한을 넘는 모든 칸의 쿨타임을 늘려 상한에 맞췄다(값은 docs/balance-v4.md 17절의 측정). 쿨타임이 1차 수단이고, 상한 10으로도 모자란 이지 5단계만 chance를 낮췄다.
+    byStage: {
+      easy: { 3: { chance: 0.3, cooldown: 3.6 }, 4: { chance: 0.3, cooldown: 7.9 }, 5: { chance: 0.16, cooldown: 10 } },
+      normal: { 3: { chance: 0.3, cooldown: 3.4 }, 4: { chance: 0.3, cooldown: 5.9 }, 5: { chance: 0.3, cooldown: 8.2 } },
+      hard: { 3: { chance: 0.3, cooldown: 3.6 }, 4: { chance: 0.3, cooldown: 3 }, 5: { chance: 0.3, cooldown: 3.9 } },
+    },
+    // orbSpeed: 사용자 지시(2026-11-23) 두 번째 절반 130 → 65. 사거리·수명(= range × 1.5 / orbSpeed)은 거리 기준이라 비행 시간만 2배가 된다(약 4.4초 → 8.8초).
+    // maxOrbs: 수명(8.77초)이 쿨타임보다 길면 한 적이 구슬 여러 발을 동시에 띄운다(쿨타임 3~3.9초에서 3발, 8.2초에서 2발, 10초에서 1발). 48 → 96이어야 쿨타임이 가장 짧은 칸(하드 4단계 3초)에서도 사거리 안 특수 적 32마리가 계속 쏠 수 있다(docs/plan.md 변경 이력 14).
+    chance: 0.3, range: 380, cooldown: 2.2, orbSpeed: 65, orbRadius: 7,
+    damageRatio: 0.12, minDamage: 2 / 3, maxOrbs: 96, deathSize: 14 / 3,
     leadAim: 0.6, trailLength: 0.16, orbColor: 0xc2185b, coreColor: 0xffb3dd, trailColor: 0x7b1fa2,
     ringColor: 0xe0245e, ringDashes: 14, ringSpin: 1.4, ringPad: 1.28, ringWidth: 3,
   },
@@ -127,10 +138,11 @@ export const CONFIG = {
   combat: {
     aimHalfAngleDeg: 35,
     homingTurnRate: 4, // 유도 1.0일 때 초당 최대 회전(라디안)
-    maxOrbs: 120,
+    targetLookSteps: 5, // 유도 구슬이 표적을 다시 찾는 간격(단계 수). 발사체 속도를 1/4로 줄인 뒤 2 → 5(docs/plan.md 변경 이력 14)
+    maxOrbs: 480, // 비행 시간이 2배라 최대 강화 여의주(0.55초마다 40발)의 회선·분화가 한 번에 떠 있는 수가 늘었다(시뮬레이션 최대 약 400~476). 240 → 480(docs/plan.md 변경 이력 14)
     range: 360,
     cooldown: 0.55,
-    orbSpeed: 520,
+    orbSpeed: 130, // 분화·퍼짐 갈래의 기준 속도. 여의주 520 → 260 → 130(사용자 지시 2026-11-23 두 번째 절반, docs/plan.md 변경 이력 14)
     orbRadius: 5,
     shotSpacing: 12,
     defeatSize: 4 / 3,
@@ -139,15 +151,12 @@ export const CONFIG = {
   },
   // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 balance.pace, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
   progression: { growthPerLevel: 0.08 },
-  // 생명력(사용자 결정 2026-11-23): 나를 먹을 수 있는 적과 겹쳐 있는 동안 게이지(초, 시뮬레이션 시간)가 줄고,
-  // 그동안은 먹히지 않는다. 0이 된 순간에도 겹쳐 있으면 먹힌다. 닿지 않으면 regenDelaySec 뒤부터 회복한다.
+  // 직접 먹은 뒤부터 필드에서 실제로 흐른 시간을 센다.
   vitality: {
-    // 사용자 지시(2026-11-23): 처음 기본 생명력은 약 10ms만 닿아도 먹힐 만큼(1단계 템포 1.3 기준 시뮬레이션 0.013초 ≈ 실제 10ms). 강화하면 레벨당 0.25초씩 는다.
-    baseSec: 0.013, perLevelSec: 0.25, // 최대치 = baseSec + perLevelSec × 생명력 레벨(+10이면 약 2.5초)
-    regenFullSec: 4, // 빈 상태에서 가득 차기까지(최대치와 상관없이)
-    regenDelaySec: 0.5, // 닿은 직후 회복하지 않는 시간
-    hitDrainSec: 0.5, // 특수 적 구슬 한 방이 깎는 게이지. 모자란 비율만큼만 크기를 줄인다
-    arcColor: 0x48765e, warnColor: 0xd6453d, arcWidth: 4, arcPad: 7, flashHz: 6, // 원호 게이지(두께·간격은 화면 픽셀)
+    hungerGraceSec: 5, baseSec: 4, perLevelSec: 0.6, hitDrainSec: 0.5,
+    smallMealRatio: 0.8, bigMealRatio: 1.15, smallMealRestore: 0.25, similarMealRestore: 0.5,
+    shrinkPerSec: 0.03, drainingSpeed: 1.25, starvingSpeed: 1.4, settleSec: 0.5,
+    arcColor: 0x48765e, drainColor: 0xd69135, warnColor: 0xd6453d, arcWidth: 3, arcPad: 7, flashHz: 1.25,
   },
   // 진화 단계(1~5)와 이동 속도 강화 레벨(0~10)의 상한. 속도 곡선은 아래 balance.pace가 맡는다(예전 f 곡선 minMult·maxMult는 없앴다).
   pace: { maxStage: 5, maxSpeedLevel: 10 },
@@ -173,7 +182,7 @@ export const CONFIG = {
     //   ② 진화하는 순간 카메라가 직전 배율 × evolveZoom까지 물러서고(맵이 사방으로 늘어나 내가 작아 보인다) evolveHoldSec 동안 머문 뒤,
     //      시작 화면 배율로 부드럽게 돌아온다(evolveExpandSec 동안 expandSmoothRate로 천천히). 그 사이 내가 있는 곳에서 바깥으로 맵이 번지는 고리(pulse)가 퍼진다.
     //   stageZoom을 1이 아닌 값으로 두면 그 단계부터 시작 화면이 달라진다(시야가 월드보다 넓어지지 않는 선까지만 물러선다: camera.zoomFor).
-    view: { stageZoom: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }, evolveZoom: 0.69, evolveHoldSec: 0.9, evolveExpandSec: 3, expandSmoothRate: 2.5, pulse: { sec: 1.4, reach: 1500 } },
+    view: { stageZoom: { 1: 1, 2: 1, 3: 1, 4: 1, 5: 1 }, evolveZoom: 0.69, evolveHoldSec: 0.9, evolveExpandSec: 3, expandSmoothRate: 2.5, pulse: { sec: 1.4, reach: 750 } },
     // 진화 직후 속도(사용자 지시 2026-11-23: 속도도 처음 시작처럼 느리게 보이되, 나도 적도 함께): 진화하는 순간과 새 판을 시작할 때 게임 템포(stageMult)가
     // 처음 시작 값(1단계, 1/3)으로 돌아가고 paceTauSec(실제 초)의 시정수로 그 단계의 템포까지 서서히 올라간다. 템포는 적·발사체 모두에 곱해지므로 나와 적이 함께 느려졌다가 함께 빨라진다
     // (나는 실제로 빨라지고 적도 빨라지지만 서로 같이 빨라져서 화면에서는 느려 보인다). 진화한 뒤의 화면과 크기는 처음 시작 화면과 같다(view.stageZoom 모두 1).
@@ -181,7 +190,7 @@ export const CONFIG = {
     evolveSlow: { carry: 0, tauSec: 45, paceTauSec: 40 },
     // 월드 한 변은 기본 크기 × 단계 배율, 적 수는 round(기본 인구 × 단계 배율^populationExp) × populationMult.
     // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고 새 땅을 보충으로 채운다.
-    // 4000 → 6000 → 8000 → 10400 → 13200. 적 수는 위 populationExp로 정한다(면적이 아니라 배율에 가깝게 늘려 CPU 부담을 줄인다).
+    // 2000 → 3000 → 4000 → 5200 → 6600. 적 수는 위 populationExp로 정한다(면적이 아니라 배율에 가깝게 늘려 CPU 부담을 줄인다).
     map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 }, populationExp: 1.15 }, // 기본 인구 72·115·160·216·284, 배율 3에서 216·345·480·648·852.
     // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
     // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.

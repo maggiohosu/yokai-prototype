@@ -56,6 +56,11 @@
 .yk-dialog :focus-visible, .yk-prompt :focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; }
 .yk-footer { display: grid; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--sheet); }
 .yk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.yk-hub-actions { grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr)); }
+/* 음악 단추: 글자는 '음악' 하나, 상태는 aria-pressed. 꺼짐은 흐리게 + 취소선. */
+.yk-music { min-width: 44px; }
+.yk-music[aria-pressed='true'] { border-color: var(--ink); font-weight: 700; }
+.yk-music[aria-pressed='false'] { color: var(--muted); font-weight: 400; text-decoration: line-through; }
 .yk-footer .yk-hint { text-align: center; }
 .yk-feedback:has(.yk-status:empty):has(.yk-log:empty), .yk-status:empty, .yk-log:empty { display: none; }
 .yk-status, .yk-notice { color: var(--ink); font-size: 14px; font-weight: 600; }

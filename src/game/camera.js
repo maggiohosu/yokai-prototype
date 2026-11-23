@@ -26,8 +26,7 @@ export function cameraView(camera, out = {}) {
 export function zoomFloor(cssWidth, cssHeight = Infinity, stage = 1) {
   const cam = CONFIG.camera;
   const longSide = Number.isFinite(cssHeight) ? Math.max(cssWidth, cssHeight) : cssWidth;
-  const floor = Math.max(cam.minZoom * stageZoomMultiplier(stage), longSide / CONFIG.world.size);
-  return Math.min(cam.minZoom, floor);
+  return Math.max(cam.minZoom * stageZoomMultiplier(stage), longSide / CONFIG.world.size);
 }
 
 export function zoomFor(size, cssWidth, cssHeight = Infinity, stage = 1) {
@@ -49,7 +48,10 @@ export function followPlayer(scene, player) {
   let slowUntil = 0;
   const target = () => {
     const z = natural();
-    return scene.time.now < capUntil ? Math.min(z, cap) : z;
+    if (scene.time.now >= capUntil) return z;
+    // 연출 중 화면을 회전·확대하면 이전 화면에서 구한 cap도 새 월드 경계를 지킨다.
+    const floor = pixelRatio() * zoomFloor(...css(), player.stage ?? 1);
+    return Math.max(floor, Math.min(z, cap));
   };
   cam.setZoom(target()).centerOn(player.x, player.y).startFollow(player.sprite);
   const update = (dt) => {

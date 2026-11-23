@@ -26,7 +26,7 @@ test('뇌쇄: 맞은 적에서 가장 가까운 안 맞은 적으로 튄다. 1�
   const a = E(1100, 1000), b = E(1100, 1090), far = E(1100, 1500);
   const w = world('hwalsa', 0, [a, b, far]);
   const S = shotDamage(w);
-  w.shoot(20);
+  w.shoot(40);
   assert.ok(close(a.size, 30 - S));
   assert.ok(close(b.size, 30 - S * 0.5), 'B는 감쇠 0.5: ' + b.size);
   assert.equal(far.size, 30);
@@ -38,7 +38,7 @@ test('뇌쇄 5단계: 3번 튀고 k번째 피해 = 구슬 피해 × 0.7^k, 이�
   const row = [1100, 1170, 1240, 1310, 1380].map((x) => E(x, 1000));
   const w = world('cheongnyong', 0, row);
   const S = shotDamage(w);
-  w.shoot(20);
+  w.shoot(40);
   const lost = row.map((e) => 30 - e.size);
   assert.ok(close(lost[0], S));
   assert.ok(close(lost[1], S * 0.7), 'k=1');
@@ -88,6 +88,7 @@ test('학익 추적: 뒤쪽(사방) 위협도 찾고, 표적이 죽으면 반경
   w.shoot(1);
   const orb = w.combat.orbs[0];
   assert.ok(orb, '쏜 구슬');
+  assert.ok(close(Math.abs(Math.atan2(orb.vy, orb.vx)), 0.55 * 4 * 1.1 / 60), '2단계 학익 추적의 초당 최대 회전');
   w.step(1);
   assert.strictEqual(orb.target, behind, '뒤쪽도 표적(360°)');
   const spare = E(orb.x + 30, orb.y + 40, 40, 2);
@@ -96,6 +97,28 @@ test('학익 추적: 뒤쪽(사방) 위협도 찾고, 표적이 죽으면 반경
   w.step(1);
   assert.strictEqual(orb.target, spare, '표적이 죽으면 새 표적');
   assert.equal(w.combat.counters.homing, 1, '처음 표적을 찾은 때만 센다');
+});
+
+test('학익 추적: 표적이 없는 구슬은 targetLookSteps + 1단계마다 다시 찾고, 표적이 죽으면 바로 찾는다', () => {
+  // 발사체가 처음 속도의 1/4이 된 뒤 떠 있는 구슬이 늘어, 표적 찾기 간격을 2 → 5단계로 늘렸다(속도가 느려 한 단계에 가는 거리도 짧다).
+  assert.equal(CONFIG.combat.targetLookSteps, 5);
+  const w = world('danggang', 0, []);
+  w.combat.refreshAbility();
+  w.shoot(1);
+  const orb = w.combat.orbs[0];
+  w.step(1);
+  assert.equal(orb.target, null, '표적이 없다');
+  const late = E(orb.x + 40, orb.y + 40, 40, 2);
+  w.enemies.push(late);
+  let steps = 0;
+  while (orb.target === null && steps < 20) { w.step(1); steps++; }
+  assert.strictEqual(orb.target, late);
+  assert.ok(steps >= 1 && steps <= CONFIG.combat.targetLookSteps + 1, '새로 생긴 적은 ' + steps + '단계 뒤에 찾는다');
+  const spare = E(orb.x + 30, orb.y - 40, 40, 2);
+  w.enemies.push(spare);
+  late.sprite.active = false;
+  w.step(1);
+  assert.strictEqual(orb.target, spare, '표적이 죽으면 기다리지 않고 새 표적');
 });
 
 test('학익 추적: 나를 먹을 수 없는 적(작은 적)과 아군은 표적이 아니다', () => {
@@ -175,7 +198,7 @@ test('관통 3단계는 2마리 더, 유지율이 곱해진다', () => {
   const row = [1100, 1160, 1220, 1280].map((x) => E(x, 1000, 40));
   const w = world('skyHound', 0, row);
   const S = shotDamage(w);
-  w.shoot(80);
+  w.shoot(160);
   const lost = row.map((e) => 40 - e.size);
   assert.ok(close(lost[0], S));
   assert.ok(close(lost[1], S * 0.8));
@@ -402,7 +425,7 @@ test('폭염: 맞은 자리 둘레의 다른 적을 구슬 피해 × e로 깎고
   const a = E(1100, 1000, 40), near = E(1100, 1050, 30), far = E(1100, 1300, 30);
   const w = world('hogyo', 0, [a, near, far]);
   const S = shotDamage(w);
-  w.shoot(20);
+  w.shoot(40);
   assert.ok(close(a.size, 40 - S), '맞은 적은 구슬 피해만');
   assert.ok(close(near.size, 30 - S * 0.55), '둘레 피해 0.55: ' + near.size);
   assert.equal(far.size, 30);
@@ -462,7 +485,7 @@ test('흡정: 깎은 면적의 q만큼 내 면적이 늘고, 성장은 내 면�
 test('와류: 맞은 자리에 소용돌이가 생겨 둘레 적을 중심으로 끌고, 상위 단계 적은 절반, 생성 간격 0.5초', () => {
   const a = E(1100, 1000, 40, 2), pulled = E(1070, 1060, 20, 2), tough = E(1070, 940, 20, 3);
   const w = world('yueon', 0, [a, pulled, tough]);
-  w.shoot(20);
+  w.shoot(40);
   assert.equal(w.combat.vortices.length, 1);
   assert.equal(w.combat.counters.vortex, 1);
   const v = w.combat.vortices[0];
@@ -489,7 +512,7 @@ test('와류: 동시 상한(2단계 2개)을 넘으면 오래된 것부터 지�
 test('대풍: 맞은 적을 구슬 방향으로 D만큼 0.15초에 걸쳐 밀고 0.2초 경직, 같은 적 재밀기 0.3초', () => {
   const a = E(1100, 1000, 40, 2);
   const w = world('iseo', 0, [a]);
-  w.shoot(20);
+  w.shoot(40);
   const pushSim = sim(w, 0.15);
   assert.ok(a.knockVx > 0 && Math.abs(a.knockVy) < 1e-9);
   assert.ok(close(a.knockVx * pushSim, 55, 1e-6), '2단계 밀기 거리 55: ' + a.knockVx * pushSim);
@@ -504,7 +527,7 @@ test('대풍: 맞은 적을 구슬 방향으로 D만큼 0.15초에 걸쳐 밀고
 test('대풍 4단계: 둘레 적도 절반 거리로 민다', () => {
   const a = E(1100, 1000, 40, 4), side = E(1100, 1055, 20, 4);
   const w = world('gon', 0, [a, side]);
-  w.shoot(20);
+  w.shoot(40);
   const pushSim = sim(w, 0.15);
   assert.ok(close(a.knockVx * pushSim, 90, 1e-6));
   assert.ok(close(side.knockVx * pushSim, 45, 1e-6), '둘레는 절반: ' + side.knockVx * pushSim);
@@ -514,10 +537,10 @@ test('대풍 4단계: 둘레 적도 절반 거리로 민다', () => {
 test('상위 단계 적은 대풍에 덜 밀리고 너무 멀리 차이 나면 안 밀린다', () => {
   const near = E(1100, 1000, 40, 3), far = E(1100, 1000, 40, 5);
   const w1 = world('iseo', 0, [near]);
-  w1.shoot(20);
+  w1.shoot(40);
   assert.ok(close(near.knockVx * sim(w1, 0.15), 55 * 0.5, 1e-6), 'Δ=1');
   const w2 = world('jua', 0, [far]);
-  w2.shoot(20);
+  w2.shoot(40);
   assert.equal(far.knockVx, 0, '1단계 대풍(40) × 0.0625 → 안 민다');
 });
 
@@ -525,7 +548,7 @@ test('아군(매혹)·유예 중인 적은 구슬이 통과하고 어떤 능력�
   const ally = E(1100, 1000, 40, 2, { charmUntil: 1e9, charmGraceUntil: 1e9 + 1 });
   const behind = E(1160, 1000, 40, 2);
   const w = world('littleTurtle', 0, [ally, behind]);
-  w.shoot(40);
+  w.shoot(80);
   assert.equal(ally.size, 40);
   assert.equal(ally.frozenUntil, 0);
   assert.ok(behind.frozenUntil > 0, '뒤의 적은 맞는다');
@@ -594,14 +617,15 @@ test('여의주 강화 레벨은 능력 수치를 함께 올린다: 레벨 15 �
   assert.equal(chain.combat.ab.hops, 2, '1 + lvInt(5)');
 });
 
-test('보물 레벨이 올라 구슬이 많아져도 구슬 수는 combat.maxOrbs(120)를 넘지 않는다', () => {
+test('보물 레벨이 올라 구슬이 많아져도 구슬 수는 combat.maxOrbs를 넘지 않는다', () => {
   const w = world('cheongnyong', 15, [E(5000, 5000, 30)]);
-  for (let i = 0; i < 6; i++) {
+  const volleys = Math.ceil(CONFIG.combat.maxOrbs / w.combat.stats().count);
+  for (let i = 0; i <= volleys; i++) {
     w.combat.cooldown = 0;
     w.step(1, 1 / 600, { fire: true });
     assert.ok(w.combat.orbs.length <= CONFIG.combat.maxOrbs);
   }
-  assert.equal(w.combat.orbs.length, 120, '8방향 × 5발 = 40발씩 3번이면 가득 찬다');
+  assert.equal(w.combat.orbs.length, CONFIG.combat.maxOrbs);
 });
 
 test('능력은 형태를 바꾸면 바뀐다: 진화해 줄기가 달라지면 새 능력이 붙고 걸린 효과는 끝까지 간다', () => {

@@ -1,129 +1,115 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG } from '../src/config.js';
-import { absorbHit, createVitality, stepVitality, vitalityMax, vitalityVisible } from '../src/systems/vitality.js';
+import { createVitality, feedVitality, hitVitality, stepHunger, starvingSize, vitalityMax } from '../src/systems/vitality.js';
 
-const V = CONFIG.vitality;
-const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, a + ' ≈ ' + b);
-const H = 1 / 60;
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, a + ' ≈ ' + b);
 
-// dt 간격으로 seconds만큼 흘린다. 먹힌 시각(초)을 돌려주고, 먹히지 않았으면 null.
-function run(state, max, touching, seconds, dt = H) {
-  let t = 0;
-  while (t < seconds - 1e-12) {
-    const step = Math.min(dt, seconds - t);
-    t += step;
-    if (stepVitality(state, { touching, dt: step, max }).eaten) return t;
+test('기본 생명력 4초, 강화 한 번에 0.6초, +10에서 10초', () => {
+  near(vitalityMax(-1), 4);
+  near(vitalityMax(0), 4);
+  near(vitalityMax(1), 4.6);
+  near(vitalityMax(10), 10);
+});
+
+test('5초가 지나야 초당 1초를 쓰고, 바닥난 다음 시간만 몸집에서 뺀다', () => {
+  const h = createVitality(4);
+  near(stepHunger(h, 4.9, 4), 0);
+  assert.equal(h.state, 'grace');
+  near(h.speedMult, 1);
+  near(h.value, 4);
+  stepHunger(h, 2.1, 4);
+  assert.equal(h.state, 'draining');
+  near(h.value, 2);
+  near(h.speedMult, 1.125);
+  near(stepHunger(h, 3.5, 4), 1.5);
+  assert.equal(h.state, 'starving');
+  near(h.value, 0);
+  near(h.speedMult, 1.4);
+  const oneFrame = createVitality(4);
+  near(stepHunger(oneFrame, 10.5, 4), 1.5);
+  near(oneFrame.speedMult, h.speedMult);
+});
+
+test('직접 먹은 순간 크기로 회복량을 정하고 5초를 다시 센다', () => {
+  for (const [prey, restored] of [[7, 1], [9, 2], [12, 4]]) {
+    const h = createVitality(4);
+    stepHunger(h, 10, 4);
+    feedVitality(h, prey, 10, 4);
+    near(h.value, restored);
+    assert.equal(h.sinceMeal, 0);
+    assert.equal(h.state, 'grace');
+    near(h.speedMult, 1.4);
+    stepHunger(h, 0.25, 4);
+    near(h.speedMult, 1.2);
+    stepHunger(h, 0.25, 4);
+    near(h.speedMult, 1);
+    stepHunger(h, 4.5, 4);
+    near(h.value, restored);
+    near(h.speedMult, 1);
+    stepHunger(h, restored / 2, 4);
+    near(h.speedMult, 1.125);
+    feedVitality(h, 12, 10, 4);
+    near(h.value, 4);
   }
-  return null;
-}
-
-test('vitalityMax: baseSec(약 10ms) + 0.25초 × 레벨', () => {
-  const b = CONFIG.vitality.baseSec;
-  assert.ok(b > 0 && b < 0.02, '기본 생명력은 약 10ms(사용자 지시 2026-11-23)');
-  near(vitalityMax(0), b);
-  near(vitalityMax(1), b + 0.25);
-  near(vitalityMax(10), b + 2.5);
-  near(vitalityMax(-4), b);
 });
 
-test('버티는 시간: 닿아 있는 동안 게이지만큼 버티고, 0이 되는 순간에도 닿아 있으면 먹힌다', () => {
-  for (const level of [0, 3, 10]) {
-    const max = vitalityMax(level);
-    const state = createVitality(max);
-    const eatenAt = run(state, max, true, max + 1);
-    assert.ok(eatenAt !== null, `레벨 ${level}: 먹혀야 한다`);
-    assert.ok(eatenAt >= max - 1e-9, '게이지가 남아 있는 동안은 먹히지 않는다');
-    near(eatenAt, max, H + 1e-9);
-  }
-  // 게이지가 바닥나기 직전까지는 안 먹힌다.
-  const max = vitalityMax(0);
-  const state = createVitality(max);
-  assert.equal(run(state, max, true, max - 0.05), null);
-  assert.ok(state.value > 0);
+test('몸집은 한 초에 3% 줄고 단계 시작 크기에서 멈춘다', () => {
+  near(starvingSize(30, 1, 3), 29.1);
+  near(starvingSize(30, 2, 3), starvingSize(29.1, 1, 3));
+  near(starvingSize(30, 10000, 1), 28 / 3);
+  near(starvingSize(30, 10000, 5), 28 / 3);
+  near(starvingSize(6, 1, 1), 6); // 구슬로 이미 작아졌으면 굶주림으로 커지지 않는다.
 });
 
-test('겹친 적이 여럿이어도 소모 속도는 1배(touching은 불리언 하나)', () => {
-  const max = vitalityMax(2);
-  const one = createVitality(max);
-  run(one, max, true, 0.3);
-  near(one.value, max - 0.3, 2e-3);
+test('구슬은 생명력을 0.5초 깎고 이미 비었을 때만 몸집에 피해를 준다', () => {
+  const h = createVitality(4);
+  stepHunger(h, 3, 4);
+  for (let i = 0; i < 8; i++) assert.equal(hitVitality(h), false);
+  assert.equal(hitVitality(h), true);
+  near(h.sinceMeal, 3);
+  near(h.value, 0);
+  near(stepHunger(h, 3, 4), 1);
+  const low = createVitality(0.1);
+  assert.equal(hitVitality(low), false);
+  near(low.value, 0);
 });
 
-test('게이지가 이미 0이면 닿는 순간 먹힌다', () => {
-  const state = { value: 0, sinceTouch: Infinity };
-  assert.equal(stepVitality(state, { touching: true, dt: H, max: 1 }).eaten, true);
+test('정비·선택지로 판을 멈춘 시간은 제외하고, 느린 활성 프레임은 실제 초로 센다', async () => {
+  globalThis.Phaser ??= { Scene: class {} };
+  const { PlayScene } = await import('../src/scenes/PlayScene.js');
+  const scene = Object.assign(Object.create(PlayScene.prototype), {
+    hunger: createVitality(4), hungerTimeMs: null, playerStats: { vitalityMax: 4 },
+    player: { size: 20, stage: 1 }, pace: 0.33,
+  });
+  scene.advanceHunger(1000);
+  scene.advanceHunger(4000);
+  scene.pauseForDialog();
+  scene.tick(16000, 20000);
+  scene.resumeAfterDialog();
+  scene.advanceHunger(23000);
+  near(scene.hunger.sinceMeal, 3);
+  scene.pace = 1.1;
+  scene.advanceHunger(26000);
+  near(scene.hunger.value, 3);
+  assert.equal(scene.hunger.state, 'draining');
+  scene.paused = true;
+  scene.tick(20000, 46000);
+  scene.paused = false;
+  scene.advanceHunger(46010);
+  near(scene.hunger.value, 3);
 });
 
-test('닿은 직후 regenDelaySec 동안은 회복하지 않고, 그 뒤 빈 상태에서 regenFullSec에 가득 찬다', () => {
-  const max = vitalityMax(4);
-  const state = createVitality(max);
-  run(state, max, true, 0.5);
-  const drained = state.value;
-  assert.ok(drained < max);
-  run(state, max, false, V.regenDelaySec - 0.01);
-  near(state.value, drained, 1e-9);
-  run(state, max, false, 0.01 + 1);
-  near(state.value, drained + 1 * (max / V.regenFullSec), 1e-6);
-
-  const empty = { value: 0, sinceTouch: 0 };
-  run(empty, max, false, V.regenDelaySec + V.regenFullSec - 0.01);
-  assert.ok(empty.value < max);
-  run(empty, max, false, 0.02);
-  near(empty.value, max, 1e-9);
-});
-
-test('회복은 큰 dt 한 번으로 지연을 넘겨도 지연 이후 시간만 계산한다', () => {
-  const state = { value: 0, sinceTouch: 0 };
-  stepVitality(state, { touching: false, dt: 1, max: 2 });
-  near(state.value, (1 - V.regenDelaySec) * (2 / V.regenFullSec));
-});
-
-test('다시 닿으면 회복 지연이 처음부터다', () => {
-  const max = vitalityMax(2);
-  const state = createVitality(max);
-  run(state, max, true, 0.2);
-  run(state, max, false, 0.3);
-  run(state, max, true, 0.1);
-  const before = state.value;
-  run(state, max, false, V.regenDelaySec - 0.02);
-  near(state.value, before, 1e-9);
-});
-
-test('최대치가 줄면 현재치를 자르고, 늘면 현재치는 그대로다', () => {
-  const state = createVitality(3.1);
-  stepVitality(state, { touching: false, dt: H, max: 1 });
-  near(state.value, 1);
-  const kept = createVitality(0.6);
-  stepVitality(kept, { touching: false, dt: 0, max: 3.1 });
-  near(kept.value, 0.6);
-});
-
-test('absorbHit: 게이지가 충분하면 피해 0, 모자라면 모자란 비율만큼만 피해', () => {
-  const full = createVitality(1);
-  assert.deepEqual(absorbHit(full, 0.5), { damageRatio: 0 });
-  near(full.value, 0.5);
-  const low = { value: 0.2, sinceTouch: Infinity };
-  const result = absorbHit(low, 0.5);
-  near(result.damageRatio, 0.6);
-  assert.equal(low.value, 0);
-  assert.deepEqual(absorbHit({ value: 0, sinceTouch: Infinity }, 0.5), { damageRatio: 1 });
-  assert.deepEqual(absorbHit(createVitality(1), 0), { damageRatio: 1 });
-  // 기본값은 설정의 hitDrainSec
-  const dflt = createVitality(1);
-  absorbHit(dflt);
-  near(dflt.value, 1 - V.hitDrainSec);
-});
-
-test('맞은 직후에도 회복을 잠시 미룬다', () => {
-  const state = createVitality(2);
-  absorbHit(state, 0.5);
-  const after = state.value;
-  run(state, 2, false, V.regenDelaySec - 0.02);
-  near(state.value, after, 1e-9);
-});
-
-test('vitalityVisible: 가득 차면 숨긴다', () => {
-  assert.equal(vitalityVisible(createVitality(1), 1), false);
-  assert.equal(vitalityVisible({ value: 0.99, sinceTouch: 0 }, 1), true);
+test('같은 몸집·입력일 때 굶주림은 부스터와 이지의 이동 속도에도 곱해진다', async () => {
+  const { Player } = await import('../src/game/player.js');
+  const { playerStats } = await import('../src/game/session.js');
+  const distance = (difficulty, speed, boostSec, hungerMult) => {
+    let dx = 0;
+    const p = { size: 25, carry: 0, stats: playerStats({ stage: 3, difficulty, enh: { speed } }), move(x) { dx = x; } };
+    Player.prototype.step.call(p, { x: 1, y: 0 }, 1, boostSec, 1.3, hungerMult);
+    return dx;
+  };
+  const base = distance('normal', 5, 0, 1);
+  near(distance('normal', 5, 1, 1.4), base * 1.3 * 1.4);
+  near(distance('hard', 5, 0, 1.125), base * 1.125);
+  near(distance('easy', 5, 0, 1.4), base * 2 * 1.4);
 });

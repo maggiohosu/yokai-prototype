@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { rollSpawnSize, sizeWeights, spawnSize, spawnStage, startStage } from '../src/game/world.js';
-import { livesFor, onRunEnd, sizeWeightsFor, stageWeightsFor } from '../src/systems/difficulty.js';
+import { livesFor, onRunEnd, stageWeightsFor } from '../src/systems/difficulty.js';
 import {
   loadProgress, normalizeProgress, saveProgress, slotKey, startNewSlot, summarizeSlot,
 } from '../src/state/save.js';
@@ -25,69 +25,52 @@ const distribution = (fn, n = 20000) => {
   return counts.map((c) => c / n);
 };
 
-test('stageWeightsFor: 이지는 낮은 단계, 하드는 높은 단계 칸에만 ×1.4(상대 비율)하고 합은 그대로', () => {
-  for (const stage of [1, 2, 3, 4, 5]) {
-    const row = CONFIG.enemy.stageWeights[stage];
-    for (const [difficulty, mark] of [['easy', (s) => s < stage], ['hard', (s) => s > stage]]) {
-      const out = stageWeightsFor(stage, difficulty);
-      assert.ok(Math.abs(sum(out) - sum(row)) < 1e-9);
-      // 표시된 칸과 안 된 칸의 가중치 비는 정확히 1.4배가 된다.
-      const iMarked = row.findIndex((w, i) => w > 0 && mark(i + 1));
-      const iOther = row.findIndex((w, i) => w > 0 && !mark(i + 1));
-      if (iMarked < 0 || iOther < 0) continue;
-      const ratio = out[iMarked] / out[iOther] / (row[iMarked] / row[iOther]);
-      assert.ok(Math.abs(ratio - 1.4) < 1e-9, `${difficulty} ${stage}단계 비 ${ratio}`);
-      const share = (w) => sum(w.filter((_, i) => mark(i + 1))) / sum(w);
-      assert.ok(share(out) > share(row), `${difficulty} ${stage}단계에서 비중이 늘어난다`);
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-8, a + ' ≈ ' + b);
+
+test('시작·보충의 모든 단계 칸은 난이도 배율을 적용한 뒤 합이 1이다', () => {
+  for (const table of [CONFIG.enemy.startStageWeights, CONFIG.enemy.stageWeights]) {
+    for (const [key, row] of Object.entries(table)) {
+      const stage = Number(key);
+      for (const difficulty of ['easy', 'normal', 'hard']) {
+        const scaled = row.map((w, i) => {
+          if (difficulty === 'easy') return i + 1 < stage ? w * 1.4 : w;
+          return i + 1 > stage ? w * (difficulty === 'hard' ? 2.1 : 1.5) : w;
+        });
+        const actual = stageWeightsFor(stage, difficulty, table);
+        near(sum(actual), 1);
+        actual.forEach((weight, i) => near(weight, scaled[i] / sum(scaled)));
+      }
     }
   }
-  assert.deepEqual([1, 2, 3, 4, 5].map(stage => stageWeightsFor(stage, 'normal')), [
-    [1, 0, 0, 0, 0], [0.35, 0.45, 0.2, 0, 0], [0.05, 0.15, 0.35, 0.3, 0.15],
-    [0.02, 0.08, 0.25, 0.4, 0.25], [0, 0.04, 0.16, 0.35, 0.45],
-  ]);
-});
-
-test('spawnStage: 노말은 그대로, 이지는 낮은 단계가 늘고 하드는 높은 단계가 는다', () => {
-  for (const stage of [2, 3, 4, 5]) {
-    const normal = distribution((r) => spawnStage(stage, r) );
-    const easy = distribution((r) => spawnStage(stage, r, 'easy'));
-    const hard = distribution((r) => spawnStage(stage, r, 'hard'));
-    const low = (d) => sum(d.filter((_, s) => s >= 1 && s < stage));
-    const high = (d) => sum(d.filter((_, s) => s > stage));
-    assert.ok(low(easy) > low(normal) + 1e-3, `이지 ${stage}단계: 낮은 단계 비중 증가`);
-    assert.ok(high(easy) < high(normal) + 1e-9);
-    if (high(normal) > 0) assert.ok(high(hard) > high(normal) + 1e-3, `하드 ${stage}단계: 높은 단계 비중 증가`);
-    assert.ok(low(hard) < low(normal) + 1e-9);
+  for (const difficulty of ['easy', 'normal', 'hard']) {
+    assert.equal(spawnStage(1, () => 0.999, difficulty), 1);
+    assert.equal(startStage(1, () => 0.999, difficulty), 1);
+    assert.equal(startStage(2, () => 0.999, difficulty), 1);
   }
-  // 1단계는 적이 모두 1단계라 난이도로 바뀌지 않는다.
-  assert.equal(spawnStage(1, () => 0.9, 'hard'), 1);
-  assert.equal(spawnStage(1, () => 0.9, 'easy'), 1);
+  const start = distribution(r => startStage(3, r, 'hard'));
+  const refill = distribution(r => spawnStage(3, r, 'normal'));
+  assert.ok(Math.abs(start[5] - 0.21 / 1.385) < 0.0001);
+  assert.ok(Math.abs(refill[5] - 0.225 / 1.225) < 0.0001);
 });
 
-test('startStage도 난이도를 따른다(3단계 이후)', () => {
-  assert.deepEqual([3, 4, 5].map(stage => stageWeightsFor(stage, 'normal', CONFIG.enemy.startStageWeights)), [
-    [0.05, 0.2, 0.4, 0.25, 0.1], [0.03, 0.12, 0.3, 0.35, 0.2], [0.01, 0.06, 0.2, 0.35, 0.38],
-  ]);
-  const normal = distribution((r) => startStage(4, r));
-  const hard = distribution((r) => startStage(4, r, 'hard'));
-  assert.ok(hard[5] > normal[5]);
-  assert.equal(startStage(2, () => 0.9, 'hard'), 1);
-});
-
-test('sizeWeights: 이지는 작은 적 구간, 하드는 큰 적 구간만 ×1.4(합 그대로)', () => {
-  for (const stage of [1, 4]) {
-    const normal = sizeWeights(100, stage);
-    const easy = sizeWeights(100, stage, 'easy');
-    const hard = sizeWeights(100, stage, 'hard');
-    assert.ok(Math.abs(sum(easy) - sum(normal)) < 1e-9);
-    assert.ok(Math.abs(sum(hard) - sum(normal)) < 1e-9);
-    assert.ok(easy[0] > normal[0] && easy[2] < normal[2]);
-    assert.ok(hard[2] > normal[2] && hard[0] < normal[0]);
-    assert.ok(Math.abs(easy[0] / easy[1] / (normal[0] / normal[1]) - 1.4) < 1e-9);
-    assert.ok(Math.abs(hard[2] / hard[1] / (normal[2] / normal[1]) - 1.4) < 1e-9);
+test('초반·전환 중간·성장 뒤의 크기 가중치에 단계 조합별 난이도를 적용한다', () => {
+  const start = CONFIG.player.startSize, end = CONFIG.enemy.earlyUntilSize;
+  for (const stage of [1, 2, 3, 4, 5]) {
+    const grown = stage < 3 ? [0.67, 0.13, 0.2] : [0.45, 0.15, 0.4];
+    for (const t of [0, 0.5, 1]) {
+      const base = [0.35, 0.15, 0.5].map((w, i) => w * (1 - t) + grown[i] * t);
+      for (const enemyStage of [1, 2, 3, 4, 5]) {
+        const same = stage === enemyStage;
+        for (const difficulty of ['easy', 'normal', 'hard']) {
+          const scaled = [...base];
+          if (difficulty === 'easy' && same) scaled[0] *= 1.4;
+          if (difficulty !== 'easy') scaled[2] *= difficulty === 'hard' && same ? 2.1 : 1.5;
+          const out = sizeWeights(start + t * (end - start), stage, difficulty, enemyStage);
+          out.forEach((w, i) => near(w, scaled[i] / sum(scaled)));
+        }
+      }
+    }
   }
-  assert.deepEqual(sizeWeightsFor([1, 1, 1], 'normal'), [1, 1, 1]);
-  assert.deepEqual(sizeWeightsFor([1, 1, 1], 'easy'), [1.4 / 3.4, 1 / 3.4, 1 / 3.4]);
 });
 
 test('목숨은 하드 패배에 한 번 쓰고 승천과 정비는 보존한다', () => {
@@ -101,20 +84,15 @@ test('목숨은 하드 패배에 한 번 쓰고 승천과 정비는 보존한다
   assert.deepEqual(onRunEnd({ difficulty: 'normal' }, 'defeat'), { livesLeft: null, erased: false });
 });
 
-test('크기 보정은 같은 단계에만 적용하고 노말은 기존 크기·단계 추첨 순서와 구간을 보존한다', () => {
-  const playerSize = CONFIG.player.startSize;
-  for (const difficulty of ['normal', 'easy', 'hard']) {
-    for (const enemyStage of [2, 4]) {
-      assert.deepEqual(sizeWeights(playerSize, 3, difficulty, enemyStage), [0.35, 0.15, 0.5]);
-    }
-  }
+test('판 시작 추첨은 크기 구간·구간 안 크기·단계 순서이고 이지의 작은 먹이는 그대로다', () => {
+  const size = CONFIG.player.startSize;
   const draws = [0.39, 0.25, 0.71];
   const rng = () => draws.shift();
   const roll = rollSpawnSize(rng);
   const stage = startStage(3, rng, 'normal');
   assert.equal(stage, 4);
-  assert.equal(spawnSize(playerSize, 3, 'normal', stage, roll), playerSize * 0.96);
-  assert.equal(spawnSize(playerSize, 3, 'easy', 3, roll), playerSize * 0.59);
+  near(spawnSize(size, 3, 'normal', stage, roll), size * 0.96);
+  near(spawnSize(size, 3, 'easy', 3, roll), size * 0.59);
   assert.equal(draws.length, 0);
 });
 

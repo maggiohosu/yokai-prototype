@@ -28,7 +28,7 @@ function measure(kind, ability) {
   const grid = buildGrid(enemies, CONFIG.hunt.detect);
   c.grid = grid;
   seedWeaponStress(c);
-  assert.equal(c.orbs.length, 120);
+  assert.equal(c.orbs.length, CONFIG.combat.maxOrbs);
   if (kind === 'mirror') assert.equal(c.beams.filter(b => b.until > 0).length, 8);
   if (kind === 'gourd') assert.equal(c.pools.length, 6);
   if (kind === 'bell') assert.equal(c.waves.length, 6);
@@ -53,7 +53,7 @@ function measure(kind, ability) {
     const start = performance.now();
     c.step(dir, step, true, grid);
     total += performance.now() - start;
-    assert.ok(c.orbs.length <= 120 && c.waves.length <= 6 && c.seals.length <= 6 && c.pools.length <= 6);
+    assert.ok(c.orbs.length <= CONFIG.combat.maxOrbs && c.waves.length <= 6 && c.seals.length <= 6 && c.pools.length <= 6);
     assert.ok(c.beads.length <= 10 && c.clouds.length <= 6 && c.vortices.length <= 4);
   }
   return total / steps;
@@ -63,7 +63,7 @@ function median(values) {
   return values.sort((a, b) => a - b)[Math.floor(values.length / 2)];
 }
 
-test('72마리·구슬 120개·+15 무기별 300단계의 추가 전투 처리 평균은 0.35ms 이내다', t => {
+test(`72마리·구슬 ${CONFIG.combat.maxOrbs}개·+15 무기별 300단계의 추가 전투 처리 평균은 0.35ms 이내다`, t => {
   const base = [];
   const results = Object.fromEntries(Object.keys(heavy).map(kind => [kind, []]));
   // 첫 회는 JIT 예열이다. 이후 독립된 세 판을 각각 300단계 돌리고 그 평균들의 중앙값을 쓴다.

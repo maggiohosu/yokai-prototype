@@ -1,3 +1,12 @@
+import { vitalityMax } from './vitality.js';
+
+export function vitalityUpgradeText(level, maxed) {
+  const current = Number(vitalityMax(level).toFixed(1));
+  if (maxed) return '굶을 때 쓸 생명력 ' + current + '초';
+  const next = Number(vitalityMax(level + 1).toFixed(1));
+  return '굶을 때 쓸 생명력 ' + current + '초 → ' + next + '초';
+}
+
 // 확률표 단위는 %. 배열의 인덱스는 시도 전 현재 레벨이다.
 export const ENHANCE = {
   stats: ['growth', 'speed', 'vitality'],

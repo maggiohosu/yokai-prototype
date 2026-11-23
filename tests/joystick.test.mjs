@@ -85,13 +85,13 @@ test('keyVector: WASD·방향키, 대각선도 길이 1, 반대 키는 상쇄', 
 });
 
 // ---- 카메라 배율: 화면의 짧은 변 기준 ----
-test('zoomFor: 세로 화면은 예전과 같다(짧은 변 = 너비)', () => {
+test('zoomFor: 세로 화면은 짧은 변으로 배율을 정하고 긴 변을 월드 안에 담는다', () => {
   const cam = CONFIG.camera;
   const old = (size, width) =>
     Math.max(cam.minZoom, cam.baseZoom * Math.min(1, width / cam.portraitWidth) * ((cam.refSize ?? CONFIG.player.startSize) / size) ** cam.exponent);
   for (const [w, h] of [[360, 640], [390, 844], [585, 900], [800, 1200], [320, 480]]) {
     for (const size of [28, 40, 90, 400]) {
-      near(zoomFor(size, w, h), old(size, w));
+      near(zoomFor(size, w, h), Math.max(old(size, w), h / CONFIG.world.size));
       near(zoomFor(size, w), old(size, w));
     }
   }

@@ -3,8 +3,18 @@ import { FORM_BY_ID } from '../data/forms.js';
 import { drawOrb } from '../art/orbs.js';
 import { fireBlocked } from './status.js';
 
-export function rollSpecial(size, stage, rng = Math.random) {
-  return stage >= 3 && rng() < CONFIG.special.chance;
+export function specialRule(playerStage, difficulty = 'normal') {
+  const cfg = CONFIG.special;
+  return (cfg.byStage[difficulty] ?? cfg.byStage.normal)[playerStage] ?? cfg;
+}
+
+// 사용자 지시(2026-11-23): 구슬을 쏘는 특수 적은 최고 단계(5단계, pace.maxStage) 적만 될 수 있다.
+export function canBeSpecial(stage) {
+  return stage >= CONFIG.pace.maxStage;
+}
+
+export function rollSpecial(size, stage, rng = Math.random, chance = CONFIG.special.chance) {
+  return canBeSpecial(stage) && rng() < chance;
 }
 
 export function isFatal(playerSize) {
@@ -35,14 +45,15 @@ export class EnemyFire {
     const cfg = CONFIG.special;
     if (!enemy.special) return false;
     if (fireBlocked(enemy, now)) return false;
-    if (enemy.fireCd === undefined) enemy.fireCd = cfg.cooldown * (0.3 + Math.random() * 0.7);
+    const cooldown = enemy.firePeriod ?? specialRule(player.stage, this.scene?.difficulty).cooldown;
+    if (enemy.fireCd === undefined) enemy.fireCd = cooldown * (0.3 + Math.random() * 0.7);
     enemy.fireCd -= dt;
     if (enemy.fireCd > 0) return false;
     const dx = player.x - enemy.x, dy = player.y - enemy.y;
     const d2 = dx * dx + dy * dy;
     if (d2 > cfg.range * cfg.range) return false;
     if (this.orbs.length >= cfg.maxOrbs) return false;
-    enemy.fireCd = cfg.cooldown;
+    enemy.fireCd = cooldown;
     const t = Math.sqrt(d2) / cfg.orbSpeed;
     const tx = player.x + this.vx * t * cfg.leadAim - enemy.x;
     const ty = player.y + this.vy * t * cfg.leadAim - enemy.y;
@@ -74,9 +85,10 @@ export class EnemyFire {
     let w = 0;
     for (const o of this.orbs) {
       const ox = o.x, oy = o.y;
-      o.x += o.vx * dt;
-      o.y += o.vy * dt;
-      o.life -= dt;
+      const flight = Math.min(dt, o.life);
+      o.x += o.vx * flight;
+      o.y += o.vy * flight;
+      o.life -= flight;
       if (shield && shield.block(ox, oy, o.x, o.y, cfg.orbRadius)) continue;
       const reach = cfg.orbRadius + player.size;
       if (segDist2(ox, oy, o.x, o.y, player.x, player.y) < reach * reach) {

@@ -1,4 +1,5 @@
 import { CONFIG, REGIONS } from '../config.js';
+import { artUnitsFor } from '../art/creature.js';
 import { canEat } from '../systems/rules.js';
 import { queryGrid } from './enemyAI.js';
 import { worldFor } from '../systems/worldScale.js';
@@ -32,14 +33,14 @@ export function colorPicker() {
 
 // 초반(시작 크기~earlyUntilSize)엔 큰 적 비중을 높이고 커질수록 기존 분포로 선형 전환한다.
 // playerStage가 nearSpawn.fromStage 이상이면 큰 적의 비율이 높은 hardSizeWeights를 쓴다(3단계 이후 난이도).
-// difficulty: 이지는 작은 적 구간, 하드는 큰 적 구간 가중치에 ×1.4(합은 그대로). 노말은 그대로.
+// 전환 중인 분포에도 난이도별 크기 가중치를 한 번만 적용한다.
 export function sizeWeights(playerSize, playerStage = 1, difficulty = 'normal', enemyStage = playerStage) {
   const { sizes, earlyWeights, earlyUntilSize, hardSizeWeights, nearSpawn } = CONFIG.enemy;
   const normal = playerStage >= nearSpawn.fromStage ? hardSizeWeights : sizes.map((band) => band.weight);
   const start = CONFIG.player.startSize;
   const t = clamp((playerSize - start) / Math.max(1e-6, earlyUntilSize - start), 0, 1);
   const base = normal.map((weight, i) => earlyWeights[i] * (1 - t) + weight * t);
-  return enemyStage === playerStage ? sizeWeightsFor(base, difficulty) : base;
+  return sizeWeightsFor(base, difficulty, enemyStage === playerStage);
 }
 
 // 노말의 추첨 순서(크기 구간 → 구간 안 크기 → 단계)를 보존하고, 위치 재시도 때도 같은 크기 난수를 쓴다.
@@ -121,6 +122,8 @@ const spawnHits = [];
 export function spawnPoint(player, enemies, size, { view, near, initial, stage, grid } = {}) {
   const edge = size + world.spawnGap;
   const dangerous = stage == null ? size >= player.size * CONFIG.eating.ratio : canEat({ size, stage }, player);
+  // 스프라이트의 세로 원점은 0.52이고 4·5단계 원화는 캔버스가 더 크다.
+  const pad = view ? world.offscreenMargin + size * artUnitsFor(stage) / CONFIG.render.bodyRadius * 0.52 : 0;
   for (let attempt = 0; attempt < world.spawnAttempts; attempt++) {
     let x, y;
     if (near) {
@@ -134,7 +137,6 @@ export function spawnPoint(player, enemies, size, { view, near, initial, stage, 
     }
     if (x < edge || x > world.size - edge || y < edge || y > world.size - edge) continue;
     if (view) {
-      const pad = world.offscreenMargin + (size * CONFIG.render.artUnits) / CONFIG.render.bodyRadius / 2;
       if (x > view.left - pad && x < view.right + pad && y > view.top - pad && y < view.bottom + pad)
         continue;
     }

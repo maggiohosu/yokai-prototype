@@ -51,6 +51,7 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
   const lastStart = new Map();
   let activeVoices = 0;
   let listening = false;
+  const unlockListeners = new Set();
 
   function fetchRaw(name) {
     if (!raw.has(name)) {
@@ -98,6 +99,10 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
         for (const name of raw.keys()) decode(name);
       }
       if (ctx.state === 'suspended') ctx.resume?.()?.catch?.(() => {});
+      for (const cb of unlockListeners) {
+        try { cb(ctx); } catch {}
+      }
+      unlockListeners.clear();
       stopListening();
       return true;
     } catch {
@@ -182,6 +187,16 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
     return volume;
   }
 
+  function onUnlock(fn) {
+    if (typeof fn !== 'function') return () => {};
+    if (ctx && ctx.state !== 'suspended') {
+      try { fn(ctx); } catch {}
+    } else {
+      unlockListeners.add(fn);
+    }
+    return () => unlockListeners.delete(fn);
+  }
+
   // 게임 어디서든 첫 입력이 오면 잠금을 푼다(정비창을 열기 전의 터치도 포함).
   listen();
 
@@ -192,7 +207,14 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
     setVolume,
     getVolume: () => volume,
     isReady: () => !!ctx,
+    getContext: () => ctx,
+    getMasterNode: () => master,
+    onUnlock,
   };
+}
+
+export function getAudioContext() {
+  return sfx.getContext();
 }
 
 export const sfx = createSfx();

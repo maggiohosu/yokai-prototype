@@ -1,5 +1,6 @@
 import { CONFIG } from './config.js';
 import { pixelRatio } from './game/camera.js';
+import { bgm } from './audio/bgm.js';
 
 let portrait;
 let rotateGuide;
@@ -9,6 +10,7 @@ let viewportFrame = 0;
 let settleTimer;
 
 function syncOrientation() {
+  bgm.setRotationPaused(portrait.matches);
   if (portrait.matches) {
     if (!rotateGuide.open) rotateGuide.showModal();
     if (game?.loop.running) {
@@ -36,6 +38,7 @@ async function enterLandscape() {
 }
 
 function setupGallery() {
+  bgm.setMood('title');
   document.body.classList.add('gallery-mode');
   document.title = '요괴 도감 · 용이 되자';
   document.getElementById('gallery').hidden = false;
@@ -143,6 +146,10 @@ async function start() {
   const sceneModule = gallery ? import('./scenes/GalleryScene.js') : import('./scenes/PlayScene.js');
   sceneModule.catch(() => {});
   if (!gallery && !params.has('debug') && !params.has('stress')) await showTitle();
+  if (!gallery) {
+    bgm.preload(['calm', 'tense']);
+    bgm.prefetch(['boss']); // boss는 압축 파일만 받아 두고 처음 나올 때 해독한다.
+  }
   while (!gallery && portrait.matches) {
     await new Promise(resolve => portrait.addEventListener('change', resolve, { once: true }));
   }

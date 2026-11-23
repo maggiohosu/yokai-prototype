@@ -476,12 +476,13 @@ export class Combat {
     return enemy.sprite.active && !enemy.reversed && !isShielded(enemy, now) && canEat(enemy, this.scene.player);
   }
 
-  // 유도: 표적 찾기는 구슬마다 2단계에 한 번만 한다(찾은 표적은 그동안 유지, 표적이 죽거나 규칙에서 벗어나면 바로 다시 찾는다).
+  // 유도: 표적 찾기는 구슬마다 tuning.targetLookSteps + 1단계에 한 번만 한다(찾은 표적은 그동안 유지, 표적이 죽거나 규칙에서 벗어나면 바로 다시 찾는다).
+  // 발사체가 1/4 속도로 느려져 한 단계에 가는 거리도 1/4이라 같은 간격으로 찾을 이유가 없다(2 → 5단계, 약 0.1초). 비행 시간이 길어 떠 있는 구슬이 늘어난 비용을 되돌린다.
   steer(orb, dt, now) {
     if (orb.look > 0 && (orb.target === null || this.validTarget(orb.target, now))) {
       orb.look--;
     } else {
-      orb.look = 2;
+      orb.look = tuning.targetLookSteps;
       if (orb.omni) {
         if (orb.target && !this.validTarget(orb.target, now)) orb.target = null;
         if (!orb.target) {
@@ -683,7 +684,7 @@ export class Combat {
         this.chainFrom(a.enemy, a.ex, a.ey, a.es, a.base, ab, now, m.hops ?? 0);
         break;
       case 'split':
-        this.splitFrom(a, a.enemy, a.x, a.y, ab, m.countBonus ?? 0, m.rangeMult ?? 1);
+        this.splitFrom(a, a.enemy, a.x, a.y, ab, m.countBonus ?? 0, m.rangeMult ?? 1, this.stats());
         break;
       case 'zone':
         this.addCloud(a.x, a.y, a.base, ab, now, m.radiusMult ?? 1);
@@ -833,18 +834,21 @@ export class Combat {
   // ---- 능력 A10 분화 ----
   // src = 맞은 구슬 또는 퍼지는 효과의 자리(anchor): vx·vy(진행 방향), base(능력 기준 피해 B), speed, style, tier를 읽는다.
   // countBonus는 무기 칸의 '갈래 +1'(옥인), rangeMult는 '갈래 사거리 ×0.7'(단호로).
-  splitFrom(src, enemy, ix, iy, ab, countBonus = 0, rangeMult = 1) {
+  splitFrom(src, enemy, ix, iy, ab, countBonus = 0, rangeMult = 1, weapon = null) {
     const count = countBonus > 0 ? Math.min(ab.count + countBonus, ABILITIES.split.cap.count) : ab.count;
-    const room = tuning.maxOrbs - this.orbs.length;
+    const range = ab.range * rangeMult;
+    const speed = src.speed * ABILITY_RULES.split.speedMult;
+    // 갈래가 날아가는 동안 쿨타임이 돌아올 횟수만큼 본탄 자리를 남긴다.
+    const volleys = weapon?.speed > 0 ? Math.ceil(range / speed / weapon.cooldown) : 0;
+    const room = tuning.maxOrbs - this.orbs.length - volleys * (weapon?.count ?? 0);
     const n = Math.min(count, room);
     if (n <= 0) return;
     const a0 = Math.atan2(src.vy, src.vx) + Math.PI / count;
-    const range = ab.range * rangeMult;
     for (let k = 0; k < n; k++) {
       const angle = a0 + (k * TAU) / count;
       this.orbs.push({
         x: ix, y: iy, vx: Math.cos(angle), vy: Math.sin(angle),
-        speed: src.speed * ABILITY_RULES.split.speedMult, homing: 0, damage: src.base * ab.damage, base: src.base * ab.damage, rangeLeft: range, reach: range, weapon: 'yeouiju',
+        speed, homing: 0, damage: src.base * ab.damage, base: src.base * ab.damage, rangeLeft: range, reach: range, weapon: 'yeouiju',
         kind: SPLIT, phase: OUT, mul: 1, pierceLeft: 0, keep: 1, ghost: false,
         hits: null, skip: enemy, target: null, hadTarget: false, omni: false, turn: 1, retarget: 0, look: 0,
         style: src.style, tier: src.tier, vol: null, center: false, spent: 0,

@@ -11,6 +11,7 @@
 import { saveProgress } from '../state/save.js';
 import { enhanceCost, tryEnhance } from '../systems/enhance.js';
 import { applyBody, pauseOptions } from '../systems/levelup.js';
+import { vitalityUpgradeText } from '../systems/tuning-upgrade.js';
 import { attemptText, degradeDialog, statNames } from './HubView.js';
 import { button, el, formImage, number, openOverlay } from './OddsTable.js';
 
@@ -138,6 +139,7 @@ export function LevelUpView(progress, forms, run, {
     top.append(el('strong', 'yk-lv-name', statNames[item.stat] + ' +' + item.level),
       el('span', 'yk-lv-cost', max ? '최고 레벨' : '요력 ' + number(item.cost)));
     node.append(top);
+    if (item.stat === 'vitality') node.append(el('span', 'yk-hint', vitalityUpgradeText(item.level, max)));
     if (!max) {
       const odds = el('span', 'yk-lv-odds');
       for (const [key, value] of Object.entries(item.odds)) {

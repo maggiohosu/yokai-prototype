@@ -1,31 +1,66 @@
+import { HUNGER_HINT } from '../data/ability-guides.js';
+
 const byId = (id) => document.getElementById(id);
 const number = (size) => Number(size.toFixed(1)).toString();
 
+// 마우스·터치로 누른 단추에 포커스가 남으면 스페이스(발사)가 그 단추를 다시 누르게 된다. 키보드로 누른 경우(detail 0)는 포커스를 둔다.
+function releasePointerFocus(event) {
+  if (event.detail > 0) event.currentTarget?.blur?.();
+}
+
+export function bindHudDisclosure(panel, button, view, signal) {
+  const key = 'yokai-hud-collapsed';
+  const media = view.matchMedia('(orientation: landscape) and (max-height: 500px)');
+  let preference;
+  try {
+    const stored = view.localStorage.getItem(key);
+    if (stored === 'true' || stored === 'false') preference = stored === 'true';
+  } catch { /* 저장소 접근이 제한된 판도 화면 크기로 시작한다. */ }
+  function render() {
+    const collapsed = preference ?? media.matches;
+    panel.classList.toggle('is-collapsed', collapsed);
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.setAttribute('aria-label', collapsed ? '플레이 현황 펼치기' : '플레이 현황 접기');
+  }
+  button.addEventListener('click', (event) => {
+    releasePointerFocus(event);
+    preference = !(preference ?? media.matches);
+    render();
+    try { view.localStorage.setItem(key, String(preference)); } catch { /* 이번 판에서는 선택을 유지한다. */ }
+  }, { signal });
+  media.addEventListener('change', render, { signal });
+  render();
+}
+
 export class Hud {
   constructor(onPortrait) {
+    this.events = new AbortController();
+    const { signal } = this.events;
+    bindHudDisclosure(document.querySelector('.hud'), byId('hud-toggle'), window, signal);
     const portrait = new Image();
     portrait.id = 'avatar';
     portrait.alt = '';
     byId('avatar-slot').replaceChildren(portrait);
     if (onPortrait) {
-      const identity = portrait.closest('.identity');
-      this.portraitEvents = new AbortController();
-      const options = { signal: this.portraitEvents.signal };
-      identity.addEventListener('pointerdown', event => {
-        event.preventDefault();
-        event.stopPropagation();
-      }, options);
-      identity.addEventListener('click', onPortrait, options);
-      identity.addEventListener('keydown', event => {
-        if (event.key !== 'Enter') return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (!event.repeat) onPortrait();
-      }, options);
+      portrait.closest('.identity').addEventListener('click', (event) => {
+        releasePointerFocus(event);
+        onPortrait(event);
+      }, { signal });
     }
     this.size = byId('size');
-    this.fieldSize = byId('field-size');
     this.eaten = byId('eaten');
+    const help = byId('help-content');
+    if (help) {
+      const toggle = byId('help-toggle');
+      toggle.addEventListener('click', (event) => {
+        releasePointerFocus(event);
+        help.hidden = !help.hidden;
+        toggle.setAttribute('aria-expanded', String(!help.hidden));
+      }, { signal });
+      this.hungerHint = document.createElement('span');
+      this.hungerHint.textContent = HUNGER_HINT;
+      help.append(this.hungerHint);
+    }
     this.gaugeRow = byId('growth-gauge');
     this.gauge = byId('growth-meter');
     this.gaugeLabel = this.gauge.labels[0];
@@ -106,7 +141,8 @@ export class Hud {
   }
   // 판이 끝나거나 다시 시작될 때: 남은 타이머를 치우고 안내·연출을 끈다(같은 요소를 다음 판 HUD가 이어서 쓴다).
   dispose() {
-    this.portraitEvents?.abort();
+    this.hungerHint?.remove();
+    this.events.abort();
     clearTimeout(this.noticeTimer);
     clearTimeout(this.resonanceTimer);
     if (this.heraldNoticeEl) this.heraldNoticeEl.hidden = true;
@@ -144,7 +180,6 @@ export class Hud {
     if (size !== this.lastSize) {
       this.lastSize = size;
       this.size.textContent = size;
-      this.fieldSize.textContent = size;
     }
     if (player.eaten !== this.lastEaten) {
       this.lastEaten = player.eaten;

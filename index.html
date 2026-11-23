@@ -38,12 +38,14 @@
     <main id="arena" aria-label="사방 들판 게임 화면">
       <div id="phaser-host"></div>
       <section class="hud" aria-label="플레이 현황">
-        <div class="identity" role="button" tabindex="0" aria-haspopup="dialog" aria-label="내 요괴 능력 안내 열기, 판이 멈춥니다">
+        <button type="button" class="identity" aria-haspopup="dialog" aria-label="내 요괴 능력 안내 열기, 판이 멈춥니다">
           <span id="avatar-slot" class="portrait"></span>
-          <div><small>1단계</small><strong>미물</strong><span id="lives-stat" hidden>목숨 <b id="lives"></b></span></div>
-        </div>
-        <div class="stat"><small>현재 크기</small><strong id="size"></strong></div>
-        <div class="stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
+          <span class="identity-text"><small>1단계</small><strong>미물</strong></span>
+        </button>
+        <div class="stat hud-size"><small>현재 크기</small><strong id="size"></strong><span id="lives-stat" hidden>목숨 <b id="lives"></b></span></div>
+        <div class="stat" id="eaten-stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
+        <button type="button" id="hud-toggle" class="fold-toggle" aria-label="플레이 현황 접기"
+          aria-expanded="true" aria-controls="eaten-stat growth-gauge herald-gauge resonance"><span class="chevron" aria-hidden="true"></span></button>
         <div class="growth-gauge" id="growth-gauge" hidden>
           <label for="growth-meter">다음 성장까지</label>
           <progress id="growth-meter" value="0" max="1"></progress>
@@ -61,15 +63,17 @@
         </div>
       </section>
       <div class="herald-notice" id="herald-notice" role="status" aria-live="polite" hidden></div>
-      <div class="field-size" aria-hidden="true"><span>현재 크기</span><strong id="field-size"></strong></div>
       <a class="field-book" href="./index.html?gallery=1"><span class="book" aria-hidden="true"></span>도감</a>
       <div class="movement-control"><div id="joystick" aria-hidden="true"><i>이동</i></div></div>
       <div class="help">
-        <span class="keys">
-          <span><kbd>WASD</kbd> 또는 방향키로 이동</span>
-          <span><kbd>스페이스</kbd> 발사</span>
-          <span><kbd>Shift</kbd> 부스터</span>
-        </span>
+        <button type="button" id="help-toggle" class="fold-toggle" aria-controls="help-content" aria-expanded="false">조작법<span class="chevron" aria-hidden="true"></span></button>
+        <div id="help-content" hidden>
+          <span class="keys">
+            <span><kbd>WASD</kbd> 또는 방향키로 이동</span>
+            <span><kbd>스페이스</kbd> 발사</span>
+            <span><kbd>Shift</kbd> 부스터</span>
+          </span>
+        </div>
       </div>
     </main>
     <main id="gallery" hidden>

@@ -14,9 +14,9 @@ export class Player extends Actor {
   }
   // boostSec: dt 중 부스터로 가속한 시간(0~dt), boostMult: 그때의 배율. 적·발사체에는 영향이 없다.
   // 크기가 클수록 느리다(balance.sizeSpeedMultiplier: 사용자 지시 2026-11-23). 진화로 크기가 돌아간 직후에는 진화 직전 크기 기준으로 느리다가 서서히 빨라진다.
-  step(direction, dt, boostSec = 0, boostMult = 1) {
+  step(direction, dt, boostSec = 0, boostMult = 1, hungerMult = 1) {
     if (this.carry > 0) this.carry = carryDecay(this.carry, dt);
-    const distance = this.stats.speed * sizeSpeedMultiplier(Math.max(this.size, this.carry)) * (dt + boostSec * (boostMult - 1));
+    const distance = this.stats.speed * hungerMult * sizeSpeedMultiplier(Math.max(this.size, this.carry)) * (dt + boostSec * (boostMult - 1));
     this.move(direction.x * distance, direction.y * distance);
   }
   // 진화해서 크기가 시작 크기로 돌아가기 직전에 부른다: 속도는 그 크기 기준으로 이어 가다가 서서히 원래대로 돌아온다.

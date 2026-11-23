@@ -231,7 +231,7 @@ test('nextProgress: 플레이어 단계를 주면 적의 자가 진화는 min(5,
 test('spawnStage: 구간 경계와 가중치 비율, 알 수 없는 플레이어 단계는 1단계 표', () => {
   // 플레이어 1단계: 적도 모두 1단계(사용자 지시 2026-11-23)
   for (const r of [0, 0.3, 0.6, 0.999999]) assert.equal(spawnStage(1, () => r), 1);
-  const w = CONFIG.enemy.stageWeights[2];
+  const w = [0.35 / 1.1, 0.45 / 1.1, 0.3 / 1.1];
   assert.equal(spawnStage(2, () => 0), 1);
   assert.equal(spawnStage(2, () => w[0] + 1e-9), 2);
   assert.equal(spawnStage(2, () => w[0] + w[1] + 1e-9), 3);
@@ -258,13 +258,16 @@ test('spawnStage: 구간 경계와 가중치 비율, 알 수 없는 플레이어
   for (const playerStage of [2, 3, 4, 5]) {
     const counts = [0, 0, 0, 0, 0, 0];
     for (let i = 0; i < N; i++) counts[spawnStage(playerStage, rng)]++;
-    const t = table[playerStage];
+    const scaled = table[playerStage].map((weight, i) => weight * (i + 1 > playerStage ? 1.5 : 1));
+    const total = scaled.reduce((a, b) => a + b, 0);
+    const t = scaled.map(weight => weight / total);
     for (let i = 0; i < 5; i++) assert.ok(Math.abs(counts[i + 1] / N - t[i]) < 0.02, `플레이어 ${playerStage}단계 → 적 ${i + 1}단계`);
   }
 });
 
 test('spawnPoint: 상위 단계 적은 크기가 작아도 시작 때 플레이어에게서 멀리 둔다', () => {
-  const player = { x: 2000, y: 2000, size: 28, stage: 1 };
+  const mid = CONFIG.world.size / 2;
+  const player = { x: mid, y: mid, size: 28, stage: 1 };
   const near = [[100, 130], [100, 130]];
   const gap = (stage) => {
     const pos = spawnPoint(player, [], 20, { near: [100, 130], initial: true, stage });

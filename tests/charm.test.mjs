@@ -305,7 +305,7 @@ test('플레이어(1000,1000) 구슬은 아군을 통과해 뒤의 적을 맞힌
   const pet = E(1100, 1000, 40, 2, { charmUntil: 1e9, charmDur: 1e9, charmGraceUntil: 1e9 + 1 });
   const behind = E(1200, 1000, 40, 2);
   const w = makeWorld({ formId: 'mimul', level: 0, enemies: [pet, behind], player: fakePlayer('mimul') });
-  w.shoot(60);
+  w.shoot(120);
   assert.equal(pet.size, 40);
   assert.ok(behind.size < 40);
 });
@@ -323,19 +323,19 @@ function mealWorld({ enemies, now = 0, formId = 'juyu' }) {
   const ctx = {
     simTime: now, enemies, player, combat: w.combat, events: w.scene.events, stress: null,
     fx: { eatPop() {}, burst() {} },
-    vitality: createVitality(0.6), playerStats: { vitalityMax: 0.6 }, threatened: false,
+    hunger: createVitality(10), playerStats: { vitalityMax: 10 },
     endRun(killer) { ended.push(killer); },
   };
-  const run = (dt = 10) => PlayScene.prototype.resolveMeals.call(ctx, buildGrid(enemies, CONFIG.hunt.detect), dt);
+  const run = () => PlayScene.prototype.resolveMeals.call(ctx, buildGrid(enemies, CONFIG.hunt.detect));
   return { w, ctx, ended, run, player };
 }
 const biter = (extra = {}) => fakeEnemy(1000, 1000, CONFIG.player.startSize * 3, { stage: 3, eat() {}, ...extra }); // 나를 먹을 수 있는 큰 적
 
-test('resolveMeals: 나를 먹을 수 있는 적이 닿아 있으면 생명력이 바닥난 뒤 먹힌다(대조)', () => {
+test('resolveMeals: 생명력이 +10으로 가득 차도 먹을 수 있는 적과 닿자마자 먹힌다', () => {
   const e = biter();
   const { run, ended, ctx } = mealWorld({ enemies: [e] });
   run();
-  assert.equal(ctx.threatened, true);
+  assert.equal(ctx.hunger.value, 10);
   assert.equal(ended.length, 1, '평소에는 먹힌다');
 });
 
@@ -345,7 +345,7 @@ test('resolveMeals: 얼거나 경직되거나 겁먹은 적은 나를 먹지 못
     const { run, ended, ctx } = mealWorld({ enemies: [e] });
     run();
     assert.equal(ended.length, 0, JSON.stringify(status));
-    assert.equal(ctx.threatened, false);
+    assert.equal(ctx.hunger.value, 10);
   }
 });
 
@@ -366,8 +366,11 @@ test('resolveMeals: 아군(매혹)·유예 중인 적과는 서로 먹지 않는
 
 test('resolveMeals: 내가 직접 먹으면 예전 식사 기록(byAlly 없음)이 나간다', () => {
   const small = fakeEnemy(1000, 1000, CONFIG.player.startSize * 0.3, { stage: 1 });
-  const { run, w, player } = mealWorld({ enemies: [small] });
-  run(0.01);
+  const { run, w, player, ctx } = mealWorld({ enemies: [small] });
+  Object.assign(ctx.hunger, { state: 'starving', value: 0, sinceMeal: 16 });
+  run();
+  assert.equal(ctx.hunger.value, 2.5);
+  assert.equal(ctx.hunger.sinceMeal, 0);
   assert.equal(small.sprite.active, false);
   assert.equal(player.ate, 1);
   assert.equal(w.log.eat.length, 1);
@@ -383,7 +386,9 @@ test('resolveMeals: 아군이 닿은 작은 적을 먹으면 byAlly 식사가 �
   };
   const { pet, prey } = mk();
   const a = mealWorld({ enemies: [pet, prey] });
-  a.run(0.01);
+  a.ctx.hunger.sinceMeal = 3;
+  a.run();
+  assert.equal(a.ctx.hunger.sinceMeal, 3);
   assert.equal(prey.sprite.active, false);
   assert.equal(pet.ate, size * 0.5, '아군이 먹었다');
   assert.equal(a.w.log.eat.length, 1);
@@ -395,7 +400,7 @@ test('resolveMeals: 아군이 닿은 작은 적을 먹으면 byAlly 식사가 �
   // 얼어 있으면 못 먹는다
   const frozen = mk({ frozenUntil: 99 });
   const b = mealWorld({ enemies: [frozen.pet, frozen.prey] });
-  b.run(0.01);
+  b.run();
   assert.equal(frozen.prey.sprite.active, true);
   assert.equal(b.w.log.eat.length, 0);
 });

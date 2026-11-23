@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CONFIG } from '../src/config.js';
 import { FORMS } from '../src/data/forms.js';
 import { STEMS } from '../src/data/stems.js';
 import { WEAPON_IDS } from '../src/data/weapons.js';
@@ -29,6 +30,107 @@ function recordDamage(w) {
   return hits;
 }
 const distance = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
+
+// 처음 속도(여의주 520·학우선 470·도목검 570·단호로 360)를 사용자 지시로 1/2(2026-11-23), 같은 날 다시 1/2로 줄였다. 지금은 처음의 1/4이고
+// 사거리는 그대로라 같은 거리를 가는 데 처음의 4배 시간이 든다. 회귀를 막으려고 처음 값을 이 시험에 고정해 둔다.
+const ORIGINAL_SPEED = { yeouiju: 520, fan: 470, sword: 570, gourd: 360 };
+
+test('비행형 보패는 모든 강화 단계에서 처음 속도의 1/4로 같은 사거리 끝에 도착한다', () => {
+  const flights = [
+    ['yeouiju', 360], ['fan', 200], ['sword', 260], ['gourd', 220],
+  ];
+  for (const [kind, reach] of flights) {
+    for (let level = 0; level <= 15; level++) {
+      const w = world(kind, level, [], 'homing');
+      w.combat.fire();
+      const orb = w.combat.orbs[0], start = { x: orb.x, y: orb.y };
+      const speedMult = w.combat.stats().speedMult;
+      close(orb.speed, ORIGINAL_SPEED[kind] * 0.25 * speedMult);
+      const originalFlight = reach / (ORIGINAL_SPEED[kind] * speedMult);
+      w.step(1, originalFlight);
+      close(distance(start, orb), reach / 4);
+      close(orb.rangeLeft, reach * 3 / 4);
+      w.step(1, originalFlight * 2);
+      close(distance(start, orb), reach * 3 / 4);
+      w.step(1, originalFlight + 1e-9);
+      close(distance(start, orb), reach);
+      if (kind === 'sword') {
+        assert.equal(orb.phase, 1);
+        close(orb.rangeLeft, reach * 2.2);
+        const turn = { x: orb.x, y: orb.y };
+        w.step(1, originalFlight);
+        close(distance(turn, orb), reach / 4);
+      } else {
+        assert.ok(!w.combat.orbs.includes(orb));
+      }
+    }
+  }
+});
+
+test('보패 8종에서 생긴 분화 갈래도 속도만 처음의 1/4이 된다', () => {
+  for (const kind of WEAPON_IDS) {
+    const originalSpeed = kind === 'fan' ? 470 : kind === 'sword' ? 570 : 520;
+    const enemy = kind === 'beads' ? target(0, 0, 75) : target(75, 0, 45);
+    enemy.stage = 5;
+    const w = world(kind, 0, [enemy], 'split');
+    w.shoot();
+    for (let i = 0; !w.combat.orbs.some(orb => orb.kind === 1) && i < 60; i++) w.step();
+    const child = w.combat.orbs.find(orb => orb.kind === 1);
+    assert.ok(child, kind);
+    const reach = kind === 'gourd' ? 140 : 200;
+    close(child.reach, reach);
+    w.enemies.length = 0;
+    const start = { x: child.x, y: child.y };
+    const remaining = child.rangeLeft;
+    close(child.speed, originalSpeed * 0.8 * 0.25);
+    w.step(1, 0.1);
+    close(distance(start, child), originalSpeed * 0.8 * 0.25 * 0.1);
+    w.step(1, 6);
+    close(distance(start, child), remaining);
+    assert.ok(!w.combat.orbs.includes(child));
+  }
+});
+
+test('+15 여의주는 회선 복귀·분화 중에도 쿨타임마다 40발을 모두 쏜다', () => {
+  for (const ability of ['boomerang', 'split']) {
+    const enemies = ability === 'split' ? [target(0, 0, 70)] : [];
+    const w = world('yeouiju', 15, enemies, ability);
+    recordDamage(w);
+    for (let frame = 0; frame < 600; frame++) {
+      if (ability === 'boomerang') w.player.x += 10;
+      const seq = w.combat.shotSeq, fires = w.combat.wc.fires;
+      w.step(1, 1 / 60, { fire: true });
+      if (w.combat.wc.fires > fires) assert.equal(w.combat.shotSeq - seq, 40, ability);
+      assert.ok(w.combat.orbs.length <= CONFIG.combat.maxOrbs);
+    }
+    assert.equal(w.combat.wc.fires, 18);
+  }
+});
+
+test('발사체 속도가 처음의 1/4이어도 +15 여의주는 달리는 중에도 25초 동안 한 발도 막히지 않는다', () => {
+  // 비행 시간이 처음의 4배라 회선·분화가 한꺼번에 떠 있는 구슬이 많다. 상한이 240이던 때는 회선 복귀 중 발사가 막혔다(측정: 25초에 최대 640발).
+  assert.equal(CONFIG.combat.orbSpeed, 130);
+  assert.equal(CONFIG.combat.maxOrbs, 480);
+  for (const [ability, speed] of [['boomerang', 0], ['boomerang', 250], ['split', 0]]) {
+    const enemies = ability === 'split' ? [target(75, 0, 43), target(95, 6, 43), target(145, -5, 48), target(-90), target(70, 22), target(185)] : [];
+    const w = world('yeouiju', 15, enemies, ability);
+    w.combat.applyTreasureDamage = () => 0;
+    const count = w.combat.stats().count;
+    let fires = 0, peak = 0;
+    for (let frame = 0; frame < 25 * 60; frame++) {
+      w.player.x += speed / 60;
+      const seq = w.combat.shotSeq, before = w.combat.wc.fires;
+      w.step(1, 1 / 60, { fire: true });
+      if (w.combat.wc.fires > before) {
+        fires++;
+        assert.equal(w.combat.shotSeq - seq, count, ability + ' ' + speed + ' 발사 ' + fires);
+      }
+      peak = Math.max(peak, w.combat.orbs.length);
+    }
+    assert.ok(fires >= 40, ability + ' ' + speed);
+    assert.ok(peak <= CONFIG.combat.maxOrbs);
+  }
+});
 
 for (const kind of WEAPON_IDS) {
   test(kind + ' 개수·사거리·쿨타임은 장착 수치를 따른다', () => {
@@ -65,7 +167,7 @@ for (const kind of WEAPON_IDS) {
       for (let i = 0; i < 120; i++) {
         w.step(1, 1 / 60, { fire: true });
         const c = w.combat;
-        assert.ok(c.orbs.length <= 120 && c.waves.length <= 6 && c.pools.length <= 6 && c.seals.length <= 6);
+        assert.ok(c.orbs.length <= CONFIG.combat.maxOrbs && c.waves.length <= 6 && c.pools.length <= 6 && c.seals.length <= 6);
         assert.ok(c.pearls.length <= 6 && c.beads.length <= 10 && c.clouds.length <= 6 && c.vortices.length <= 4);
       }
       assert.equal(w.combat.ab.id, ability);
@@ -121,7 +223,7 @@ test('도목검은 같은 단계에 밀집한 적도 빠짐없이, 가는 길과
   const w = world('sword', 0, enemies, 'split');
   const hits = recordDamage(w), anchors = [];
   w.combat.spreadAt = a => anchors.push(a.enemy);
-  w.shoot(15, 0.08);
+  w.shoot(60, 0.08);
   assert.equal(anchors.length, 2);
   for (const e of enemies) assert.equal(hits.filter(h => h.e === e).length, 2);
 });
@@ -190,7 +292,7 @@ test('단호로는 겹친 웅덩이마다 4마리의 첫 진입만 세고 지속
     }
     return onHit(ctx, e, now);
   };
-  w.shoot(45);
+  w.shoot(90);
   assert.equal(entries.size, 2);
   for (const seen of entries.values()) { assert.equal(seen.length, 4); assert.equal(new Set(seen).size, 4); }
   assert.ok(hits.filter(h => h.silent).length > 6 * 40);
@@ -213,7 +315,7 @@ test('옥인 표적은 발사 때 고정하고 첫 낙하가 빗나가도 회선
 
 test('무기 교체는 이전 무기의 효과를 지우고 적의 상태이상은 지속된다', () => {
   const e = target(110, 0, 45), w = world('gourd', 3, [e], 'freeze');
-  w.shoot(20);
+  w.shoot(40);
   assert.ok(w.combat.pools.length && e.frozenUntil > w.scene.simTime);
   const until = e.frozenUntil;
   w.progress.treasure = { kind: 'bell', level: 5 };
@@ -228,10 +330,10 @@ test('무기 교체는 이전 무기의 효과를 지우고 적의 상태이상�
 
 test('되돌아오는 칼의 대풍도 적을 플레이어 바깥으로 민다', () => {
   const e = target(140), w = world('sword', 0, [e], 'gust');
-  w.shoot(30);
+  w.shoot(120);
   e.gustGateUntil = 0;
   e.knockVx = 0;
-  w.step(30);
+  w.step(60);
   assert.ok(e.knockVx > 0);
 });
 

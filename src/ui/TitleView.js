@@ -7,6 +7,7 @@ import {
   canSave, clearSave, getCurrentSlot, listSlots, loadProgress, newSlotProgress, setCurrentSlot, startNewSlot,
 } from '../state/save.js';
 import { DIFFICULTY } from '../systems/difficulty.js';
+import { bgm } from '../audio/bgm.js';
 import { button, el, number } from './OddsTable.js';
 
 const MINUTE = 60_000;
@@ -157,7 +158,18 @@ export function createTitleModel({ storage, now = () => Date.now(), onStart } = 
   };
 }
 
+export function musicToggle() {
+  // 보이는 글자는 '음악'으로 고정하고 켜짐·꺼짐은 aria-pressed(와 CSS)로만 전한다.
+  const toggle = button('음악', () => { bgm.toggleMute(); refresh(); }, 'yk-music');
+  function refresh() {
+    toggle.setAttribute('aria-pressed', String(!bgm.isMuted()));
+  }
+  refresh();
+  return toggle;
+}
+
 export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
+  bgm.setMood('title');
   const arena = document.getElementById('arena');
   const root = el('div', 'title-screen');
   root.setAttribute('role', 'region');
@@ -180,7 +192,7 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   name.append(el('h1', 'ts-title', '용이 되자'), el('p', 'ts-subtitle', '미물에서 용까지'));
   const book = el('a', 'ts-book', '요괴 도감');
   book.href = './index.html?gallery=1';
-  head.append(crest, name, book);
+  head.append(crest, name, musicToggle(), book);
 
   const grid = el('div', 'ts-slots');
   const hint = el('p', 'ts-hint');

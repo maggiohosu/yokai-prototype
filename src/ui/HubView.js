@@ -5,6 +5,7 @@
 
 import { drawWeaponIcon } from '../art/weapons.js';
 import { sfx } from '../audio/sfx.js';
+import { musicToggle } from './TitleView.js';
 import { isNewWeapon } from '../game/fx.js';
 import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
@@ -13,7 +14,7 @@ import { recordTreasureSuccess } from '../systems/progress.js';
 import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, tryUpgrade, upgradeCost, upgradeOdds } from '../systems/treasure.js';
 import { blockerText, buy, buyBlocker, lockedText, shopCatalog } from '../systems/shop.js';
 import { itemTitle, previewRows, weaponOf, withSubject } from '../systems/weapons.js';
-import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
+import { ENHANCE, TREASURE, vitalityUpgradeText } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 import { playEnhanceFx, playSellFx, preloadEnhanceSounds } from './enhanceFx.js';
 
@@ -102,7 +103,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   const log = el('ol', 'yk-log');
   log.setAttribute('aria-label', '연속 강화 기록');
   feedback.append(status, log);
-  const actions = el('div', 'yk-actions');
+  const actions = el('div', 'yk-actions yk-hub-actions');
   function leave(callback, ...args) {
     if (!dialog.open || playingLog || progress.pendingDegrade) return;
     close();
@@ -114,7 +115,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     if (progress.pendingDevolve) leave(onEvolve, { devolve: true });
     else if (canEvolve(progress)) leave(onEvolve);
   }
-  actions.append(playButton, evolveButton);
+  actions.append(playButton, evolveButton, musicToggle());
   footer.append(feedback, actions);
   dialog.addEventListener('cancel', event => {
     event.preventDefault();
@@ -199,6 +200,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const head = el('div', 'yk-line');
     head.append(el('h3', 'yk-stat-name', statNames[stat]), el('strong', 'yk-level', '+' + level));
     card.append(head);
+    if (stat === 'vitality') card.append(el('p', 'yk-hint', vitalityUpgradeText(level, !Number.isFinite(cost))));
     if (!Number.isFinite(cost)) {
       card.append(el('p', 'yk-hint', '최고 레벨'));
       return card;

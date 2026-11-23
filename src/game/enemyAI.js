@@ -114,9 +114,11 @@ function choose(enemy, player, grid, cfg, now) {
   const lure = ABILITY_RULES.mark.lureMult;
   const consider = (other, isPlayer) => {
     const d = distSq(enemy, other);
+    if (d >= threatD) return; // 더 가까운 위협이 있으면 이 후보는 최종 표적이 될 수 없다.
     if (canEat(other, enemy)) {
-      if (d < threatD) { threat = other; threatD = d; }
-    } else if (canEat(enemy, other)) {
+      threat = other;
+      threatD = d;
+    } else if (!threat && canEat(enemy, other)) {
       // 파사인(3단계 이상)이 찍힌 요괴는 다른 요괴의 먹잇감 점수가 낮아져 사냥당하기 쉽다.
       const weight = isPlayer ? cfg.playerBias : other.markLure && other.markUntil > now ? lure : 1;
       const score = d * weight * weight;
@@ -237,8 +239,8 @@ export class MealBounds {
       a.mealY = a.y;
       a.mealRadius = a.size + 8;
       a.mealPossible = false;
-      const x0 = Math.floor((a.x - a.mealRadius) / 64), x1 = Math.floor((a.x + a.mealRadius) / 64);
-      const y0 = Math.floor((a.y - a.mealRadius) / 64), y1 = Math.floor((a.y + a.mealRadius) / 64);
+      const x0 = Math.floor((a.mealX - a.mealRadius) / 64), x1 = Math.floor((a.mealX + a.mealRadius) / 64);
+      const y0 = Math.floor((a.mealY - a.mealRadius) / 64), y1 = Math.floor((a.mealY + a.mealRadius) / 64);
       if ((x1 - x0 + 1) * (y1 - y0 + 1) > 256) return;
       for (let x = x0; x <= x1; x++) {
         const column = this.columns[x] ?? (this.columns[x] = []);
@@ -273,7 +275,7 @@ export function findMeals(grid, opts, now = null, meals = [], eaten = new Set(),
     for (const a of bucket) {
       if (boundsVerified && !a.mealPossible) continue;
       if (eaten.has(a)) continue;
-      const x = a.x, y = a.y, reach = a.size + maxSize;
+      const x = a.x, y = a.y, size = a.size, reach = size + maxSize;
       const x0 = Math.floor((x - reach) / cell), x1 = Math.floor((x + reach) / cell);
       const y0 = Math.floor((y - reach) / cell), y1 = Math.floor((y + reach) / cell);
       search: for (let cx = x0; cx <= x1; cx++) {
@@ -283,9 +285,9 @@ export function findMeals(grid, opts, now = null, meals = [], eaten = new Set(),
           const neighbors = column[cy];
           if (!neighbors) continue;
           for (const b of neighbors) {
-            if (b === a || eaten.has(b)) continue;
+            if (b === a || Math.abs(b.x - x) >= size + b.size) continue;
             const pair = eatPair(a, b, opts);
-            if (!pair || (now !== null && eatBlocked(pair[0], now))) continue;
+            if (!pair || eaten.has(b) || (now !== null && eatBlocked(pair[0], now))) continue;
             eaten.add(pair[1]);
             meals.push(pair);
             if (pair[1] === a) break search;

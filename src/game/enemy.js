@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 import { FORMS } from '../data/forms.js';
 import { pickIntent, intentDirection } from './enemyAI.js';
-import { rollSpecial } from './enemyFire.js';
+import { canBeSpecial, rollSpecial, specialRule } from './enemyFire.js';
 import { drawCreature } from '../art/creature.js';
 import { Actor } from './actor.js';
 import { between, clamp } from './world.js';
@@ -56,8 +56,22 @@ export class Enemy extends Actor {
     this.vx = 0;
     this.vy = 0;
     this.reversed = false;
-    this.special = rollSpecial(size, this.stage);
+    this.rollOrbTrait();
     initStatus(this); // 상태이상 필드(빙결·위협·작열·파사인·둔화·밀림·매혹)를 숫자로 고정해 둔다
+  }
+  rollOrbTrait(rng = Math.random) {
+    this.specialDraw = canBeSpecial(this.stage) ? rng() : 1;
+    this.fireCd = undefined;
+    this.refreshOrbRule();
+  }
+  // 플레이어가 진화해도 각 적의 추첨값을 유지하고, 남은 대기시간의 비율만 새 간격으로 옮긴다.
+  refreshOrbRule() {
+    const rule = specialRule(this.scene.player?.stage, this.scene.difficulty);
+    const active = !this.rival && rollSpecial(this.size, this.stage, () => this.specialDraw, rule.chance);
+    if (!active || !this.special) this.fireCd = undefined;
+    else if (this.fireCd !== undefined) this.fireCd *= rule.cooldown / this.firePeriod;
+    this.special = active;
+    this.firePeriod = rule.cooldown;
   }
   // 맞수 대요괴(balance.rivalPlan): 플레이어와 같은 단계·비슷한 크기로 주기적으로 나오는 적. 몸집 상한은 플레이어 × capVsPlayer이고,
   // 같은 단계 규칙이 깨지지 않게 자가 진화·몸집 강화를 하지 않으며 구슬을 쏘는 특수 적도 되지 않는다. 이름표(label)는 PlayScene이 매 프레임 따라가게 한다.
@@ -151,7 +165,7 @@ export class Enemy extends Actor {
     this.bodyLevel = 0;
     this.rewardSize = 0; // 새 형태는 새 크기 기준으로 요력을 준다
     this.grade = rollGrade(0, { rng });
-    this.special = rollSpecial(this.size, this.stage, rng);
+    this.rollOrbTrait(rng);
   }
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
   stepDistant(player, h, grid, stepsLeft) {

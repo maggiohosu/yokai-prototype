@@ -8,6 +8,8 @@
 // 판 멈춤·재개는 부르는 쪽이 맡는다(PlayScene.openAbilityInfo). 모르는 형태면 null을 돌려주고 아무것도 열지 않는다.
 // 이 창은 click에서 열어야 한다: pointerdown에서 열면 같은 손가락의 뒤따르는 click이 바깥 누르기로 읽혀 바로 닫힌다.
 
+import { HUNGER_HINT } from '../data/ability-guides.js';
+import { vitalityMax } from '../systems/vitality.js';
 import { REGIONS } from '../config.js';
 import { abilityBrief } from '../systems/ability-brief.js';
 import { button, el, formImage, openOverlay } from './OddsTable.js';
@@ -130,6 +132,12 @@ export function AbilityInfoView(formId, { progress, onClose, getFormImage, locke
   header.append(head);
 
   body.append(...bodySections(brief));
+  if (!brief.locked) {
+    const seconds = vitalityMax(progress?.enh?.vitality);
+    body.append(section('생명력', '최대 ' + Number(seconds.toFixed(1)) + '초',
+      el('p', 'ai-line', HUNGER_HINT + ' 허기가 질수록 빨라지고, 생명력이 바닥나면 몸이 작아져요.'),
+      el('p', 'ai-line', '큰 먹이일수록 많이 차요. 나를 먹을 수 있는 적과 닿으면 바로 판이 끝나요.')));
+  }
 
   let closed = false;
   function finish() {

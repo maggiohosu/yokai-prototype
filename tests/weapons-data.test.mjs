@@ -78,13 +78,16 @@ test('모든 무기가 TREASURE.levels 한 표를 읽는다: 방향·방향당·
   }
 });
 
-test('쿨타임 = combat.cooldown × 무기 배율, 사거리·속도·피해 계수가 설계 2-2와 같다(레벨 0)', () => {
+test('레벨 0의 쿨타임·사거리·피해는 설계 2-2, 속도는 변경 이력 14를 따른다', () => {
   const at0 = (kind) => weaponStats({ kind, level: 0 });
   const cd = CONFIG.combat.cooldown;
   const expected = { yeouiju: 1.0, fan: 1.0, mirror: 1.8, sword: 1.3, beads: 1.2, gourd: 1.6, bell: 1.5, seal: 2.0 };
   for (const kind of WEAPON_IDS) near(at0(kind).cooldown, cd * expected[kind], kind);
   assert.deepEqual(['yeouiju', 'fan', 'mirror', 'sword', 'gourd', 'bell', 'seal'].map((k) => at0(k).reach), [360, 200, 470, 260, 220, 150, 270]);
-  assert.deepEqual(['yeouiju', 'fan', 'sword', 'gourd'].map((k) => at0(k).speed), [520, 470, 570, 360]);
+  // 속도: 처음 값(520·470·570·360)을 1/2(2026-11-23)로 줄이고 같은 날 다시 1/2로 줄였다. 즉발·궤도·찍기·고리(0)는 그대로다.
+  assert.deepEqual(WEAPON_IDS.map((k) => at0(k).speed), [130, 117.5, 142.5, 0, 0, 0, 90, 0]);
+  const original = { yeouiju: 520, fan: 470, sword: 570, gourd: 360 };
+  for (const [kind, speed] of Object.entries(original)) near(at0(kind).speed, speed * 0.25, kind);
   near(at0('yeouiju').hitDamage, 1.0);
   near(at0('fan').hitDamage, 0.65);
   near(at0('sword').hitDamage, 0.6);

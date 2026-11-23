@@ -10,7 +10,7 @@ export function orbStyleOf(styleKey) {
   return STEM_BY_ID[styleKey]?.orbStyle ?? DEFAULT_ORB_STYLE;
 }
 
-// 제어점 한 쌍이 더 있으면 이차 곡선이다. 구슬 120발이 같은 꼭짓점 배열을 재사용한다.
+// 제어점 한 쌍이 더 있으면 이차 곡선이다. 모든 구슬이 같은 꼭짓점 배열을 재사용한다.
 function contour(...commands) {
   const points = [commands[0]];
   for (const command of commands.slice(1)) {

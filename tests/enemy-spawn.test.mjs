@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { nearSpawnPlan, refillRingFor, shouldCullOnEvolve, sizeWeights, spawnPoint, spawnSize, spawnStage, startStage } from '../src/game/world.js';
-import { worldFor } from '../src/systems/worldScale.js';
+import { withSeed } from '../src/game/populationStress.js';
+import { zoomFor } from '../src/game/camera.js';
+import { artUnitsFor } from '../src/art/creature.js';
+import { applyWorldScale, worldFor } from '../src/systems/worldScale.js';
 
 // 사용자 지시(2026-11-23): 3단계 이후 적이 너무 약하고 적다 → 적의 단계를 높이고, 시작 장소 근처에 모아 만나는 적이 많아 보이게 한다.
 const E = CONFIG.enemy;
@@ -49,7 +52,7 @@ test('startStage: 플레이어 1·2단계는 예전처럼 항상 1단계, 3단�
   const counts = [0, 0, 0, 0, 0];
   const N = 20000;
   for (let i = 0; i < N; i++) counts[startStage(4, rng) - 1]++;
-  E.startStageWeights[4].forEach((w, i) => assert.ok(Math.abs(counts[i] / N - w) < 0.02, `단계 ${i + 1}: ${counts[i] / N} ≈ ${w}`));
+  [0.03 / 1.1, 0.12 / 1.1, 0.30 / 1.1, 0.35 / 1.1, 0.30 / 1.1].forEach((w, i) => assert.ok(Math.abs(counts[i] / N - w) < 0.02, `단계 ${i + 1}: ${counts[i] / N} ≈ ${w}`));
   // 보충도 같은 방식으로 표를 따른다
   assert.equal(spawnStage(5, () => 0.999999), 5);
 });
@@ -112,22 +115,13 @@ test('적 수: 3단계 이후 예전보다 늘고(지수 1.15), 단계마다 커
   for (let i = 1; i < 5; i++) assert.ok(pops[i] > old[i] && pops[i] > pops[i - 1]);
 });
 
-test('적 크기 분포: 3단계 이후는 나보다 큰 적의 비율이 0.2 → 0.4로 올라가고, 1·2단계는 그대로다', () => {
-  const normal = E.sizes.map((band) => band.weight);
-  assert.deepEqual(normal, [0.67, 0.13, 0.2]);
-  assert.ok(Math.abs(sum(E.hardSizeWeights) - 1) < 1e-9);
-  const farGrown = E.earlyUntilSize * 3; // 초반 구간을 지난 크기
-  for (const stage of [1, 2, undefined]) {
-    sizeWeights(farGrown, stage).forEach((w, i) => assert.ok(Math.abs(w - normal[i]) < 1e-9, '1·2단계는 예전 분포'));
+test('성장 뒤 큰 적 구간은 노말 1·2단계에서 약 27%, 3단계부터 50%다', () => {
+  const farGrown = E.earlyUntilSize * 3;
+  for (const stage of [1, 2, 3, 4, 5]) {
+    const expectedBig = stage < 3 ? 0.3 / 1.1 : 0.5;
+    assert.ok(Math.abs(sizeWeights(farGrown, stage)[2] - expectedBig) < 1e-9);
+    assert.ok(Math.abs(sizeWeights(CONFIG.player.startSize, stage)[2] - 0.6) < 1e-9);
   }
-  for (const stage of [3, 4, 5]) {
-    const w = sizeWeights(farGrown, stage);
-    w.forEach((x, i) => assert.ok(Math.abs(x - E.hardSizeWeights[i]) < 1e-9));
-    assert.ok(w[2] >= 0.4 - 1e-9 && w[2] > normal[2] * 1.9, '큰 적 비율 ' + w[2]);
-  }
-  // 시작 직후(초반 구간)는 3단계 이후에도 earlyWeights가 먼저 적용된다
-  const early = sizeWeights(CONFIG.player.startSize, 4);
-  early.forEach((x, i) => assert.ok(Math.abs(x - E.earlyWeights[i]) < 1e-9));
   // 많이 뽑으면 나보다 큰 적(1.15배 이상)의 비율이 크게 늘어난다
   const originalRandom = Math.random;
   try {
@@ -153,7 +147,8 @@ test('nearSpawnPlan.preyRing: 내가 먹을 수 있는 적은 시작 화면 안�
   const plan = nearSpawnPlan(3, 160);
   assert.deepEqual(plan.preyRing, [E.nearSpawn.preyInner, E.nearSpawn.startRing[1]]);
   assert.ok(plan.preyRing[0] < plan.startRing[0] && plan.preyRing[0] < 293, '시작 화면(반너비 약 293) 안쪽부터');
-  const player = { x: 2000, y: 2000, size: CONFIG.player.startSize };
+  const mid = CONFIG.world.size / 2;
+  const player = { x: mid, y: mid, size: CONFIG.player.startSize };
   let inView = 0;
   for (let i = 0; i < 300; i++) {
     const p = spawnPoint(player, [], 6, { near: plan.preyRing, initial: true, stage: 1 }); // 1단계 작은 적(위협 아님)
@@ -195,15 +190,46 @@ test('refillRingFor: 보충 고리의 안쪽 반지름이 화면 크기에 맞�
   const ring = refillRingFor(view);
   let found = 0;
   const savedSize = CONFIG.world.size;
-  CONFIG.world.size = 13200;
+  CONFIG.world.size = 6600;
   try {
-    const bigPlayer = { x: 6600, y: 6600, size: 160 };
-    const bigView = { left: 6600 - 2975, right: 6600 + 2975, top: 6600 - 1500, bottom: 6600 + 1500, width: 5950, height: 3000 };
+    const mid = CONFIG.world.size / 2;
+    const bigPlayer = { x: mid, y: mid, size: 160 };
+    const bigView = { left: mid - 2975, right: mid + 2975, top: mid - 1500, bottom: mid + 1500, width: 5950, height: 3000 };
     for (let i = 0; i < 100; i++) if (spawnPoint(bigPlayer, [], 40, { near: ring, view: bigView })) found++;
   } finally {
     CONFIG.world.size = savedSize;
   }
   assert.ok(found > 90, '새 고리에서 자리를 찾는다: ' + found);
+});
+
+test('대요괴·맞수의 최대 출현 크기도 중앙과 모서리에서 맵 안·화면 밖에 놓인다', () => {
+  try {
+    withSeed(731, () => {
+      for (const stage of [1, 3, 4, 5]) {
+        const { size } = applyWorldScale(stage);
+        const playerSize = CONFIG.player.startSize;
+        const zoom = zoomFor(playerSize, 844, 390, stage);
+        const width = 844 / zoom, height = 390 / zoom;
+        for (const [x, y] of [[size / 2, size / 2], [playerSize, playerSize]]) {
+          const left = Math.max(0, x - width / 2), top = Math.max(0, y - height / 2);
+          const view = { width, height, left, top, right: left + width, bottom: top + height };
+          const bosses = [CONFIG.herald];
+          if (stage >= CONFIG.balance.rival.minStage) bosses.push(CONFIG.balance.rival);
+          for (const boss of bosses) {
+            const radius = playerSize * boss.sizeMax;
+            const player = { x, y, size: playerSize, stage };
+            const pos = spawnPoint(player, [], radius, { stage, view, near: refillRingFor(view) })
+              ?? spawnPoint(player, [], radius, { stage, view });
+            assert.ok(pos);
+            assert.ok(pos.x >= radius && pos.y >= radius && pos.x <= size - radius && pos.y <= size - radius);
+            const pad = CONFIG.world.offscreenMargin + radius * artUnitsFor(stage) / CONFIG.render.bodyRadius * 0.52;
+            assert.ok(pos.x <= view.left - pad || pos.x >= view.right + pad ||
+                      pos.y <= view.top - pad || pos.y >= view.bottom + pad);
+          }
+        }
+      }
+    });
+  } finally { applyWorldScale(1); }
 });
 
 test('shouldCullOnEvolve: 판 안 진화로 3단계 이상이 되면 멀리 흩어진 낮은 단계 적만 evolveCull 비율로 지운다', () => {

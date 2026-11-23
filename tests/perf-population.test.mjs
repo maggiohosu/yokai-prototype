@@ -15,10 +15,10 @@ test('적 수 3배: 단계별 인구가 예전(72·115·160·216·284)의 3배�
 
 // 전체 프레임 예산은 Chrome 시험에서 검증한다. 이 보조 시험은 단일 AI·충돌 단계의 큰 회귀를 잡는다.
 test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) => {
-  const n = worldFor(5).population;
+  const { size: world, population: n } = applyWorldScale(5);
+  assert.deepEqual([world, n], [6600, 852]);
   let r = 12345;
   const rnd = () => (r = (r * 1664525 + 1013904223) % 4294967296) / 4294967296;
-  const world = 13200;
   const enemies = [];
   for (let i = 0; i < n; i++) {
     enemies.push(fakeEnemy(rnd() * world, rnd() * world, 6 + rnd() * 40, { stage: 1 + Math.floor(rnd() * 5) }));
@@ -37,6 +37,6 @@ test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) 
     total += ms;
     worst = Math.max(worst, ms);
   }
-  t.diagnostic(`적 ${n}마리: 단계당 평균 ${(total / STEPS).toFixed(3)}ms, 최악 ${worst.toFixed(3)}ms`);
+  t.diagnostic(`월드 ${world}×${world}, 적 ${n}마리: 단계당 평균 ${(total / STEPS).toFixed(3)}ms, 최악 ${worst.toFixed(3)}ms`);
   assert.ok(total / STEPS <= 6, `단계당 평균 ${(total / STEPS).toFixed(3)}ms > 6ms`);
 });

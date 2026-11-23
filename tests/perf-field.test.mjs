@@ -7,6 +7,7 @@ import { createBooster } from '../src/game/booster.js';
 import { Enemy } from '../src/game/enemy.js';
 import { buildGrid, findMeals, insertGrid, MealBounds, queryGrid } from '../src/game/enemyAI.js';
 import { cameraView } from '../src/game/camera.js';
+import { worldFor } from '../src/systems/worldScale.js';
 import { createVitality } from '../src/systems/vitality.js';
 import { fakeEnemy, makeWorld } from './fixtures-abilities.mjs';
 import { eatPair } from '../src/systems/rules.js';
@@ -156,7 +157,7 @@ test('직접 순회한 먹기 쌍은 같은 격자·순서의 기존 조회와 �
       id, x: Math.random() * 480, y: Math.random() * 480, size: 6 + Math.random() * 35,
       stage: 1 + (id % 5), frozenUntil: id % 6 ? 0 : 10,
     }));
-    const grid = buildGrid(actors, 128);
+    const grid = buildGrid(actors, CONFIG.render.enemyCell);
     const eaten = new Set(), expected = [];
     for (const bucket of grid.buckets.values()) {
       for (const a of bucket) {
@@ -186,7 +187,7 @@ test('프레임 중 이동·성장·생성에도 생략한 먹기 후보와 전�
     assert.ok(actors.some(a => a.mealPossible));
     let grid;
     function compare(verified) {
-      grid = buildGrid(actors, 128, grid);
+      grid = buildGrid(actors, CONFIG.render.enemyCell, grid);
       assert.equal(bounds.valid && actors.every(actor => bounds.contains(actor)), verified);
       assert.deepEqual(findMeals(grid, undefined, 2, [], new Set(), verified), findMeals(grid, undefined, 2));
     }
@@ -230,7 +231,7 @@ test('원거리 이동을 묶어도 근거리의 이동·먹기 순서와 여의
       w.combat.applyTreasureDamage = (enemy, damage) => { hits.push([enemy.id, damage]); return damage; };
       const scene = Object.assign(w.scene, {
         stress: true, combat: w.combat, meals: [], eatenThisStep: new Set(), booster: createBooster(),
-        vitality: createVitality(5), playerStats: { vitalityMax: 5 }, fireRequested: true,
+        hunger: createVitality(5), playerStats: { vitalityMax: 5 }, fireRequested: true,
         enemyFire: { step: () => [] }, applyEnemyHits() {}, resolveMeals: PlayScene.prototype.resolveMeals,
         mealBounds: useBounds ? new MealBounds() : null,
       });
@@ -295,28 +296,37 @@ test('같은 단계 점은 한 번 굽고 카메라를 벗어났다가 돌아오
 });
 
 // 일반 규칙 시험에는 브라우저 의존성이 없다. 서버 주소를 주면 실제 Chrome까지 검증한다.
-if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인구·발사·프레임 예산', { timeout: 900000 }, async t => {
+async function launchFieldBrowser() {
   const module = process.env.YOKAI_PLAYWRIGHT;
   const { chromium } = await import(module ? pathToFileURL(module).href : 'playwright');
-  const browser = await chromium.launch({
+  return chromium.launch({
     channel: 'chrome', headless: true,
     args: ['--enable-gpu', '--autoplay-policy=no-user-gesture-required'], ignoreDefaultArgs: ['--disable-gpu'],
   });
+}
+
+async function fieldContext(browser) {
+  const context = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2 });
+  if (process.env.YOKAI_PHASER_JS) await context.route('**/phaser.min.js', route =>
+    route.fulfill({ path: process.env.YOKAI_PHASER_JS, contentType: 'application/javascript' }));
+  if (process.env.YOKAI_FONT) await context.route('**/*.woff2', route => route.fulfill({
+    path: process.env.YOKAI_FONT, contentType: 'font/woff2', headers: { 'Access-Control-Allow-Origin': '*' },
+  }));
+  return context;
+}
+
+if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인구·발사·프레임 예산', { timeout: 900000 }, async t => {
+  const browser = await launchFieldBrowser();
   const rounds = 5;
   const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const overBudget = [];
   try {
-    for (const [stage, population] of [[1, 216], [3, 480], [5, 852]]) {
+    for (const [stage, worldSize, population] of [[1, 2000, 216], [3, 4000, 480], [5, 6600, 852]]) {
       for (const w of ['yeouiju', 'mirror']) {
         const results = [];
         for (let trial = 0; trial < rounds; trial++) {
-          const context = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2 });
+          const context = await fieldContext(browser);
           try {
-            if (process.env.YOKAI_PHASER_JS) await context.route('**/phaser.min.js', route =>
-              route.fulfill({ path: process.env.YOKAI_PHASER_JS, contentType: 'application/javascript' }));
-            if (process.env.YOKAI_FONT) await context.route('**/*.woff2', route => route.fulfill({
-              path: process.env.YOKAI_FONT, contentType: 'font/woff2', headers: { 'Access-Control-Allow-Origin': '*' },
-            }));
             const page = await context.newPage();
             const errors = [];
             page.on('pageerror', error => errors.push(error.message));
@@ -336,6 +346,7 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
             }));
             assert.deepEqual(errors, []);
             assert.deepEqual(canvas, [1688, 780]);
+            assert.equal(report.worldSize, worldSize);
             assert.equal(report.initialCount, population);
             assert.equal(report.minSimStartCount, population);
             assert.equal(report.frames, 180);
@@ -347,7 +358,7 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
         const ms = (key, stat = 'avg') => median(results.map(r => r[key][stat]));
         const measures = { avg: ms('intervalMs'), p95: ms('intervalMs', 'p95'), sim: ms('simMs'), draw: ms('drawMs') };
         t.diagnostic(JSON.stringify({
-          stage, w, rounds, ...measures, simP95: ms('simMs', 'p95'), drawP95: ms('drawMs', 'p95'),
+          stage, worldSize, population, w, rounds, ...measures, simP95: ms('simMs', 'p95'), drawP95: ms('drawMs', 'p95'),
           trials: results.map(r => ({ interval: r.intervalMs.avg, p95: r.intervalMs.p95, sim: r.simMs.avg, draw: r.drawMs.avg })),
           initialStages: results[0].initialStages, fires: results[0].fires, hits: results[0].hits, steps: results[0].steps,
         }));
@@ -355,5 +366,133 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
       }
     }
     assert.deepEqual(overBudget, [], '장면별 프레임 예산 초과');
+  } finally { await browser.close(); }
+});
+
+async function measureRefill() {
+  const scene = window.__yokai.scene.getScene('Play');
+  const { CONFIG } = await import('./src/config.js');
+  const { FORMS } = await import('./src/data/forms.js');
+  const { loadProgress, newSlotProgress, slotKey } = await import('./src/state/save.js');
+  const { withSeed } = await import('./src/game/populationStress.js');
+  const rows = [];
+  for (const stage of [1, 3, 5]) {
+    const formId = stage === 1 ? 'mimul' : FORMS.find(f => f.stage === stage && f.entry).id;
+    const progress = { ...newSlotProgress(), formId, stage, x: 13000, y: -500 };
+    localStorage.setItem(slotKey(2), JSON.stringify({ version: 1, progress }));
+    for (let seed = 731; seed < 736; seed++) {
+      const row = { stage, seed, initialCalls: 0, initialFailed: 0, calls: 0, failed: 0, onScreen: 0, frames: 0 };
+      const spawn = scene.spawn;
+      const seedEnemies = scene.seedEnemies;
+      const createField = scene.createField;
+      let start;
+      scene.createField = function (data) {
+        start = performance.now();
+        return createField.call(this, data);
+      };
+      const seeded = new Promise(resolve => {
+        scene.seedEnemies = function () {
+          this.spawn = function (size, options) {
+            row.initialCalls++;
+            const ok = spawn.call(this, size, options);
+            if (!ok) row.initialFailed++;
+            return ok;
+          };
+          withSeed(seed, () => seedEnemies.call(this));
+          this.spawn = spawn;
+          this.paused = true;
+          row.initialMs = performance.now() - start;
+          row.initialCount = this.enemies.length;
+          row.target = CONFIG.world.population;
+          row.size = CONFIG.world.size;
+          row.center = [this.player.x, this.player.y];
+          const cam = this.cameras.main;
+          row.zoom = cam.zoom / devicePixelRatio;
+          row.visibleCenters = this.enemies.filter(enemy =>
+            Math.abs(enemy.x - this.player.x) <= cam.width / (2 * cam.zoom) &&
+            Math.abs(enemy.y - this.player.y) <= cam.height / (2 * cam.zoom)).length;
+          row.playerWidth = this.player.sprite.displayWidth * row.zoom;
+          row.firstEnemyWidth = this.enemies[0].sprite.displayWidth * row.zoom;
+          resolve();
+        };
+      });
+      scene.scene.restart({ progress: loadProgress(localStorage, 2) });
+      await seeded;
+      scene.createField = createField;
+      scene.seedEnemies = seedEnemies;
+      for (const enemy of scene.enemies.splice(-24)) enemy.destroy();
+      const simulate = scene.simulate;
+      scene.simulate = elapsed => elapsed; // 보충 중 다른 적이 먹혀 빈자리가 늘어나는 것을 막는다.
+      scene.paused = false;
+      scene.preview = true;
+      scene.spawn = function (size, options) {
+        row.calls++;
+        if (!spawn.call(this, size, options)) { row.failed++; return false; }
+        const bounds = this.lastSpawned.sprite.getBounds();
+        const v = options.view;
+        if (bounds.right > v.left && bounds.left < v.right && bounds.bottom > v.top && bounds.top < v.bottom) row.onScreen++;
+        return true;
+      };
+      withSeed(seed, () => {
+        while (scene.enemies.length < row.target && row.frames < 180) {
+          scene.tick(1000 / 60);
+          row.frames++;
+        }
+      });
+      row.restored = scene.enemies.length;
+      scene.paused = true;
+      scene.simulate = simulate;
+      scene.spawn = spawn;
+      rows.push(row);
+    }
+  }
+  return rows;
+}
+
+if (process.env.YOKAI_PERF_URL) test('능력·무기 단독 시험은 4000 월드의 72마리로 실행한다', async () => {
+  const browser = await launchFieldBrowser();
+  try {
+    const context = await fieldContext(browser);
+    const page = await context.newPage();
+    for (const mode of ['abilities', 'weapons']) {
+      const url = new URL(process.env.YOKAI_PERF_URL);
+      url.search = new URLSearchParams({ stress: mode, only: 'chain', w: 'mirror', ms: 300 });
+      await page.goto(url.href);
+      await page.waitForFunction(() => window.__stressReport?.done);
+      const field = await page.evaluate(async () => {
+        const { CONFIG } = await import('./src/config.js');
+        const { worldFor } = await import('./src/systems/worldScale.js');
+        return [CONFIG.world.size, window.__stressReport.population, worldFor(1).size];
+      });
+      assert.deepEqual(field, [4000, 72, 2000]);
+    }
+  } finally { await browser.close(); }
+});
+
+if (process.env.YOKAI_PERF_URL) test('일반 슬롯 이어하기와 화면 밖 보충을 3개 단계·5개 시드에서 확인한다', { timeout: 120000 }, async t => {
+  const browser = await launchFieldBrowser();
+  try {
+    const context = await fieldContext(browser);
+    const page = await context.newPage();
+    await page.goto(new URL('?debug=', process.env.YOKAI_PERF_URL).href);
+    await page.waitForFunction(() => window.__yokai?.scene.scenes[0]?.hud);
+    const rows = await page.evaluate(measureRefill);
+    for (const r of rows) {
+      assert.equal(r.size, worldFor(r.stage).size);
+      assert.equal(r.initialCount, r.target);
+      assert.equal(r.initialCalls - r.initialFailed, r.target);
+      if (r.stage === 1 && r.seed === 731) {
+        assert.ok(Math.abs(r.zoom - 1.43948598) < 1e-6);
+        assert.ok(Math.abs(r.playerWidth - 51.1817) < 0.01);
+        assert.ok(Math.abs(r.firstEnemyWidth - 31.8791) < 0.01);
+      }
+      assert.deepEqual(r.center, [r.size / 2, r.size / 2]);
+      assert.equal(r.restored, r.target);
+      assert.equal(r.onScreen, 0);
+      assert.equal(r.failed, 0);
+      assert.equal(r.calls, 24);
+      assert.equal(r.frames, 20);
+    }
+    t.diagnostic('REFILL ' + JSON.stringify(rows));
   } finally { await browser.close(); }
 });

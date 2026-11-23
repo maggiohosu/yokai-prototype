@@ -98,9 +98,10 @@ test('빠른 구슬도 통과하지 않고, 상한을 지킨다', () => {
 });
 
 test('rollSpecial과 isFatal', () => {
-  assert.equal(rollSpecial(50, 3, () => 0), true);
-  assert.equal(rollSpecial(50, 2, () => 0), false);
-  assert.equal(rollSpecial(50, 3, () => 0.99), false);
+  assert.equal(rollSpecial(50, 5, () => 0), true);
+  assert.equal(rollSpecial(50, 4, () => 0), false, '특수 적은 5단계 적만 된다');
+  assert.equal(rollSpecial(50, 3, () => 0), false);
+  assert.equal(rollSpecial(50, 5, () => 0.99), false);
   assert.equal(isFatal(CONFIG.special.deathSize - 1), true);
   assert.equal(isFatal(CONFIG.special.deathSize), false);
 });
@@ -230,7 +231,7 @@ test('1→2 진화: 식성 1위 방위의 입구 형태, 크기 초기화(±jitt
   assert.equal(e.special, false);
 });
 
-test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝과 특수 적 굴림을 정한다', () => {
+test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝을 정하고 3단계 적은 특수 적이 되지 않는다', () => {
   const lowEnd = makeEnemy(50, 'west', 2);
   lowEnd.yoryeok = evolutionCost(3);
   assert.equal(lowEnd.autoProgress(() => 0), 'evolve');
@@ -238,7 +239,7 @@ test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝과 특
   assert.equal(FORM_BY_ID[lowEnd.formId].dir, 'west');
   assert.equal(lowEnd.dir, 'west');
   assert.ok(Math.abs(lowEnd.size - CONFIG.levelUp.evolveResetSize * CONFIG.enemy.evolveJitter[0]) < 1e-9);
-  assert.equal(lowEnd.special, true);
+  assert.equal(lowEnd.special, false);
   const highEnd = makeEnemy(50, 'west', 2);
   highEnd.yoryeok = evolutionCost(3);
   highEnd.autoProgress(() => 0.999999);
