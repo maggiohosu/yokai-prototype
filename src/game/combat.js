@@ -121,7 +121,7 @@ export class Combat {
     // 보패 상태(weaponFire.js). 모두 상한이 있다(설계 6절).
     this.beads = []; // 염주 알 ≤ 10
     this.beadAngle = 0;
-    this.burst = { id: 0, t: -1, zoneDone: false }; // 염주 퍼짐: t = 시작 뒤 흐른 시뮬레이션 초(-1이면 쉬는 중)
+    this.burst = { id: 0, t: -1 }; // 염주 퍼짐: t = 시작 뒤 흐른 시뮬레이션 초(-1이면 쉬는 중)
     this.pools = []; // 단호로 웅덩이 ≤ 6
     this.waves = []; // 삼청령 고리 ≤ 6
     this.seals = []; // 옥인 인장 ≤ 6
@@ -293,7 +293,7 @@ export class Combat {
   }
 
   // 지금 무기의 한 번 피해·능력 기준 피해·모양. 위력은 보물(무기) 강화 레벨(weaponStats)과 등급 배율로만 정한다(균형 보정 BALANCE는 한 번 피해에만).
-  // dmg = 명중 한 번 피해, base = 능력 기준 피해 B, scale = 염주 접촉·웅덩이 초당 피해에 곱하는 등급 × 균형 보정.
+  // dmg = 명중 한 번 피해, base = 능력 기준 피해 B, scale = 염주 접촉·퍼짐과 직접 명중에 곱하는 등급 × 균형 보정.
   refreshShot(stats = this.stats()) {
     const k = this.shot;
     const grade = gradeMultiplier(this.progress.grade) ?? 1;
@@ -584,6 +584,9 @@ export class Combat {
     const delta = Math.max(0, stageOf(enemy) - this.myStage());
     const dm = ctx.durMul;
     switch (ab.id) {
+      case 'pierce':
+        if (this.mods.damageMult || this.mods.slamRadiusMult) this.counters.pierce++;
+        break;
       case 'charm':
         if (alive) this.tryCharmEnemy(enemy, ab, delta, now, dm);
         break;
@@ -722,6 +725,7 @@ export class Combat {
 
   // 도목검: 가는 길 끝에서 돌아서 플레이어를 향해 온다. 오는 길도 같은 적을 한 번씩 꿰뚫는다(hits를 비운다).
   swordTurn(orb) {
+    if (this.mods.backMult) this.counters.boomerang++;
     orb.phase = BACK;
     orb.skip = null;
     orb.hits.length = 0;

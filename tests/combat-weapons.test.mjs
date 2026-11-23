@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CONFIG } from '../src/config.js';
 import { FORMS } from '../src/data/forms.js';
 import { STEMS } from '../src/data/stems.js';
 import { WEAPON_IDS } from '../src/data/weapons.js';
@@ -72,6 +71,26 @@ for (const kind of WEAPON_IDS) {
     }
   });
 }
+
+test('표적이 없는 발사도 선무를 퍼짐·고리·낙하 위치에 각각 남긴다', () => {
+  for (const [kind, count, offset] of [['beads', 1, 0], ['bell', 3, 0], ['seal', 3, 200]]) {
+    const w = world(kind, 15, [], 'zone');
+    w.shoot(44);
+    assert.equal(w.combat.clouds.length, count, kind);
+    for (const cloud of w.combat.clouds) {
+      close(cloud.x, w.player.x + offset);
+      close(cloud.y, w.player.y);
+    }
+  }
+});
+
+test('호신주 접촉 피해도 장착 무기의 능력 기준 피해 B를 따른다', () => {
+  const e = target(0, 0, 125), w = world('fan', 5, [e], 'orbit');
+  const hits = recordDamage(w);
+  w.step();
+  assert.equal(hits.length, 1);
+  close(hits[0].amount, w.combat.stats().B * w.combat.ab.damage);
+});
 
 test('광선 한 줄은 가까운 순으로 한 번씩 맞히며 퍼지는 효과는 마지막 표적 1회다', () => {
   const enemies = [target(240), target(160), target(88), target(310), target(110, 120)];

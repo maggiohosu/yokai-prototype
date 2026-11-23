@@ -11,10 +11,13 @@ export class Hud {
       const identity = portrait.closest('.identity');
       this.portraitEvents = new AbortController();
       const options = { signal: this.portraitEvents.signal };
-      identity.addEventListener('pointerdown', event => event.stopPropagation(), options);
+      identity.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        event.stopPropagation();
+      }, options);
       identity.addEventListener('click', onPortrait, options);
       identity.addEventListener('keydown', event => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.key !== 'Enter') return;
         event.preventDefault();
         event.stopPropagation();
         if (!event.repeat) onPortrait();

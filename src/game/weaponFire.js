@@ -18,7 +18,7 @@ const DEG = Math.PI / 180;
 const FALLBACK_SIZE = 20; // 옥인이 표적 없이 앞쪽 지점에 떨어질 때 가정하는 표적 크기
 
 // 균형 보정(설계 2-4 '못 맞추면 한 번 피해 계수만 고친다'): 허수아비 시험(tests/weapon-balance.test.mjs)의 세 조건을 지키도록
-// 설계 2-2의 한 번 피해 계수에 무기별로 곱한다. 명중 피해·염주 접촉·퍼짐·웅덩이 초당 피해에 같이 걸리고, 능력 기준 피해 B와 개수·쿨타임·사거리에는 걸리지 않는다.
+// 명중 피해·염주 접촉·퍼짐에는 hit를, 웅덩이 초당 피해에는 pool을 곱한다. 능력 기준 피해 B와 개수·쿨타임·사거리는 W1 수치를 쓴다.
 // 데이터 파일(data/weapons.js)의 계수는 W1 표 그대로다. 계수를 옮기면 이 표를 1로 되돌린다.
 export const BALANCE = {
   yeouiju: { hit: 1 },
@@ -99,6 +99,7 @@ export function fireWeapon(c, st, k) {
 export function seedWeaponStress(c) {
   const st = c.stats();
   c.refreshWeapon();
+  c.clearEffects();
   c.refreshAbility();
   c.refreshShot(st);
   const { player } = c.scene;
@@ -187,7 +188,10 @@ function fireMirror(c, st, k) {
   const snap = m.snapDeg ?? st.aimSnapDeg; // +8부터(학익 추적이면 처음부터) 앞쪽 ±각도 안의 가장 가까운 위협 쪽으로 첫 줄을 돌린다
   if (snap > 0) {
     const target = c.findTargetCone(player.x, player.y, c.heading.x, c.heading.y, st.reach, Math.cos(snap * DEG), now);
-    if (target) a0 = Math.atan2(target.y - player.y, target.x - player.x);
+    if (target) {
+      a0 = Math.atan2(target.y - player.y, target.x - player.x);
+      if (m.snapDeg) c.counters.homing++;
+    }
   }
   const halfWidth = st.halfWidth + (m.halfWidthAdd ?? 0);
   const dmg = k.dmg * (m.damageMult ?? 1);
@@ -261,7 +265,10 @@ export function stepEchoes(c, now) {
     const e = c.echoes[i];
     if (now < e.at) continue;
     c.echoes.splice(i, 1);
-    if (st.kind === 'mirror') beamLine(c, st, e.x, e.y, e.dx, e.dy, e.halfWidth, e.dmg, e.base, true, now);
+    if (st.kind === 'mirror') {
+      beamLine(c, st, e.x, e.y, e.dx, e.dy, e.halfWidth, e.dmg, e.base, true, now);
+      c.counters.boomerang++;
+    }
   }
 }
 
@@ -274,7 +281,11 @@ function fireBeads(c, st) {
   if (b.t >= 0) return; // 퍼짐이 아직 끝나지 않았으면 새로 시작하지 않는다(쿨타임이 더 길어서 보통 일어나지 않는다)
   b.id++;
   b.t = 0;
-  b.zoneDone = false;
+  if (c.mods.orbitMult) c.counters.homing++;
+  if (c.cell?.trigger === 'burstAtMe') {
+    const { x, y } = c.scene.player;
+    c.spreadAt(anchorOf(c, x, y, null, x, y, 0, c.heading.x, c.heading.y, c.shot.base), c.now());
+  }
 }
 
 export function beadTotal(c, st) {
@@ -340,6 +351,7 @@ export function stepBeads(c, st, now, h) {
         beadHit(c, 'burst', e, burstDmg, k.base, ox / om, oy / om, now, cell, b);
       } else if (phase === 2 && m.backHit && (e.beadBurstId ?? 0) < b.id * 2 + 1) {
         e.beadBurstId = b.id * 2 + 1;
+        c.counters.boomerang++;
         beadHit(c, 'burst', e, burstDmg * m.backMult, k.base, ox / om, oy / om, now, cell, b);
       }
       if (e.sprite.active && now >= (e.beadGateUntil ?? 0)) {
@@ -352,20 +364,13 @@ export function stepBeads(c, st, now, h) {
 }
 
 function beadHit(c, kind, e, dmg, base, dx, dy, now, cell, burst) {
-  const { player } = c.scene;
   const ex = e.x, ey = e.y, es = e.size;
   const ctx = ctxOf(c, e, kind, 'beads', dmg, base, dx, dy, 1, 1, burst.id);
   c.onWeaponHit(ctx, e, now);
   c.wc[kind === 'burst' ? 'burstHits' : 'contactHits']++;
-  if (!c.ab) return;
-  if (cell.trigger === 'enemySec') {
-    if (now >= (e.beadFxUntil ?? 0)) {
-      e.beadFxUntil = now + simSeconds(1, c.scene);
-      c.spreadAt(anchorOf(c, ex, ey, e, ex, ey, es, dx, dy, base), now);
-    }
-  } else if (cell.trigger === 'burstAtMe' && kind === 'burst' && !burst.zoneDone) {
-    burst.zoneDone = true;
-    c.spreadAt(anchorOf(c, player.x, player.y, null, player.x, player.y, 0, dx, dy, base), now);
+  if (cell?.trigger === 'enemySec' && now >= (e.beadFxUntil ?? 0)) {
+    e.beadFxUntil = now + simSeconds(1, c.scene);
+    c.spreadAt(anchorOf(c, ex, ey, e, ex, ey, es, dx, dy, base), now);
   }
 }
 
@@ -387,6 +392,8 @@ export function makeGourdPool(c, x, y, src, vx, vy, now) {
     dps: st.poolDps * k.grade * BALANCE.gourd.pool, base: k.base, slow: m.poolSlow ?? 0, pull: m.poolPull ?? 0, seen: [],
   });
   c.wc.pools++;
+  if (m.poolRadiusCap) c.counters.pierce++;
+  if (m.poolDurationMult) c.counters.boomerang++;
   if (c.ab && c.cell?.trigger === 'poolBorn') {
     c.spreadAt(anchorOf(c, x, y, src, x, y, 0, vx, vy, k.base), now);
   }
@@ -452,7 +459,10 @@ function ringSlot(c) {
 function fireBell(c, st, k) {
   const m = c.mods;
   let maxR = st.ringMaxRadius * (m.ringMult ?? 1);
-  if (m.ringCap) maxR = Math.min(maxR, m.ringCap);
+  if (m.ringCap) {
+    maxR = Math.min(maxR, m.ringCap);
+    c.counters.homing++;
+  }
   const dmg = k.dmg * (m.damageMult ?? 1);
   for (let i = 0; i < st.count; i++) {
     if (c.waves.length >= st.ringMax) break;
@@ -473,6 +483,10 @@ export function stepWaves(c, now, h) {
     w.delay = Math.max(0, w.delay - h);
     if (!elapsed) continue;
     const prev = w.r;
+    if (!w.echo && prev === 0 && cell?.trigger === 'ringAtMe') {
+      const { x, y } = player;
+      c.spreadAt(anchorOf(c, x, y, null, x, y, 0, c.heading.x, c.heading.y, w.base), now);
+    }
     w.r = Math.max(0, Math.min(w.maxR, prev + w.dir * w.speed * elapsed));
     const inner = Math.min(prev, w.r), outer = Math.max(prev, w.r);
     const reach = outer + 8 + c.maxSize();
@@ -502,13 +516,13 @@ export function stepWaves(c, now, h) {
     if (!done) continue;
     c.waves.splice(i, 1);
     if (w.echo) continue;
-    if (c.ab && w.n > 0) {
+    if (cell?.trigger === 'ring' && w.n > 0) {
       const bx = w.bigX - player.x, by = w.bigY - player.y;
       const bm = Math.hypot(bx, by) || 1;
-      if (cell.trigger === 'ring') c.spreadAt(anchorOf(c, w.bigX, w.bigY, w.bigEnemy, w.bigX, w.bigY, w.bigS, bx / bm, by / bm, w.base), now);
-      else if (cell.trigger === 'ringAtMe') c.spreadAt(anchorOf(c, player.x, player.y, null, player.x, player.y, 0, bx / bm, by / bm, w.base), now);
+      c.spreadAt(anchorOf(c, w.bigX, w.bigY, w.bigEnemy, w.bigX, w.bigY, w.bigS, bx / bm, by / bm, w.base), now);
     }
     if (m.echoMult && c.waves.length < c.stats().ringMax) {
+      c.counters.boomerang++;
       c.waves.push({
         id: ++c.waveSeq, bit: ringSlot(c), delay: 0, r: w.maxR, maxR: w.maxR, dir: -1, speed: w.speed, dmg: w.dmg * m.echoMult, base: w.base, echo: true,
         n: 0, bigS: -1, bigX: 0, bigY: 0, bigEnemy: null,
@@ -562,6 +576,7 @@ function fireSeal(c, st) {
   const now = c.now();
   const cone = m.omni ? -1 : Math.cos(st.coneDeg * DEG);
   const picks = collectThreats(c, player.x, player.y, st.sense * (m.senseMult ?? 1), c.heading.x, c.heading.y, cone, now, st.count, c.sealPick, c.sealDist);
+  if (m.omni && picks.length) c.counters.homing++;
   for (let i = 0; i < st.count; i++) {
     if (c.seals.length >= st.sealMax) break;
     let s;
@@ -618,9 +633,13 @@ function slam(c, s, now) {
   imp.life = simSeconds(0.18, c.scene);
   imp.until = now + imp.life;
   c.wc.slams++;
+  if (s.echo) c.counters.boomerang++;
+  if (m.slamRadiusAdd && primary) c.counters.explode++;
   if (!s.echo && m.echoMult && c.seals.length < st.sealMax) {
     c.seals.push({ ...s, id: ++c.shotSeq, at: now + m.echoDelay, mult: m.echoMult, echo: true });
   }
+  const field = c.cell?.trigger === 'slam' && (c.ab.id === 'zone' || c.ab.id === 'vortex');
+  if (field && !s.echo) c.spreadAt(anchorOf(c, s.x, s.y, null, s.x, s.y, 0, 0, 1, k.base), now);
   if (!primary) return;
   const dmg = k.dmg * s.mult; // k.dmg = 인장 한 번 피해(hitDamage × 등급), echo는 mult로 줄인다
   const snap = c.snap;
@@ -632,9 +651,8 @@ function slam(c, s, now) {
     if (Math.hypot(e.x - s.x, e.y - s.y) > radius + e.size) continue;
     slamHit(c, s, e, false, dmg, now, snap);
   }
-  if (!s.echo && c.cell?.trigger === 'slam') {
-    const field = c.ab.id === 'zone' || c.ab.id === 'vortex';
-    c.spreadAt(anchorOf(c, field ? s.x : px, field ? s.y : py, primary, px, py, ps, pdx, pdy, k.base), now);
+  if (!s.echo && !field && c.cell?.trigger === 'slam') {
+    c.spreadAt(anchorOf(c, px, py, primary, px, py, ps, pdx, pdy, k.base), now);
   }
 }
 
