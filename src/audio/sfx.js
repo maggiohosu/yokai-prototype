@@ -11,6 +11,8 @@ const BASE = new URL('../../assets/sfx/', import.meta.url).href;
 const VOLUME_KEY = 'yokai-sfx-volume';
 const GESTURES = ['pointerdown', 'touchend', 'keydown'];
 const SILENT = Object.freeze({ started: false, stop() {} });
+const REPLAY_SECONDS = 0.08;
+const MAX_VOICES = 6;
 
 function storedVolume() {
   try {
@@ -46,6 +48,8 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
   let volume = storedVolume();
   const raw = new Map();      // 이름 → Promise<ArrayBuffer | null>
   const decoded = new Map();  // 이름 → Promise<AudioBuffer | null>
+  const lastStart = new Map();
+  let activeVoices = 0;
   let listening = false;
 
   function fetchRaw(name) {
@@ -134,6 +138,8 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
     decode(name).then(buffer => {
       if (!buffer || cancelled || !ctx) return;
       if (ctx.currentTime - startedAt > waitMs / 1000) return;
+      const now = ctx.currentTime;
+      if (activeVoices >= MAX_VOICES || now < (lastStart.get(name) ?? -Infinity) + REPLAY_SECONDS) return;
       try {
         source = ctx.createBufferSource();
         source.buffer = buffer;
@@ -143,7 +149,14 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
         level.gain.value = clampVolume(gain);
         source.connect(level);
         level.connect(master);
+        source.onended = () => {
+          activeVoices--;
+          source.disconnect();
+          level.disconnect();
+        };
         source.start();
+        activeVoices++;
+        lastStart.set(name, now);
       } catch {
         source = null;
       }

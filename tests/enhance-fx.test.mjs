@@ -172,6 +172,39 @@ test('소리: 소리 장치가 없거나 파일이 없으면 조용히 넘어간
   assert.ok(quiet.setVolume(0.4) === 0.4 && quiet.getVolume() === 0.4);
 });
 
+test('해독이 겹쳐도 같은 소리 간격은 80ms이고, 끝난 소리만 동시 여섯 자리에서 빠진다', async () => {
+  let ctx;
+  const started = [];
+  class Context {
+    constructor() { ctx = this; this.currentTime = 0; this.destination = {}; }
+    createGain() { return { gain: {}, connect() {}, disconnect() {} }; }
+    decodeAudioData(_, done) { done({}); }
+    createBufferSource() {
+      return { playbackRate: {}, connect() {}, disconnect() {}, start() { started.push(this); }, stop() {} };
+    }
+  }
+  const audio = createSfx({ AudioCtor: Context, fetchImpl: async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) }) });
+  audio.unlock();
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  const loop = audio.play('loop', { loop: true });
+  for (const name of ['hit', 'hit', 'a', 'b', 'c', 'd', 'overflow']) audio.play(name);
+  await flush();
+  assert.equal(started.length, 6);
+  loop.stop(60);
+  audio.play('overflow');
+  await flush();
+  assert.equal(started.length, 6);
+  started[0].onended();
+  ctx.currentTime = 0.079;
+  audio.play('hit');
+  await flush();
+  assert.equal(started.length, 6);
+  ctx.currentTime = 0.08;
+  audio.play('hit');
+  await flush();
+  assert.equal(started.length, 7);
+});
+
 test('소리: 첫 사용자 입력에서 잠금이 풀리고 불러온 소리를 재생한다', async () => {
   const listeners = new Map();
   const target = {

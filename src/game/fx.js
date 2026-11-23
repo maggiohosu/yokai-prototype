@@ -1,9 +1,36 @@
 // 모션 그래픽(Opus). 모든 연출은 이미 정해진 결과를 보여주기만 한다(원칙 5).
 // 숨쉬기·기울기·먹기 팝·피격 번쩍임·떠오르는 글자·역전 폭발·고등급 오라.
 import { CONFIG } from '../config.js';
+import { sfx } from '../audio/sfx.js';
+import { WEAPONS } from '../data/weapons.js';
+import { unlockedStage } from '../systems/weapons.js';
 
 const DIR_COLOR = { east: 0x58c8a4, west: 0xf3ead2, south: 0xff8a6b, north: 0x6f87a8 };
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+const unlockRuns = new WeakMap();
+
+// 같은 progress로 다음 판을 시작해도 '새' 표시는 이번 판의 최초 도달 단계만 센다.
+function startUnlockRun(progress, stage) {
+  const run = { start: stage, highest: stage };
+  unlockRuns.set(progress, run);
+  return run;
+}
+
+export function isNewWeapon(progress, unlockStage) {
+  const run = unlockRuns.get(progress);
+  return !!run && run.start < unlockStage && unlockStage <= run.highest;
+}
+
+export function announceWeaponUnlocks(progress, previousStage) {
+  const run = unlockRuns.get(progress) ?? startUnlockRun(progress, previousStage);
+  const stage = unlockedStage(progress);
+  if (stage <= run.highest) return '';
+  const opened = WEAPONS.filter(w => w.unlockStage > run.highest && w.unlockStage <= stage);
+  run.highest = stage;
+  if (!opened.length) return '';
+  sfx.play('weapon-unlock');
+  return '상점에 새 보패 · ' + opened.map(w => w.name).join(' · ');
+}
 
 export class Fx {
   constructor(scene) {
@@ -14,6 +41,12 @@ export class Fx {
     this.g = scene.add.graphics().setDepth(5);
     this.aura = scene.add.graphics().setDepth(1.5);
     this.m = CONFIG.motion;
+    this.muzzleUntil = 0;
+    // PlayScene.create에서 저장을 읽은 뒤, 첫 update 전에 판의 기준을 잡는다.
+    scene.events.once('create', () => {
+      this.unlockRun = startUnlockRun(scene.progress, unlockedStage(scene.progress));
+      sfx.preload(['weapon-unlock']);
+    });
   }
 
   // 숨쉬기(눌림·늘어남)와 이동 방향 기울기. punch는 먹었을 때 잠깐 커지는 배율.
@@ -39,6 +72,13 @@ export class Fx {
     if (!actor.sprite.active || !(this.m.flashSeconds > 0)) return;
     actor.flash = this.m.flashSeconds;
     actor.sprite.setTintFill(0xfffbe6);
+  }
+
+  muzzleFlash(player, heading) {
+    if (REDUCED || this.m.flashSeconds <= 0) return;
+    this.muzzleUntil = this.t + 0.065;
+    this.muzzleX = player.x + heading.x * player.size;
+    this.muzzleY = player.y + heading.y * player.size;
   }
 
   burst(x, y, color, count, power = 1) {
@@ -93,13 +133,24 @@ export class Fx {
 
   reversal(enemy) {
     this.burst(enemy.x, enemy.y, 0xffd45c, 22, 1.4);
-    this.flash(enemy);
     if (!REDUCED) this.scene.cameras.main.shake(this.m.shakeMs, this.m.shakeIntensity);
   }
 
   update(dt, player, grade) {
     this.t += dt;
     const g = this.g.clear();
+    if (this.t < this.muzzleUntil) {
+      const r = 5 / this.scene.cameras.main.zoom;
+      const x = this.muzzleX, y = this.muzzleY;
+      g.fillStyle(0xfff1b8, Math.min(1, (this.muzzleUntil - this.t) / 0.035));
+      g.fillTriangle(x - r, y, x, y - r, x + r, y);
+      g.fillTriangle(x - r, y, x + r, y, x, y + r);
+    }
+    if (player && this.unlockRun && this.scene.progress.stage > this.unlockRun.highest) {
+      const line = announceWeaponUnlocks(this.scene.progress, this.unlockRun.highest);
+      if (line) this.floatText(player.x, player.y - player.size * 2.1 - 88 / this.scene.cameras.main.zoom, line, '#ffe693');
+    }
+    const view = this.scene.cameras.main.worldView;
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;
@@ -107,7 +158,10 @@ export class Fx {
       p.x += p.vx * dt; p.y += p.vy * dt;
       p.vx *= 1 - dt * 3; p.vy *= 1 - dt * 3;
       const k = p.life / p.max;
-      g.fillStyle(p.color, Math.min(1, k * 1.6)).fillCircle(p.x, p.y, p.r * (0.4 + k));
+      const r = p.r * (0.4 + k);
+      if (p.x + r < view.left || p.x - r > view.right || p.y + r < view.top || p.y - r > view.bottom) continue;
+      // 작은 불티는 12개 변으로 충분하다. 큰 폭발은 반지름에 맞춰 원 둘레를 더 나눈다.
+      g.fillStyle(p.color, Math.min(1, k * 1.6)).fillEllipse(p.x, p.y, r * 2, r * 2, Math.max(12, Math.ceil(r * 1.5)));
     }
     for (const t of this.texts) {
       if (!t.alive) continue;

@@ -24,6 +24,8 @@ const tuning = CONFIG.combat;
 const TAU = Math.PI * 2;
 const MAIN = 0, SPLIT = 1; // 구슬 종류: 여의주가 쏜 구슬 / 분화 갈래
 const OUT = 0, BACK = 1; // 회선: 가는 길 / 오는 길
+const SHOT_PAD = 40; // 5티어 꼬리와 불티까지 들어가는 월드 반경
+const SHOT_RESOLUTION = 2;
 
 // (x,y)에서 (hx,hy) 방향 부채꼴 안의 '나를 먹을 수 있는'(단계 규칙) 가장 가까운 적.
 // 이미 역전된 적(나보다 작아져 도망 중)은 더 이상 위협이 아니므로 표적에서 뺀다.
@@ -108,6 +110,12 @@ export class Combat {
     this.cooldownMax = tuning.cooldown; // 지금 무기의 쿨타임(발사 버튼 게이지가 cooldown ÷ cooldownMax로 그린다)
     this.graphics = scene.add.graphics().setDepth(4);
     this.statusGfx = scene.add.graphics().setDepth(4.2);
+    this.shotImages = [];
+    this.visibleShots = 0;
+    this.shotTextures = new Set();
+    scene.events.once?.('shutdown', () => {
+      for (const key of this.shotTextures) scene.textures.remove(key);
+    });
     this.ab = null; // 지금 형태·장착 무기 레벨의 능력 수치(abilities.abilityRuntime). 능력이 없으면 null
     this.abForm = undefined;
     this.abLevel = -1;
@@ -234,6 +242,7 @@ export class Combat {
 
   clearWeaponState() {
     this.orbs.length = 0;
+    this.hideUnusedShots(0);
     this.beads.length = 0;
     this.burst.t = -1;
     this.pools.length = 0;
@@ -332,6 +341,7 @@ export class Combat {
     } else {
       fireWeapon(this, stats, k);
     }
+    this.scene.fx?.muzzleFlash?.(player, this.heading);
     sfx.play(stats.kind === 'yeouiju' ? 'orb-fire' : 'shot-' + stats.kind, { volume: 0.7 });
     this.cooldown = stats.cooldown;
     this.cooldownMax = stats.cooldown;
@@ -371,7 +381,7 @@ export class Combat {
 
   // 모든 구슬·번개·폭발·화상·구름·진주·갈래·되돌이 피해가 지나는 한 곳: 파사인 증가, 요력 기준 크기 기록, 역전 판정, 쓰러뜨리기를 처리한다.
   // 반환: 깎아 낸 면적(크기²). silent는 지속 피해(화상·구름)용으로 번쩍임을 생략한다.
-  applyTreasureDamage(enemy, amount, { silent = false } = {}) {
+  applyTreasureDamage(enemy, amount, { silent = false, flashReversal = true } = {}) {
     if (!enemy.sprite.active) return 0;
     const { player } = this.scene;
     const now = this.now();
@@ -383,7 +393,7 @@ export class Combat {
     // 역전: 나를 먹을 수 있던 적이 깎여서 이제 내가 먹을 수 있게 됐다(단계 규칙 포함).
     const reversal = !enemy.reversed && canEat(enemy, player) && canEat(player, { size: remaining, stage: stageOf(enemy) }, { reversed: true });
     if (reversal) this.scene.fireButton?.showReversal();
-    if (!silent) this.scene.fx?.flash(enemy);
+    if (!silent || (reversal && flashReversal)) this.scene.fx?.flash(enemy);
     if (reversal) this.scene.fx?.reversal(enemy);
     if (remaining <= tuning.defeatSize) {
       const meal = this.meal(enemy, true);
@@ -574,7 +584,7 @@ export class Combat {
     let removed = 0;
     if (ctx.amount > 0) {
       if (takeRate(this.hitSfxGate, now, simSeconds(0.07, this.scene))) sfx.play('orb-hit', { volume: 0.6 });
-      removed = this.applyTreasureDamage(enemy, ctx.amount, ctx.silent ? { silent: true } : undefined);
+      removed = this.applyTreasureDamage(enemy, ctx.amount, ctx.silent ? { silent: true, flashReversal: false } : undefined);
       this.wc.hits++;
       if (ctx.kind === 'shot') this.wc.shotHits++;
       else if (ctx.kind === 'drop') this.wc.dropHits++;
@@ -1147,24 +1157,58 @@ export class Combat {
       if (omni) this.drawFeather(g, target.x, tip);
       else g.fillStyle(0xffdf78).fillTriangle(target.x, tip, target.x - 5, tip - 7, target.x + 5, tip - 7);
     }
-    const r = tuning.orbRadius;
-    for (const orb of this.orbs) {
-      if (orb.kind === SPLIT) {
-        const { x, y, vx, vy } = orb;
-        const st = STEM_BY_ID.S2.orbStyle;
-        g.lineStyle(r * 0.8, st.tail, 0.65).lineBetween(x - vx * r * 2.4, y - vy * r * 2.4, x, y);
-        g.fillStyle(st.sub).fillCircle(x, y, r * 0.8 + 1);
-        g.fillStyle(st.main).fillCircle(x, y, r * 0.8);
-      } else if (orb.weapon === 'yeouiju' || orb.weapon === undefined) {
-        drawOrb(g, orb, orb.style, orb.tier);
-      } else {
-        drawWeaponShot(g, orb, orb.weapon, orb.style, orb.tier);
-      }
-    }
+    this.drawShots();
     drawWeapons(this, g, sg, now, this.ab ? this.abForm.stem : null, this.ab ? this.ab.stage : 1);
     this.drawPearls(g);
     this.drawFields(sg, now);
     this.drawStatus(sg, now);
+  }
+
+  // 위치·각도만 바뀌는 발사체는 모양당 한 번만 굽는다. 광선·파문·웅덩이의 동적 윤곽은 drawWeapons가 그린다.
+  shotTexture(orb) {
+    const split = orb.kind === SPLIT;
+    const key = split ? 'shot:split' : 'shot:' + (orb.weapon ?? 'yeouiju') + ':' + orb.style + ':' + orb.tier;
+    if (this.shotTextures.has(key)) return key;
+    const g = this.scene.make.graphics({ add: false });
+    try {
+      g.scaleCanvas(SHOT_RESOLUTION, SHOT_RESOLUTION);
+      if (split) {
+        const r = tuning.orbRadius, st = STEM_BY_ID.S2.orbStyle;
+        g.lineStyle(r * 0.8, st.tail, 0.65).lineBetween(SHOT_PAD - r * 2.4, SHOT_PAD, SHOT_PAD, SHOT_PAD);
+        g.fillStyle(st.sub).fillCircle(SHOT_PAD, SHOT_PAD, r * 0.8 + 1);
+        g.fillStyle(st.main).fillCircle(SHOT_PAD, SHOT_PAD, r * 0.8);
+      } else {
+        drawWeaponShot(g, { x: SHOT_PAD, y: SHOT_PAD, vx: 1, vy: 0 }, orb.weapon ?? 'yeouiju', orb.style, orb.tier);
+      }
+      const pixels = SHOT_PAD * 2 * SHOT_RESOLUTION;
+      g.generateTexture(key, pixels, pixels);
+      this.shotTextures.add(key);
+    } finally {
+      g.destroy();
+    }
+    return key;
+  }
+
+  hideUnusedShots(used) {
+    for (let i = used; i < this.visibleShots; i++) this.shotImages[i].setVisible(false);
+    this.visibleShots = used;
+  }
+
+  drawShots() {
+    const view = this.scene.cameras.main.worldView;
+    let used = 0;
+    for (const orb of this.orbs) {
+      const { x, y } = orb;
+      if (x + SHOT_PAD < view.left || x - SHOT_PAD > view.right || y + SHOT_PAD < view.top || y - SHOT_PAD > view.bottom) continue;
+      const key = this.shotTexture(orb);
+      let image = this.shotImages[used++];
+      if (!image) {
+        image = this.scene.add.image(x, y, key).setDepth(3.99).setScale(1 / SHOT_RESOLUTION);
+        this.shotImages.push(image);
+      } else if (image.texture.key !== key) image.setTexture(key);
+      image.setPosition(x, y).setRotation(Math.atan2(orb.vy, orb.vx)).setVisible(true);
+    }
+    this.hideUnusedShots(used);
   }
 
   // 표적 머리 위 작은 깃(학익 추적): 깃대 하나와 양쪽 가시

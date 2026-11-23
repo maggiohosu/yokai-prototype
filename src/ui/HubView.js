@@ -4,6 +4,8 @@
 // B에서도 같은 progress로 EvolveView를 열면 된다. 각 콜백은 이 화면을 닫은 뒤 호출된다.
 
 import { drawWeaponIcon } from '../art/weapons.js';
+import { sfx } from '../audio/sfx.js';
+import { isNewWeapon } from '../game/fx.js';
 import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
@@ -63,6 +65,7 @@ export function degradeDialog(parent, progress, stat, onChoice) {
 
 // inRun: true면 판 중 [정비]로 연 화면이다. 아래 버튼이 [게임으로 돌아가기]가 되고, 이때 onPlay는 '같은 판 재개'다.
 export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress, getFormImage, inRun = false } = {}) {
+  sfx.preload(['shop-buy', 'equip-swap']);
   const { dialog, header, body, footer, close } = openOverlay(inRun ? '판 중 정비' : '판 사이 정비');
   const form = forms.find(item => item.id === progress.formId);
   const identity = el('div', 'yk-identity');
@@ -344,7 +347,10 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       if (stored) {
         const controls = el('div', 'yk-actions');
         controls.append(button(item ? '장착 바꾸기' : '장착', () => {
-          if (equip(progress, i)) commit(itemTitle(stored) + ' 장착');
+          if (equip(progress, i)) {
+            sfx.play('equip-swap');
+            commit(itemTitle(stored) + ' 장착');
+          }
         }), sellButton(i, stored));
         slot.append(controls);
       }
@@ -374,6 +380,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       setStatus(result.reason === 'locked' ? lockedText(kind) : blockerText[result.reason], 'bad');
       return;
     }
+    sfx.play('shop-buy');
     commit(itemTitle({ kind, level }) + ' 구매, 요력 ' + number(result.price) + ' 사용', 'good');
   }
   // 카드마다 고른 레벨은 화면을 다시 그려도 남긴다(구매할 때마다 render가 돈다).
@@ -386,6 +393,11 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const info = el('div', 'yk-shop-info');
     info.append(el('h4', 'yk-weapon-name', card.name), el('span', 'yk-weapon-hanja', card.hanja));
     head.append(weaponIcon(card.kind, card.locked), info);
+    if (!card.locked && isNewWeapon(progress, card.unlockStage)) {
+      const badge = el('strong', 'yk-storage-count', '새');
+      badge.setAttribute('aria-label', '이번 판에 해금');
+      head.append(badge);
+    }
     row.append(head);
     if (card.locked) {
       row.append(el('p', 'yk-unlock', lockedText(card.kind)));

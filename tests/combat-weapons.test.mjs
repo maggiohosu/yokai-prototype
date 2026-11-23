@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { FORMS } from '../src/data/forms.js';
 import { STEMS } from '../src/data/stems.js';
 import { WEAPON_IDS } from '../src/data/weapons.js';
+import { sfx } from '../src/audio/sfx.js';
 import { EnemyFire } from '../src/game/enemyFire.js';
+import { Fx, announceWeaponUnlocks, isNewWeapon } from '../src/game/fx.js';
 import { simSeconds } from '../src/game/status.js';
 import { weaponStats } from '../src/systems/weapons.js';
 import { fakeEnemy, makeWorld } from './fixtures-abilities.mjs';
@@ -242,5 +244,53 @@ test('겹친 고리·광선·인장의 역전·처치 보상은 적마다 한 �
     assert.equal(w.log.eat.length, 1, kind);
     assert.equal(w.log.reversal, 1, kind);
     assert.ok(w.log.eat[0].killedByTreasure);
+  }
+});
+
+test('같은 progress로 다시 시작하면 이전 판의 해금 표시는 사라진다', () => {
+  const { scene, progress } = world('yeouiju');
+  scene.progress = progress;
+  const start = () => { new Fx(scene); scene.events.emit('create'); };
+  start();
+  progress.stage = 2;
+  assert.equal(announceWeaponUnlocks(progress, 1), '상점에 새 보패 · 학우선 · 도목검');
+  assert.equal(isNewWeapon(progress, 2), true);
+  assert.equal(isNewWeapon(progress, 1), false);
+  assert.equal(announceWeaponUnlocks(progress, 1), '');
+  start();
+  assert.equal(isNewWeapon(progress, 2), false);
+  progress.stage = 3;
+  assert.equal(announceWeaponUnlocks(progress, 2), '상점에 새 보패 · 팔괘경 · 염주');
+  assert.equal(isNewWeapon(progress, 3), true);
+  assert.equal(isNewWeapon(progress, 2), false);
+});
+
+test('무기 여덟 종은 발사 한 번에 발사음과 섬광을 한 번씩 낸다', t => {
+  const sounds = t.mock.method(sfx, 'play', () => {});
+  for (const kind of WEAPON_IDS) {
+    const w = world(kind, 15);
+    const flashes = [];
+    w.scene.fx.muzzleFlash = (player, dir) => flashes.push([player, dir.x, dir.y]);
+    sounds.mock.resetCalls();
+    const opts = { fire: true, direction: { x: 0, y: 1 } };
+    w.step(1, 1 / 60, opts);
+    w.step(1, 1 / 60, opts);
+    assert.deepEqual(flashes, [[w.player, 0, 1]]);
+    assert.deepEqual(sounds.mock.calls.map(call => call.arguments[0]), [kind === 'yeouiju' ? 'orb-fire' : 'shot-' + kind]);
+  }
+});
+
+test('역전된 적 여섯 마리도 광선 한 줄·고리 하나에서 세 마리만 번쩍인다', () => {
+  for (const kind of ['mirror', 'bell']) {
+    const enemies = Array.from({ length: 6 }, (_, i) => target(50 + i * 8, 0, 32));
+    const w = world(kind, 0, enemies);
+    w.scene.fx.reversal = Fx.prototype.reversal.bind({ burst() {}, flash: w.scene.fx.flash,
+      scene: { cameras: { main: { shake() {} } } }, m: {} });
+    // 첫 타격으로 모두 역전되는 조건에서도 명중당 피해와 역전 처리는 여섯 번이다.
+    const damage = w.combat.applyTreasureDamage.bind(w.combat);
+    w.combat.applyTreasureDamage = (e, _, options) => damage(e, 10, options);
+    w.shoot(35);
+    assert.equal(w.log.reversal, 6, kind);
+    assert.equal(w.log.flashes, 3, kind);
   }
 });

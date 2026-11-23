@@ -4,6 +4,9 @@
 // HubView에서 B를 택했다면 같은 progress를 넘긴다. pendingDevolve 처리는 이 화면이 한 번 맡는다.
 
 import { REGIONS } from '../config.js';
+import { sfx } from '../audio/sfx.js';
+import { announceWeaponUnlocks } from '../game/fx.js';
+import { unlockedStage } from '../systems/weapons.js';
 import { saveProgress } from '../state/save.js';
 import { buildChoices, canEvolve, devolve, evolve, evolutionCost, gradeOdds, unknownPool } from '../systems/evolution.js';
 import { abilityLabel } from '../systems/abilities.js';
@@ -71,6 +74,7 @@ export function gradeChanceText(progress, grade) {
 }
 
 export function EvolveView(progress, forms, { onDone, getFormImage, save = saveProgress } = {}) {
+  sfx.preload(['weapon-unlock']);
   const catalog = evolutionForms(forms);
   let previous;
   if (progress.pendingDevolve) {
@@ -104,10 +108,13 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
 
   function choose(choice) {
     if (result || !dialog.open || !canEvolve(progress)) return;
+    const previousStage = unlockedStage(progress);
     result = evolve(progress, choice, catalog);
     save(progress);
     const { form, grade, firstDiscovery } = result;
     header.replaceChildren(el('h2', 'yk-title', '진화 완료'), el('p', 'yk-caption', form.stage + '단계'));
+    const unlocked = announceWeaponUnlocks(progress, previousStage);
+    if (unlocked) header.append(el('p', 'yk-caption', unlocked));
     const reveal = el('section', 'yk-reveal');
     const art = formImage(getFormImage, form, grade);
     art.dataset.grade = grade;
