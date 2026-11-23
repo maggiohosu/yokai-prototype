@@ -59,6 +59,18 @@
   color: var(--ochre); font: 600 13px/1.2 var(--sans);
 }
 
+/* [계속 모으기](2단계 이상 진화 선택): 카드 아래 한 줄. 요력을 쓰지 않고 닫는다. 누르는 칸은 44px 이상. */
+.qp-defer {
+  min-width: 132px; min-height: 44px; padding: 8px 20px;
+  border: 2px solid var(--paper); border-radius: 6px;
+  background: var(--paper); color: var(--ink);
+  font: 600 15px/1.2 var(--sans); cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.qp-defer:hover { background: var(--sheet); }
+.qp-defer:active { background: var(--gold); transform: translateY(1px); }
+.qp-defer:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+
 /* 다시 뽑기: 카드 아래 한 줄. 요력은 들지 않는다. 누르는 칸은 44px 이상. */
 .qp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; }
 .qp-reroll {

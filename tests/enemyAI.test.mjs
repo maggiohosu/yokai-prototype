@@ -7,7 +7,7 @@ import { Enemy } from '../src/game/enemy.js';
 import { Combat, aimTarget } from '../src/game/combat.js';
 import { reversalPair } from '../src/systems/rules.js';
 import { FORM_BY_ID } from '../src/data/forms.js';
-import { evolutionCost } from '../src/systems/evolution.js';
+import { enemyEvolutionCost } from '../src/systems/evolution.js';
 import { bodyCostAt, enemyPreyValue, preyValue, preyInfoOf, canEat } from '../src/systems/rules.js';
 
 const A = (x, y, size, extra = {}) => ({ x, y, size, ...extra });
@@ -214,7 +214,7 @@ test('먹으면 면적이 늘고 먹힌 쪽 점수만큼 요력, 크기만큼 �
 test('1→2 진화: 식성 1위 방위의 입구 형태, 크기 초기화(±jitter), 비용 차감, 식성 초기화', () => {
   const e = makeEnemy(60, 'east', 1);
   e.diet = { east: 3, west: 0, south: 50, north: 1 };
-  e.yoryeok = evolutionCost(2) + 7;
+  e.yoryeok = enemyEvolutionCost(2) + 7;
   e.bodyLevel = 2;
   const keyBefore = e.sprite.key;
   assert.equal(e.autoProgress(() => 0), 'evolve'); // 남녘 입구 4개 중 첫째(새끼 새)
@@ -233,7 +233,7 @@ test('1→2 진화: 식성 1위 방위의 입구 형태, 크기 초기화(±jitt
 
 test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝을 정하고 3단계 적은 특수 적이 되지 않는다', () => {
   const lowEnd = makeEnemy(50, 'west', 2);
-  lowEnd.yoryeok = evolutionCost(3);
+  lowEnd.yoryeok = enemyEvolutionCost(3);
   assert.equal(lowEnd.autoProgress(() => 0), 'evolve');
   assert.equal(lowEnd.stage, 3);
   assert.equal(FORM_BY_ID[lowEnd.formId].dir, 'west');
@@ -241,7 +241,7 @@ test('2→3 진화: 같은 방위의 3단계, rng로 크기 범위 양끝을 정
   assert.ok(Math.abs(lowEnd.size - CONFIG.levelUp.evolveResetSize * CONFIG.enemy.evolveJitter[0]) < 1e-9);
   assert.equal(lowEnd.special, false);
   const highEnd = makeEnemy(50, 'west', 2);
-  highEnd.yoryeok = evolutionCost(3);
+  highEnd.yoryeok = enemyEvolutionCost(3);
   highEnd.autoProgress(() => 0.999999);
   assert.ok(Math.abs(highEnd.size - CONFIG.levelUp.evolveResetSize * CONFIG.enemy.evolveJitter[1]) < 1e-3);
   assert.equal(highEnd.special, false);
@@ -266,7 +266,7 @@ test('5단계는 요력이 아무리 많아도 진화하지 않고, 진화 가�
   assert.equal(top.autoProgress(), 'body');
   assert.equal(top.stage, 5);
   const e = makeEnemy(50, 'east', 1);
-  e.yoryeok = evolutionCost(2) + bodyCostAt(0);
+  e.yoryeok = enemyEvolutionCost(2) + bodyCostAt(0);
   assert.equal(e.autoProgress(), 'evolve');
 });
 
@@ -279,15 +279,15 @@ test('적의 자가 진화는 플레이어 단계 + selfEvolveLead까지만 한�
     return new Enemy(scene, { x: 500, y: 500 }, size, dir, stage);
   };
   const a = withPlayer(2, 30, 'east', 1);
-  a.yoryeok = evolutionCost(3) + 5;
+  a.yoryeok = enemyEvolutionCost(3) + 5;
   assert.equal(a.autoProgress(), 'body', '플레이어 1단계 판에서 2단계 적은 3단계로 진화하지 않는다');
   assert.equal(a.stage, 2);
   const b = withPlayer(1, 30, 'east', 1);
-  b.yoryeok = evolutionCost(2);
+  b.yoryeok = enemyEvolutionCost(2);
   assert.equal(b.autoProgress(), 'evolve', '플레이어 단계 + 1까지는 진화한다');
   assert.equal(b.stage, 2);
   const c = withPlayer(4, 30, 'east', 4);
-  c.yoryeok = evolutionCost(5);
+  c.yoryeok = enemyEvolutionCost(5);
   assert.equal(c.autoProgress(), 'evolve');
   assert.equal(c.stage, 5);
   assert.ok(FORM_BY_ID[c.formId].stage === 5);
@@ -295,7 +295,7 @@ test('적의 자가 진화는 플레이어 단계 + selfEvolveLead까지만 한�
 
 test('eat이 진화까지 이어진다: 먹은 뒤 요력이 비용에 닿으면 진화', () => {
   const e = makeEnemy(20, 'east', 1);
-  e.yoryeok = evolutionCost(2) - 1;
+  e.yoryeok = enemyEvolutionCost(2) - 1;
   assert.equal(e.eat(prey(20, 'north')), 'evolve');
   assert.equal(e.stage, 2);
   assert.equal(e.dir, 'north');
@@ -361,7 +361,7 @@ test('역전은 먹거나 진화하거나 몸집을 키우면 풀리고, 그때�
 
   const evolver = reverse(makeEnemy(20, 'east', 1));
   evolver.diet.south = 30;
-  evolver.yoryeok = evolutionCost(2);
+  evolver.yoryeok = enemyEvolutionCost(2);
   assert.equal(evolver.autoProgress(), 'evolve');
   assert.equal(evolver.reversed, false, '진화하면 풀린다');
   const direct = reverse(makeEnemy(20, 'east', 1));

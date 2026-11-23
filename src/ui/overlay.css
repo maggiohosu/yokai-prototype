@@ -119,6 +119,13 @@
 .yk-scroll > .yk-disclosure { padding-top: 0; margin-top: 12px; }
 .yk-disclosure summary { min-height: 44px; padding: 12px 4px; border: 0; border-radius: 0; background: transparent; }
 .yk-disclosure[open] .yk-odds { margin: 0 0 8px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* 레벨별 확률·비용 표(+1 ~ +20, 보물 +1 ~ +15). 좁은 화면에서도 가로로 넘치지 않게 글자를 줄이고 숫자는 오른쪽 정렬한다. */
+.yk-level-table { width: 100%; margin: 0 0 8px; border-collapse: collapse; font-size: 12px; }
+.yk-level-table :where(th, td) { padding: 4px 3px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; }
+.yk-level-table thead th { color: var(--muted); font-weight: 400; }
+.yk-level-table tbody th { color: var(--ink-soft); font-weight: 600; text-align: left; }
+.yk-level-table tr[data-current='true'] { background: var(--sheet); font-weight: 600; }
+.yk-level-note { margin: 0 0 8px; color: var(--muted); font-size: 12px; }
 .yk-reveal { text-align: center; padding: 8px; }
 .yk-reveal .yk-portrait { width: min(164px, 50%); aspect-ratio: 1; margin: 0 auto 8px; }
 .yk-grade-label { font: 600 14px/1.1 var(--sans); }

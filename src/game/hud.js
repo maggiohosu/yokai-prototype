@@ -33,7 +33,8 @@ export function bindHudDisclosure(panel, button, view, signal) {
 }
 
 export class Hud {
-  constructor(onPortrait) {
+  // onEvolve: 2단계 이상에서 [계속 모으기]를 고른 뒤 HUD에 뜨는 '진화 가능' 단추를 눌렀을 때(계획서 변경 이력 21).
+  constructor(onPortrait, onEvolve) {
     this.events = new AbortController();
     const { signal } = this.events;
     bindHudDisclosure(document.querySelector('.hud'), byId('hud-toggle'), window, signal);
@@ -66,6 +67,16 @@ export class Hud {
     this.gaugeLabel = this.gauge.labels[0];
     this.gaugeCount = byId('growth-count');
     this.gaugeRow.hidden = true;
+    // '진화 가능' 단추: 게이지 자리를 대신한다. 이동 입력에서 빠지도록 단추(button)이고 pointerdown이 아래 게임으로 새지 않게 막는다. 판이 멈추기 전에 눌리지 않게 click에서 연다.
+    this.evolveButton = byId('evolve-ready');
+    if (this.evolveButton) {
+      this.evolveButton.hidden = true;
+      this.evolveButton.addEventListener('pointerdown', (event) => event.stopPropagation(), { signal });
+      this.evolveButton.addEventListener('click', (event) => {
+        releasePointerFocus(event);
+        onEvolve?.(event);
+      }, { signal });
+    }
     this.result = byId('result');
     this.result.oncancel = event => event.preventDefault();
     this.result.hidden = true;
@@ -161,14 +172,30 @@ export class Hud {
       this.resonanceKey = ''; // 다음 setResonance가 연쇄 상태로 되돌린다
     }, Math.max(0.2, sec) * 1000);
   }
-  setGauge(current, target, label = '다음 성장까지') {
+  // 성장 표시(levelup.growthView 결과). 1단계('pause')는 예전 게이지, 2단계 이상('evolve')은 '다음 진화까지 n 요력'이고 진화할 수 있으면 게이지 자리에 '진화 가능' 단추가 뜬다. 5단계('off')는 숨긴다.
+  setGrowth(view) {
+    const ready = view.mode === 'evolve' && view.ready;
+    if (this.evolveButton) {
+      if (this.evolveButton.hidden === ready) this.evolveButton.hidden = !ready;
+      this.gaugeRow.classList.toggle('is-evolve-ready', ready);
+    }
+    if (ready) {
+      if (this.gaugeRow.hidden) this.gaugeRow.hidden = false;
+      return;
+    }
+    if (view.mode === 'evolve') this.setGauge(view.current, view.cost, '다음 진화까지', number(view.remain) + ' 요력');
+    else if (view.mode === 'pause') this.setGauge(view.current, view.target, '다음 성장까지');
+    else this.setGauge(0, 0);
+  }
+  // countText를 주면 오른쪽 글자를 '현재 / 목표' 대신 그 글자로 쓴다.
+  setGauge(current, target, label = '다음 성장까지', countText = null) {
     const hidden = !Number.isFinite(target) || target <= 0;
     if (this.gaugeRow.hidden !== hidden) this.gaugeRow.hidden = hidden;
     if (hidden) return;
 
     const balance = Number.isFinite(current) ? Math.max(0, current) : 0;
     const value = Math.min(balance, target);
-    const count = number(balance) + ' / ' + number(target);
+    const count = countText ?? number(balance) + ' / ' + number(target);
     if (this.gauge.max !== target) this.gauge.max = target;
     if (this.gauge.value !== value) this.gauge.value = value;
     if (this.gaugeLabel.textContent !== label) this.gaugeLabel.textContent = label;

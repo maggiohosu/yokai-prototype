@@ -7,7 +7,7 @@ import { zoomFloor, zoomFor } from '../src/game/camera.js';
 import { growMoveCount, offscreenPad, seedField, spawnPoint } from '../src/game/world.js';
 import { withSeed } from '../src/game/populationStress.js';
 
-// 사용자 지시(2026-11-23): 맵 면적을 다시 1/4로(한 변 1000·1500·2000·2600·3300), 적 수는 모든 단계 480, 적은 맵 전체에 고르게.
+// 사용자 지시(2026-11-23): 맵 면적을 다시 1/4로(한 변 1000·1500·2000·2600·3300), 적 수는 모든 단계 480(2026-11-24에 300으로 줄였다, 변경 이력 21), 적은 맵 전체에 고르게.
 test.afterEach(() => applyWorldScale(1));
 
 const view = (player, width, height, size) => {
@@ -71,7 +71,7 @@ test('진화 고리(pulse.reach 750)는 진화 직전 시작 화면이 물러선
   }
 });
 
-test('화면 밖 보충: 1·3·5단계에서 큰 화면(1920 × 1080 하한 배율)이어도 120마리를 한꺼번에 화면 밖에 다시 채운다(1단계는 좁은 띠라 1~2마리는 다음 보충으로 미룬다)', () => {
+test('화면 밖 보충: 1·3·5단계에서 큰 화면(1920 × 1080 하한 배율)이어도 75마리(목표 300의 1/4)를 한꺼번에 화면 밖에 다시 채운다(1단계는 좁은 띠라 1~2마리는 다음 보충으로 미룬다)', () => {
   for (const stage of [1, 3, 5]) {
     for (const seed of [731, 732]) {
       const { size, player, enemies } = seeded(stage, seed);
@@ -79,9 +79,9 @@ test('화면 밖 보충: 1·3·5단계에서 큰 화면(1920 × 1080 하한 배�
       const v = view(player, 1920 / z, 1080 / z, size);
       let missed = 0;
       withSeed(seed, () => {
-        for (let i = 0; i < 120; i++) enemies.splice(Math.floor(Math.random() * enemies.length), 1);
+        for (let i = 0; i < 75; i++) enemies.splice(Math.floor(Math.random() * enemies.length), 1);
         const grid = buildGrid(enemies, CONFIG.render.enemyCell);
-        for (let i = 0; i < 120; i++) {
+        for (let i = 0; i < 75; i++) {
           const enemySize = CONFIG.player.startSize * (0.5 + Math.random() * 1.2);
           const pos = spawnPoint(player, enemies, enemySize, { view: v, stage: 1, grid });
           if (!pos) { missed++; continue; } // 일반 보충은 화면 밖 규칙을 줄이지 않는다: 자리가 없으면 다음 보충에서 다시 시도한다
@@ -92,7 +92,7 @@ test('화면 밖 보충: 1·3·5단계에서 큰 화면(1920 × 1080 하한 배�
         }
       });
       assert.ok(missed <= (stage === 1 ? 3 : 0), `${stage}단계 시드 ${seed}: 미룬 보충 ${missed}`);
-      assert.equal(enemies.length, 480 - missed);
+      assert.equal(enemies.length, CONFIG.world.fixedPopulation - missed);
     }
   }
 });

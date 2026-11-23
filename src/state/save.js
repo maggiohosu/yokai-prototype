@@ -28,7 +28,9 @@ export function normalizeProgress(raw, forms = FORMS) {
   // 이전 저장본의 '대표 효과'(signature) 레벨은 같은 레벨의 '생명력'(vitality)으로 옮기고 signature는 버린다.
   const rawEnh = raw.enh && typeof raw.enh === 'object' ? { ...raw.enh } : {};
   if (!isNum(rawEnh.vitality) && isNum(rawEnh.signature)) rawEnh.vitality = rawEnh.signature;
-  for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = rawEnh[k];
+  // 강화 레벨은 0~ENHANCE.success.length(20)의 정수로 읽는다. 최고 레벨이 10에서 20으로 늘어도(변경 이력 22) 옛 저장본(0~10)은 그대로 유효하고 SAVE.version은 그대로다.
+  // 범위를 벗어나거나 소수인 값은 가장 가까운 정수로 보정한다(예전에는 거르지 않아 enhanceCost가 RangeError를 냈다).
+  for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = Math.max(0, Math.min(ENHANCE.success.length, Math.trunc(rawEnh[k])));
   // 장착 칸·보관함의 물건은 { kind, level, paid? }로 읽는다(docs/design-weapons.md 7절): kind가 없으면 여의주, 레벨이 0~15 정수가 아니면 버리고,
   // 보관함은 TREASURE.inventorySlots(5칸)을 넘으면 앞에서부터 남긴다. SAVE.version은 그대로다(필드 추가는 '없으면 기본값'으로 읽는다).
   base.treasure = normalizeItem(raw.treasure);

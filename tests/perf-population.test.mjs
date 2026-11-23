@@ -7,13 +7,13 @@ import { fakeEnemy, fakePlayer } from './fixtures-abilities.mjs';
 
 test.afterEach(() => applyWorldScale(1));
 
-test('적 수 고정: 모든 단계의 목표 인구가 480이고 보충 묶음은 4 × 6, 한 프레임 최대 6마리다', () => {
+test('적 수 고정: 모든 단계의 목표 인구가 300이고 보충 묶음은 4 × 6, 한 프레임 최대 6마리다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.equal(CONFIG.world.populationMult, 6);
   assert.equal(CONFIG.world.refillBatch, 24);
   assert.equal(CONFIG.render.refillPerFrame, 6);
   assert.equal(CONFIG.world.refillBoost, 48);
-  assert.deepEqual(pops, [480, 480, 480, 480, 480]);
+  assert.deepEqual(pops, [300, 300, 300, 300, 300]);
 });
 
 // 전체 프레임 예산은 Chrome 시험에서 검증한다. 이 보조 시험은 단일 AI·충돌 단계의 큰 회귀를 잡는다.
@@ -44,7 +44,7 @@ function stepCost(t, stage, expected) {
   assert.ok(total / STEPS <= 6, `단계당 평균 ${(total / STEPS).toFixed(3)}ms > 6ms`);
 }
 
-test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 5, [3300, 480]));
+test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 5, [3300, 300]));
 
-// 1단계는 한 변 1000에 480마리(10만 칸²당 48마리)라 가장 촘촘하다: 이웃 조회 후보가 가장 많은 판이다.
-test('성능: 1단계 인구(가장 촘촘한 판)에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 1, [1000, 480]));
+// 1단계는 한 변 1000에 300마리(10만 칸²당 30마리)라 가장 촘촘하다: 이웃 조회 후보가 가장 많은 판이다.
+test('성능: 1단계 인구(가장 촘촘한 판)에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 1, [1000, 300]));

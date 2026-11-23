@@ -56,11 +56,13 @@ test('배율: 보정 순서는 form.stem → stems.js의 boostMult → 1.0', () 
   near(boosterMult(progress, { id: 'x', stem: 'W1', boostMult: 1.0 }), 1.3, 1e-12); // 형태가 직접 적은 숫자는 줄기보다 먼저
 });
 
-test('배율: 진행 정보가 비어 있어도 레벨 0, 레벨은 0~10으로 자른다', () => {
+test('배율: 진행 정보가 비어 있어도 레벨 0, 레벨은 0~20으로 자르고 +10 이후는 레벨당 절반만 센다', () => {
   near(boosterMult(undefined, { id: 'mimul' }), 1.3);
   near(boosterMult({}, { id: 'mimul' }), 1.3);
   near(boosterMult({ enh: { speed: -3 } }, { id: 'mimul' }), 1.3);
-  near(boosterMult({ enh: { speed: 99 } }, { id: 'mimul' }), 1.5);
+  near(boosterMult({ enh: { speed: 10 } }, { id: 'mimul' }), 1.5); // 1.3 + 0.02 × 10(예전 최고 레벨 값 그대로)
+  near(boosterMult({ enh: { speed: 20 } }, { id: 'mimul' }), 1.6); // 효과 레벨 15
+  near(boosterMult({ enh: { speed: 99 } }, { id: 'mimul' }), 1.6);
 });
 
 test('줄기 보정 표: 임시 형태 표(CONFIG.booster.formMult)는 없고, 모든 형태가 줄기 보정 0.9~1.2 안이다', () => {

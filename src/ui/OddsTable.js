@@ -30,6 +30,26 @@ export function OddsTable(title, rows) {
   return table;
 }
 
+// 레벨별 표(정비 화면의 '확률표'). headers는 열 이름, rows는 [레벨 칸, 값...]의 문자열 배열이다. 숫자 칸은 오른쪽 정렬이고 현재 레벨 줄(current)은 강조한다.
+export function LevelTable(title, headers, rows, current = -1) {
+  const table = el('table', 'yk-level-table');
+  table.setAttribute('aria-label', title);
+  const head = el('tr');
+  for (const label of headers) head.append(el('th', '', label));
+  const thead = el('thead');
+  thead.append(head);
+  table.append(thead);
+  const body = el('tbody');
+  rows.forEach((cells, i) => {
+    const row = el('tr');
+    if (i === current) row.dataset.current = 'true';
+    cells.forEach((cell, c) => row.append(el(c ? 'td' : 'th', '', cell)));
+    body.append(row);
+  });
+  table.append(body);
+  return table;
+}
+
 export function disclosure(title, content) {
   const details = el('details', 'yk-disclosure');
   details.append(el('summary', '', title), content);

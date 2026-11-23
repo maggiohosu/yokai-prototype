@@ -113,8 +113,8 @@ test.afterEach(() => applyWorldScale(1));
 test('seedField: 처음 initialNeighbors마리만 플레이어 둘레 고리에 놓고 나머지는 모든 단계에서 맵 전체에 놓는다', () => {
   for (const stage of [1, 2, 3, 4, 5]) {
     const { size, population, calls, enemies } = seedWorld(stage);
-    assert.equal(enemies.length, population, `${stage}단계: 480마리를 다 놓는다`);
-    assert.equal(population, 480);
+    assert.equal(enemies.length, population, `${stage}단계: 300마리를 다 놓는다`);
+    assert.equal(population, 300);
     const k = startScale(size);
     const first = calls.slice(0, CONFIG.world.initialNeighbors);
     assert.ok(first.every((c) => Array.isArray(c.near) && c.initial), '처음 12마리는 고리');
@@ -153,7 +153,7 @@ test('seedField: 시작 직후 나를 먹을 수 있는 적은 안전 거리(1�
   assert.ok(d < 135, '844 × 390 시작 화면(반높이 약 135) 안');
 });
 
-test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 44%를 덮어도 480마리를 다 놓고 시작 화면 안의 위협은 없거나 드물다(1단계 최대 3마리)', () => {
+test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 44%를 덮어도 300마리를 다 놓고 시작 화면 안의 위협은 없거나 드물다(1단계 최대 3마리)', () => {
   for (const stage of [1, 3, 5]) {
     for (const seed of [731, 732]) {
       const { size } = applyWorldScale(stage);
@@ -161,13 +161,13 @@ test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 4
       const hw = 1920 / z / 2, hh = 1080 / z / 2;
       const startView = { left: size / 2 - hw, right: size / 2 + hw, top: size / 2 - hh, bottom: size / 2 + hh };
       const { player, enemies } = seedWorld(stage, seed, 'normal', startView);
-      // 큰 적 3배(변경 이력 17)로 1단계 노말은 적의 82%가 위협이라 큰 화면이 가린 44%를 빼면 빈자리가 모자란다. 480마리를 다 놓으려고 마지막 시도는 화면 안 제외를 푼다.
-      assert.equal(enemies.length, 480, `${stage}단계 시드 ${seed}`);
+      // 큰 적 3배(변경 이력 17)로 1단계 노말은 적의 82%가 위협이라 큰 화면이 가린 44%를 빼면 빈자리가 모자란다. 300마리를 다 놓으려고 마지막 시도는 화면 안 제외를 푼다.
+      assert.equal(enemies.length, 300, `${stage}단계 시드 ${seed}`);
       const visible = enemies.filter((e) => e.x > startView.left && e.x < startView.right && e.y > startView.top && e.y < startView.bottom);
       // 화면 안 제외를 푼 마지막 시도로 놓인 위협은 1단계에서 드물게 1~3마리다(20시드 합 12마리). 3단계 이후는 0이다.
       assert.ok(visible.filter((e) => canEat(e, player)).length <= (stage === 1 ? 3 : 0), `${stage}단계 시드 ${seed}`);
-      // 큰 적 3배로 1단계 시작의 먹이(위협이 아닌 적)가 40% → 18%(약 86마리)로 줄어 하한을 100 → 40으로 낮췄다(실측 64). 먹이가 화면에도 놓이는지만 본다.
-      if (stage === 1) assert.ok(visible.length > 40, '먹이는 화면에도 놓인다: ' + visible.length);
+      // 큰 적 3배로 1단계 시작의 먹이(위협이 아닌 적)가 40% → 18%(약 86마리)로 줄어 하한을 100 → 40으로 낮췄다(실측 64). 적을 480 → 300마리로 줄이자(변경 이력 21) 같은 비율인 25로 낮췄다(실측 38). 먹이가 화면에도 놓이는지만 본다.
+      if (stage === 1) assert.ok(visible.length > 25, '먹이는 화면에도 놓인다: ' + visible.length);
     }
   }
 });
@@ -176,7 +176,7 @@ test('시작 배치는 맵 전체에 고르다: 3·4·5단계에서 시작 장�
   for (const stage of [3, 4, 5]) {
     for (const seed of [731, 732, 733]) {
       const { size, player, enemies } = seedWorld(stage, seed);
-      assert.equal(enemies.length, 480);
+      assert.equal(enemies.length, 300);
       const R = clarkEvans(enemies, size);
       assert.ok(R >= 0.9, `${stage}단계 시드 ${seed}: R ${R.toFixed(3)}`);
       // 시작 장소에서 반지름 600 안에 든 적의 비율 / 균일할 때의 면적 비율(예전에는 5.1 · 9.0 · 14.3배)
@@ -256,26 +256,28 @@ test('spawnPoint: 화면이 맵의 큰 비율을 덮어 몸 전체가 화면 밖
 });
 
 test('growMoveCount: 맵이 커지면 옛 땅이 새 맵에서 차지하는 면적 비율만큼 남기고 나머지를 새 땅으로 옮겨 밀도를 같게 한다', () => {
-  assert.equal(growMoveCount(480, 1000, 1000), 0);
-  assert.equal(growMoveCount(480, 1000, 800), 0, '줄이는 경우는 없다');
+  const n = CONFIG.world.fixedPopulation; // 300마리(변경 이력 21)
+  assert.equal(n, 300);
+  assert.equal(growMoveCount(n, 1000, 1000), 0);
+  assert.equal(growMoveCount(n, 1000, 800), 0, '줄이는 경우는 없다');
   assert.equal(growMoveCount(0, 1000, 1500), 0);
-  assert.equal(growMoveCount(480, 1000, 1500), Math.round(480 * (1 - (1000 / 1500) ** 2)));
-  assert.equal(growMoveCount(480, 1000, 1500), 267);
-  assert.equal(growMoveCount(480, 1500, 2000), 210);
-  assert.equal(growMoveCount(480, 2000, 2600), 196);
-  assert.equal(growMoveCount(480, 2600, 3300), 182);
+  assert.equal(growMoveCount(n, 1000, 1500), Math.round(n * (1 - (1000 / 1500) ** 2)));
+  assert.equal(growMoveCount(n, 1000, 1500), 167);
+  assert.equal(growMoveCount(n, 1500, 2000), 131);
+  assert.equal(growMoveCount(n, 2000, 2600), 122);
+  assert.equal(growMoveCount(n, 2600, 3300), 114);
   // 옮긴 뒤 옛 땅의 적 수 / 옛 땅 면적 = 새 땅의 적 수 / 새 땅 면적
   for (const [before, after] of [[1000, 1500], [1500, 2000], [2000, 2600], [2600, 3300]]) {
-    const moved = growMoveCount(480, before, after);
-    const oldDensity = (480 - moved) / before ** 2, newDensity = moved / (after ** 2 - before ** 2);
+    const moved = growMoveCount(n, before, after);
+    const oldDensity = (n - moved) / before ** 2, newDensity = moved / (after ** 2 - before ** 2);
     assert.ok(Math.abs(oldDensity / newDensity - 1) < 0.02, `${before} → ${after}`);
   }
 });
 
-test('적 수: 모든 단계의 목표 인구가 480으로 같다(사용자 지시 2026-11-23), 맵만 단계마다 커진다', () => {
+test('적 수: 모든 단계의 목표 인구가 300으로 같다(사용자 지시 2026-11-24, 480 → 300), 맵만 단계마다 커진다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
-  assert.deepEqual(pops, [480, 480, 480, 480, 480]);
-  assert.equal(CONFIG.world.fixedPopulation, 480);
+  assert.deepEqual(pops, [300, 300, 300, 300, 300]);
+  assert.equal(CONFIG.world.fixedPopulation, 300);
   const sizes = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).size);
   assert.deepEqual(sizes, [1000, 1500, 2000, 2600, 3300]);
 });

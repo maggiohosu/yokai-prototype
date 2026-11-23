@@ -8,7 +8,7 @@ import { between, clamp } from './world.js';
 import { initStatus, isAlly, isDisabled, nowOf, slowFactor } from './status.js';
 import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
 import { rivalSizeCap, sizeSpeedMultiplier } from '../systems/balance.js';
-import { evolutionCost, rollGrade } from '../systems/evolution.js';
+import { enemyEvolutionCost, rollGrade } from '../systems/evolution.js';
 import { bodyCostAt, enemyPreyValue, newDiet, nextProgress, pickEvolution, preyInfoOf } from '../systems/rules.js';
 
 // 방위·단계의 형태 중 무작위(방위에 형태가 없으면 단계만 맞춘다). 1단계도 그 방위의 1단계 형태 2종 중 하나다.
@@ -155,7 +155,7 @@ export class Enemy extends Actor {
   evolveTo(form, rng = Math.random) {
     const [min, max] = CONFIG.enemy.evolveJitter;
     this.reversed = false;
-    this.yoryeok -= evolutionCost(form.stage);
+    this.yoryeok -= enemyEvolutionCost(form.stage);
     this.formId = form.id;
     this.stage = form.stage;
     this.dir = form.dir;

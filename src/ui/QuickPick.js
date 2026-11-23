@@ -1,8 +1,10 @@
-// QuickPick(cards, { yoryeok, getFormImage, onPick, ignoreMs, rerollsLeft, onReroll })를 부르면 화면 가운데에 카드 3장이 뜬다.
+// QuickPick(cards, { yoryeok, getFormImage, onPick, ignoreMs, rerollsLeft, onReroll, title, onDefer })를 부르면 화면 가운데에 카드 3장이 뜬다.
 // 호출 전에 게임을 멈추는 일, 고른 뒤 재개하는 일은 호출한 쪽(PlayScene)이 한다.
 // - 카드 하나 = 결과 하나. 카드를 누르는 순간(pointerdown) onPick(card)을 부르고 곧바로 닫는다. 확인 창은 없다.
 // - 열린 직후 ignoreMs(기본 CONFIG.levelUp.quickIgnoreMs) 동안은 입력을 무시한다(진행 중이던 손가락의 오입력 방지).
-// - 키보드: 1·2·3 또는 Tab 후 Enter/Space. R은 [다시 뽑기].
+// - 키보드: 1·2·3 또는 Tab 후 Enter/Space. R은 [다시 뽑기], C·Esc는 [계속 모으기].
+// - [계속 모으기](계획서 변경 이력 21): 2단계 이상의 진화 전용 선택에서 onDefer(함수)를 주면 카드 아래에 단추가 나온다. 누르면 아무것도 사지 않고 닫고 onDefer()를 부른다(44px 이상, 탭 한 번).
+//   title로 머리글 글자를 바꾼다(기본 '성장할 때!').
 // - [다시 뽑기](계획서 변경 이력 5): rerollsLeft(남은 횟수, 0이면 버튼을 숨긴다)와 onReroll(현재 카드)이 있을 때 카드 아래에 나온다. onReroll은 levelup.js의 rerollQuickCards 결과
 //   { cards, left, changed } 또는 null을 돌려준다. 새 카드는 호출한 쪽이 이미 정해서 넘기고, 이 화면은 그대로 보여주기만 한다(바뀐 뒤에도 ignoreMs 동안 탭을 무시한다).
 // cards는 levelup.js의 pickQuickCards가 만든 { kind, id, cost, form?, unknown?, mult?, stat?, level? } 목록이다.
@@ -72,13 +74,13 @@ function textOf(card) {
   return {
     name: QUICK_STAT_NAMES[card.stat] ?? card.stat,
     sub: 'Lv ' + card.level + ' → ' + (card.level + 1),
-    note: quickStatNote(card.stat),
+    note: quickStatNote(card.stat, card.level),
   };
 }
 
 export function QuickPick(cards, {
   yoryeok, progress, getFormImage, onPick, ignoreMs = CONFIG.levelUp.quickIgnoreMs, now = () => performance.now(),
-  rerollsLeft = 0, onReroll,
+  rerollsLeft = 0, onReroll, title = '성장할 때!', onDefer, deferLabel = '계속 모으기',
 } = {}) {
   ensureStyles();
   let openedAt = now();
@@ -87,10 +89,10 @@ export function QuickPick(cards, {
   const layer = el('div', 'quickpick');
   layer.setAttribute('role', 'dialog');
   layer.setAttribute('aria-modal', 'true');
-  layer.setAttribute('aria-label', '성장할 때! 하나를 고르세요');
+  layer.setAttribute('aria-label', title + (typeof onDefer === 'function' ? ' 진화하거나 ' + deferLabel + '를 고르세요' : ' 하나를 고르세요'));
   const panel = el('div', 'qp-panel');
   const head = el('div', 'qp-head');
-  head.append(el('h2', 'qp-title', '성장할 때!'));
+  head.append(el('h2', 'qp-title', title));
   if (Number.isFinite(yoryeok)) head.append(el('span', 'qp-wallet', '보유 요력 ' + numberFormat.format(yoryeok)));
   const list = el('div', 'qp-cards');
   panel.append(head, list);
@@ -103,10 +105,15 @@ export function QuickPick(cards, {
   rerollNote.setAttribute('aria-live', 'polite');
   rerollButton.type = 'button';
   rerollButton.setAttribute('aria-keyshortcuts', 'R');
-  if (canReroll) {
-    foot.append(rerollButton, rerollNote);
-    panel.append(foot);
-  }
+  // [계속 모으기]: 요력을 쓰지 않고 닫는다. 진화 전용 선택(2단계 이상)에서만 onDefer가 온다.
+  const canDefer = typeof onDefer === 'function';
+  const deferButton = el('button', 'qp-defer', deferLabel);
+  deferButton.type = 'button';
+  deferButton.setAttribute('aria-keyshortcuts', 'C Escape');
+  deferButton.setAttribute('aria-label', deferLabel + ', 요력은 그대로 두고 계속 모아요');
+  if (canDefer) foot.append(deferButton);
+  if (canReroll) foot.append(rerollButton, rerollNote);
+  if (canDefer || canReroll) panel.append(foot);
   layer.append(panel);
 
   let done = false;
@@ -118,6 +125,12 @@ export function QuickPick(cards, {
       event.preventDefault();
       event.stopPropagation();
       reroll();
+      return;
+    }
+    if ((event.code === 'KeyC' || event.code === 'Escape') && canDefer) {
+      event.preventDefault();
+      event.stopPropagation();
+      defer();
       return;
     }
     const match = /^(?:Digit|Numpad)([1-9])$/.exec(event.code);
@@ -139,6 +152,11 @@ export function QuickPick(cards, {
     if (done || now() - openedAt < ignoreMs) return;
     close();
     onPick?.(card);
+  }
+  function defer() {
+    if (done || now() - openedAt < ignoreMs) return;
+    close();
+    onDefer?.();
   }
   function showReroll(note = '') {
     rerollButton.textContent = '다시 뽑기 · 남은 ' + left + '번';
@@ -216,6 +234,15 @@ export function QuickPick(cards, {
     buttons[0]?.focus({ preventScroll: true });
   }
 
+  deferButton.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    defer();
+  });
+  deferButton.addEventListener('click', (event) => {
+    if (event.detail === 0) defer();
+  });
   rerollButton.addEventListener('pointerdown', (event) => {
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     event.preventDefault();

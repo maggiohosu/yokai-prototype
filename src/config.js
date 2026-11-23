@@ -23,10 +23,10 @@ export const CONFIG = {
     // 1단계 한 변. 단계마다 balance.map.stageScale을 곱해 1000·1500·2000·2600·3300이다.
     // 사용자 지시(2026-11-23): 맵 면적을 두 번 1/4로(한 변 4000 → 2000 → 1000, 원래의 면적 1/16). 속도·크기는 그대로.
     size: 1000,
-    // 적 목표 인구는 모든 단계에서 같다(사용자 지시 2026-11-23: 5단계 전부 480). population은 지금 판의 목표이고 applyWorldScale이 fixedPopulation으로 맞춘다.
-    fixedPopulation: 480,
-    population: 480,
-    populationMult: 6, // 보충 묶음(refillBatch = 4 × 이 값)에만 쓴다. 인구는 fixedPopulation이 정한다. 3 → 6: 한 변 1000에 480마리는 적끼리 먹는 소모가 커서 3이면 평균 인구가 300대에 머문다(plan.md 변경 이력 16).
+    // 적 목표 인구는 모든 단계에서 같다(사용자 지시 2026-11-23: 5단계 전부 480, 2026-11-24: 480 → 300, 변경 이력 21). population은 지금 판의 목표이고 applyWorldScale이 fixedPopulation으로 맞춘다.
+    fixedPopulation: 300,
+    population: 300,
+    populationMult: 6, // 보충 묶음(refillBatch = 4 × 이 값)에만 쓴다. 인구는 fixedPopulation이 정한다. 3 → 6: 한 변 1000에 480마리는 적끼리 먹는 소모가 커서 3이면 평균 인구가 300대에 머문다(plan.md 변경 이력 16). 300마리로 줄인 뒤에도 값은 그대로다(보충 규칙은 안 바꿈).
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
     grid: 64,
     patternTile: 512,
@@ -40,7 +40,7 @@ export const CONFIG = {
     // (안 줄이면 반지름 420 원이 맵의 절반을 덮어 위협이 바깥 띠에만 몰린다). 1000에서는 330이고 휴대폰 시작 화면(844 × 390)의 반대각선 323 밖이다.
     safeStart: 420,
     safeStartShare: 0.33,
-    // 새 적이 다른 적과 띄울 간격(몸 반지름 합 + 이 값). 자리가 모자란 판(좁은 맵에 적 480마리)에서는 간격을 못 지켜도 가장 덜 붐비는 후보에 놓는다(crowdedSpawn).
+    // 새 적이 다른 적과 띄울 간격(몸 반지름 합 + 이 값). 자리가 모자란 판(좁은 맵에 적이 많은 판)에서는 간격을 못 지켜도 가장 덜 붐비는 후보에 놓는다(crowdedSpawn).
     spawnGap: 22,
     crowdedSpawn: true,
     // 새로 놓인 보충 적은 이 시간(실제 초, 게임 템포·속도 곡선을 곱해 시뮬레이션 시간으로 바꾼다) 동안 먹지도 먹히지도 않는다. 빈자리가 모자란 좁은 맵에서는 놓이자마자 겹친 적에게 먹혀 보충이 헛돌기 때문이다(1단계에서 놓인 적의 36%가 2초 안에 먹혔다).
@@ -117,7 +117,7 @@ export const CONFIG = {
     // 난이도 × 플레이어 단계별 특수 적 추첨 확률(chance)·재발사 간격(cooldown, 템포 1배 기준 시뮬레이션 초). 1·2단계는 아래 공통 기본값(0.3·2.2)을 쓴다.
     // 사용자 지시(2026-11-23): 이지·노말 3~5단계와 하드 3단계는 이지 3단계 수준(T3 = 화면 안 분당 27.8발), 하드 4·5단계는 이지 4단계 수준(T4 = 분당 83.7발)을 넘지 않는다.
     // 쿨타임이 1차 수단이고 chance 0.3을 지킨다. 쿨타임 10으로도 상한에 못 닿는 이지 3·4·5단계만 쿨타임 10에 chance를 낮췄다.
-    // 값은 맵 한 변 1000·1500·2000·2600·3300, 적 480마리 고정에서 잰 것이다(docs/balance-v4.md 17절). 맵·인구를 바꾸면 다시 재야 한다.
+    // 값은 맵 한 변 1000·1500·2000·2600·3300, 적 480마리 고정에서 잰 것이다(docs/balance-v4.md 17절). 맵·인구를 바꾸면 다시 재야 한다(300마리로 줄인 뒤 노말 3·5단계 재측정은 plan.md 변경 이력 21).
     byStage: {
       easy: { 3: { chance: 0.21, cooldown: 10 }, 4: { chance: 0.2, cooldown: 10 }, 5: { chance: 0.19, cooldown: 10 } },
       normal: { 3: { chance: 0.3, cooldown: 9 }, 4: { chance: 0.3, cooldown: 9.4 }, 5: { chance: 0.3, cooldown: 7.2 } },
@@ -149,9 +149,19 @@ export const CONFIG = {
   // 플레이어의 요력 곡선을 바꿔도 적이 진화하는 속도(= 판 안 적 단계 분포·위협 수)가 달라지지 않게 따로 둔다. 새 식을 적에게도 쓰면 먹이가 늘 자기보다 작아 240초 동안 적의 자가 진화가 779번 → 40번 아래로 줄었다(docs/balance-v4.md 18절).
   enemyScore: { base: 10, sizeRef: 20 / 3, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 } },
   // 모든 '강화' 비용은 레벨이 하나 오를 때마다 이 배수로 커진다(사용자 결정 2026-11-23: "고 강화가 될수록 요구 요력이 두배씩 커지게 해", 변경 이력 18).
-  // 비용 = 첫 레벨 비용 × enhanceCostGrowth^레벨. 대상: 여의주·보패 강화(treasure.upgradeCost), 종족 능력 강화(enhance.enhanceCost)와 판 안 능력 +1 카드(levelup.quickEnhanceCost),
-  // 판 안 몸집 강화(levelup.bodyCost, 적의 몸집 강화 rules.bodyCostAt도 같은 곡선). 강화 확률·실패·퇴화 규칙과 첫 레벨 비용은 그대로다.
+  // 비용 = 첫 레벨 비용 × enhanceCostGrowth^레벨. 변경 이력 22 이후 이 값을 읽는 곳은 판 안 몸집 강화(levelup.bodyCost, 적의 몸집 강화 rules.bodyCostAt)뿐이고,
+  // 여의주·보패·본체 능력·판 안 능력 카드는 아래 enhanceCost 곡선을 읽는다. 강화 확률·실패·퇴화 규칙과 첫 레벨 비용은 그대로다.
   enhanceCostGrowth: 2,
+  // 강화 비용 곡선(사용자 지시 2026-11-24, 변경 이력 22: "각 능력 단계도 최종 20단계까지 … 5단계 이후부터 요력 2배씩 더 필요하게", "보물 강화도 5단계 이후부터 …").
+  // 비용 = 첫 레벨 비용 × softGrowth^min(레벨, hardFrom) × hardGrowth^max(0, 레벨 - hardFrom)(systems/enhance-curve.js costMultiplier). 레벨 = 시도 전 현재 레벨이다.
+  // 최상위 값은 본체 능력 3종(enhance.enhanceCost)과 판 안 능력 +1 카드(levelup.quickEnhanceCost = 이 비용 × quickEnhanceCostMult)의 곡선이다:
+  // 1~5레벨은 예전 성장률 1.6배씩 완만하게, 5레벨을 넘으면 레벨마다 2배씩. treasure는 여의주·보패 8종 공통이다(treasure.upgradeCost). 지금은 +5까지도 2배씩이던 값(변경 이력 18)을 그대로 두고
+  // +5 이후도 2배라 수치가 같다. +5 이후를 더 가파르게 하려면 treasure.hardGrowth만 올린다(예: 4면 +14 → +15가 약 1,500만).
+  // 위 enhanceCostGrowth(2)는 판 안 [몸집 강화](levelup.bodyCost)·적의 몸집 강화(rules.bodyCostAt)가 그대로 쓴다.
+  enhanceCost: {
+    softGrowth: 1.6, hardFrom: 5, hardGrowth: 2,
+    treasure: { softGrowth: 2, hardFrom: 5, hardGrowth: 2 },
+  },
   // 판 안 성장: 요력이 다음 선택지 비용에 닿으면 잠깐 멈추고 [진화]/[몸집 강화]/[능력 강화] 중 고른다.
   levelUp: {
     bodyBaseCost: 30, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화. 비용 = bodyBaseCost × enhanceCostGrowth^횟수(예전 1.6배씩)
@@ -165,6 +175,9 @@ export const CONFIG = {
     quickEnhanceCostMult: 1.5, // 능력 +1 카드 비용 = 이 값 × 본체 강화 비용(실패·퇴화 없이 확정이라 더 비싸다)
     quickIgnoreMs: 150, // 카드가 열린 직후 이 시간 동안은 탭을 무시한다(실수 방지)
     evolveMaxStage: 5, // 판 안 진화 카드는 이 단계 미만일 때만 나온다(5단계가 마지막: pace.maxStage와 같다)
+    // 이 단계 이상에서는 판 안 [몸집 강화]·[능력 강화] 카드와 그 멈춤이 없고 요력을 모아 [진화]만 한다(사용자 지시 2026-11-24, 변경 이력 21). 먹으면 배고픔·몸집·요력만 오른다.
+    // 요력이 다음 진화 비용에 닿으면 [진화] 카드와 [계속 모으기]를 한 번 보여 주고, [계속 모으기]를 고르면 그 단계에서는 다시 묻지 않고 HUD의 '진화 가능' 단추로만 연다.
+    evolveOnlyFromStage: 2,
   },
   combat: {
     aimHalfAngleDeg: 35,
@@ -181,7 +194,9 @@ export const CONFIG = {
     reversalNoticeMs: 800,
   },
   // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 balance.pace, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
-  progression: { growthPerLevel: 0.08 },
+  // 강화 레벨은 0~20이다(ENHANCE.success의 길이, pace.maxSpeedLevel과 같다). 레벨당 효과는 kneeAt(10)까지는 그대로이고 그 위로는 kneeSlope(0.5)배만 센다(systems/enhance-curve.js effectiveLevel):
+  // +10에서 성장 ×1.8·속도 ×1.4·생명력 10초(예전 최고)이고, +20에서 성장 ×2.2·속도 ×1.6·생명력 13초다. 직선으로 이으면 ×2.6·×1.8·16초다.
+  progression: { growthPerLevel: 0.08, kneeAt: 10, kneeSlope: 0.5 },
   // 직접 먹은 뒤부터 필드에서 실제로 흐른 시간을 센다. hungerGraceSec: 먹지 않고 이만큼 지나면 생명력이 줄기 시작한다(사용자 지시 2026-11-23: 5 → 3초, 변경 이력 17).
   vitality: {
     hungerGraceSec: 3, baseSec: 4, perLevelSec: 0.6, hitDrainSec: 0.5,
@@ -190,7 +205,7 @@ export const CONFIG = {
     arcColor: 0x48765e, drainColor: 0xd69135, warnColor: 0xd6453d, arcWidth: 3, arcPad: 7, flashHz: 1.25,
   },
   // 진화 단계(1~5)와 이동 속도 강화 레벨(0~10)의 상한. 속도 곡선은 아래 balance.pace가 맡는다(예전 f 곡선 minMult·maxMult는 없앴다).
-  pace: { maxStage: 5, maxSpeedLevel: 10 },
+  pace: { maxStage: 5, maxSpeedLevel: 20 },
   // 고레벨 밸런스(사용자 결정 2026-11-23, 계획서 '변경 이력 4', 순수 규칙은 src/systems/balance.js).
   // 시간 단위 '초': 크기 유지비(upkeep.rate)는 시뮬레이션 시간(실제 시간 × tempo × stageMult[단계]), 맞수 간격(rival.interval)은 실제 시간이다.
   // 값은 초안이며 docs/balance-v4.md에 근거·표가 있다.
@@ -198,7 +213,7 @@ export const CONFIG = {
     // 속도: stageMult는 게임 템포(tempo × stageMult)에만, 플레이어 이동 속도에는 baseMult × (1 + speedPerLevel × 이동 속도 강화 레벨)만 곱한다.
     // baseMult는 초반이 너무 쉬워지지 않게 하면서 L0 플레이어가 도망치는 먹이(도망 130)보다 느리지 않게 하는 기본값(조정자 결정 2026-11-23: 0.45 → 0.5):
     // 1단계 플레이어 ≈ 170(예전 113의 1.5배, 1단계 추격 적의 약 1.73배). 5단계·+10 / 1단계 체감은 baseMult가 약분되어 1.1 × 1.4 / (1/3) ≈ 4.6배다.
-    pace: { stageMult: { 1: 1 / 3, 2: 0.6, 3: 0.85, 4: 1.0, 5: 1.1 }, baseMult: 0.5, speedPerLevel: 0.04, maxStage: 5, maxSpeedLevel: 10 },
+    pace: { stageMult: { 1: 1 / 3, 2: 0.6, 3: 0.85, 4: 1.0, 5: 1.1 }, baseMult: 0.5, speedPerLevel: 0.04, maxStage: 5, maxSpeedLevel: 20 },
     // 아래 크기 값(refSize·start·targetSize·rewardPerSize)은 플레이어·적이 예전의 1/3 크기에서 시작하도록 바뀐 뒤(커밋 25c7d7f)의 값이다(예전 수치 ÷ 3).
     // 성장 둔화: 먹을 때 면적 증가에 (refSize / max(refSize, 크기))^exp를 곱한다. refSize 이하에서는 예전 식 그대로다.
     growth: { refSize: 150 / 3, exp: 0.5 },
@@ -219,9 +234,9 @@ export const CONFIG = {
     // (나는 실제로 빨라지고 적도 빨라지지만 서로 같이 빨라져서 화면에서는 느려 보인다). 진화한 뒤의 화면과 크기는 처음 시작 화면과 같다(view.stageZoom 모두 1).
     // carry/tauSec은 '나만' 진화 직전 크기 기준으로 느리게 시작하는 옛 규칙이다. 적이 같이 느려지지 않아 지금은 끈다(carry 0).
     evolveSlow: { carry: 0, tauSec: 45, paceTauSec: 40 },
-    // 월드 한 변은 world.size × 단계 배율이고, 적 수는 모든 단계에서 world.fixedPopulation(480)이다.
+    // 월드 한 변은 world.size × 단계 배율이고, 적 수는 모든 단계에서 world.fixedPopulation(300)이다.
     // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고, 새 땅에는 옛 적의 일부를 화면 밖에서 옮겨 맵 전체에 고르게 퍼뜨린다(PlayScene.growWorld).
-    // 1000 → 1500 → 2000 → 2600 → 3300. 적 밀도는 1단계(10만 칸²당 48마리)가 가장 높고 5단계(4.4마리)가 가장 낮다.
+    // 1000 → 1500 → 2000 → 2600 → 3300. 적 밀도(300마리)는 1단계(10만 칸²당 30마리)가 가장 높고 5단계(2.8마리)가 가장 낮다.
     map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 } },
     // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
     // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.

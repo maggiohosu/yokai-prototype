@@ -5,6 +5,7 @@ import { preyValue } from '../systems/rules.js';
 import { addToInventory, dropChance } from '../systems/treasure.js';
 import { gradeMultiplier } from '../systems/evolution.js';
 import { vitalityMax } from '../systems/vitality.js';
+import { effectiveLevel } from '../systems/enhance-curve.js';
 import { playerSpeedMultiplier, tempoMultiplier } from '../systems/balance.js';
 import { saveProgress } from '../state/save.js';
 
@@ -16,7 +17,8 @@ export function playerStats(progress) {
   return {
     pace: tempoMultiplier(progress),
     speed: CONFIG.player.speed * playerSpeedMultiplier(progress) * (progress.difficulty === 'easy' ? CONFIG.difficulty.easy.playerSpeedMult : 1),
-    areaGain: CONFIG.eating.areaGain * (1 + p.growthPerLevel * (enh.growth ?? 0)),
+    // 크기 성장 강화: 레벨당 growthPerLevel(+8%)를 효과 레벨(enhance-curve.effectiveLevel: +10까지 1레벨 1, 그 위는 절반)에 곱한다. +10 ×1.8, +20 ×2.2.
+    areaGain: CONFIG.eating.areaGain * (1 + p.growthPerLevel * effectiveLevel(enh.growth ?? 0)),
     // 생명력 최대치(초). 여의주 위력은 보물 강화 레벨과 등급 배율로만 정해진다(combat.js).
     vitalityMax: vitalityMax(enh.vitality ?? 0),
     gradeMult: gradeMultiplier(progress.grade) ?? 1,

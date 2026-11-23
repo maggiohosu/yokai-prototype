@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { ENHANCE } from './tuning-upgrade.js';
+import { costMultiplier } from './enhance-curve.js';
 
 const maxLevel = ENHANCE.success.length;
 
@@ -20,9 +21,27 @@ function successChance(state, level) {
   return Math.min(100, ENHANCE.success[level] + state.pity);
 }
 
+// 다음 레벨(level → level + 1)로 올리는 한 번의 비용. 곡선은 CONFIG.enhanceCost(1~5레벨 1.6배씩, 5레벨 이후 2배씩)이고 반올림은 한 번만 한다.
+// 판 안 능력 +1 카드(levelup.quickEnhanceCost)와 정비 화면(HubView)이 같은 함수를 읽는다.
 export function enhanceCost(level) {
   checkLevel(level);
-  return level === maxLevel ? Infinity : Math.round(ENHANCE.baseCost * CONFIG.enhanceCostGrowth ** level);
+  return level === maxLevel ? Infinity : Math.round(ENHANCE.baseCost * costMultiplier(level, CONFIG.enhanceCost));
+}
+
+// 레벨별 확률·비용 표(정비 화면의 '확률표'). 한 행 = 현재 레벨에서 다음 레벨로 올리는 시도 한 번.
+// success·great·degrade·fail은 시도 전 천장(pity)·보호권이 없을 때의 네 결과 확률(%)로 합이 100이고(getEnhanceOdds와 같은 식),
+// degradeOnFailure는 '실패했을 때 퇴화할 몫'(표의 값 그대로)이다.
+export function enhanceTable() {
+  return ENHANCE.success.map((chance, level) => {
+    const great = chance * ENHANCE.greatOnSuccess / 100;
+    const failure = 100 - chance;
+    const degrade = failure * ENHANCE.degradeOnFailure[level] / 100;
+    return {
+      level, to: level + 1, cost: enhanceCost(level),
+      success: chance - great, great, fail: failure - degrade, degrade,
+      degradeOnFailure: ENHANCE.degradeOnFailure[level],
+    };
+  });
 }
 
 // 네 값은 서로 배타적인 최종 결과의 백분율이다. 보호권도 표시에 반영한다.

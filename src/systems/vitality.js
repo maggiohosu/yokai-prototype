@@ -1,9 +1,11 @@
 import { CONFIG } from '../config.js';
+import { effectiveLevel } from './enhance-curve.js';
 
 const V = CONFIG.vitality;
 
+// 생명력 최대치(초) = baseSec + 레벨당 perLevelSec × 효과 레벨(enhance-curve.effectiveLevel: +10까지 1레벨 1, 그 위는 절반). +10에서 10초, +20에서 13초.
 export function vitalityMax(level = 0) {
-  return V.baseSec + V.perLevelSec * Math.max(0, level);
+  return V.baseSec + V.perLevelSec * effectiveLevel(level);
 }
 
 export function createVitality(max) {

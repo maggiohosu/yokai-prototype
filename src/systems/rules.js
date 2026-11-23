@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { evolutionCost, gradeMultiplier, topDietDir } from './evolution.js';
+import { enemyEvolutionCost, gradeMultiplier, topDietDir } from './evolution.js';
 
 export { topDietDir };
 
@@ -112,7 +112,7 @@ export function nextProgress(actor, playerStage) {
   const stage = stageOf(actor);
   const top = CONFIG.pace.maxStage;
   const limit = Number.isFinite(playerStage) ? Math.min(top, Math.max(1, playerStage) + CONFIG.enemy.selfEvolveLead) : top;
-  if (stage < limit && actor.yoryeok >= evolutionCost(stage + 1)) return 'evolve';
+  if (stage < limit && actor.yoryeok >= enemyEvolutionCost(stage + 1)) return 'evolve';
   if (actor.yoryeok >= bodyCostAt(actor.bodyLevel ?? 0)) return 'body';
   return null;
 }

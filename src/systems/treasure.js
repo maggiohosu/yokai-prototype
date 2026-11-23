@@ -1,5 +1,6 @@
 import { CONFIG } from '../config.js';
 import { TREASURE } from './tuning-upgrade.js';
+import { costMultiplier } from './enhance-curve.js';
 import { kindOf, weaponOf, weaponStats } from './weapons.js';
 
 const maxLevel = TREASURE.success.length;
@@ -29,12 +30,13 @@ export function tablePrice(level, kind = 'yeouiju') {
 }
 
 // 강화 비용은 판매가와 따로 정한다. 첫 레벨(+0 → +1) 비용 = costPrices의 +1 값 × upgradeCostRatio × 무기 priceMult이고,
-// 레벨이 하나 오를 때마다 CONFIG.enhanceCostGrowth배(2배)다(사용자 결정 2026-11-23, 변경 이력 18). 반올림은 한 번만 한다.
+// 이후는 CONFIG.enhanceCost.treasure 곡선이다: +5까지는 레벨마다 softGrowth배, 그 위로 레벨마다 hardGrowth배(지금 둘 다 2배: 사용자 결정 2026-11-23 변경 이력 18,
+// 2026-11-24 변경 이력 22). 반올림은 한 번만 한다. 판매가·상점 구매가·본전 상한(paid)은 이 곡선과 따로 정의돼 있어 영향이 없다.
 function costAt(level, kind) {
   checkLevel(level);
   if (level === maxLevel) return Infinity;
   const first = priceAt(TREASURE.costPrices ?? TREASURE.prices, 1) * TREASURE.upgradeCostRatio * weaponOf(kind).priceMult;
-  return Math.round(first * CONFIG.enhanceCostGrowth ** level);
+  return Math.round(first * costMultiplier(level, CONFIG.enhanceCost.treasure));
 }
 
 // 인자는 물건({ kind?, level, paid? }) 또는 레벨(옛 호출, 여의주로 본다).
@@ -58,6 +60,12 @@ export function upgradeOdds(level) {
   const success = TREASURE.success[level];
   const broken = (100 - success) * TREASURE.breakOnFailure[level] / 100;
   return { success, fail: 100 - success - broken, break: broken };
+}
+
+// 레벨별 확률·비용 표(정비 화면의 '확률표', 여의주). 한 행 = 현재 레벨에서 다음 레벨로 올리는 한 번(+0 → +1 … +14 → +15). 모든 무기가 같은 표를 쓴다.
+// success + fail + break = 100(upgradeOdds와 같은 식).
+export function treasureTable(kind = 'yeouiju') {
+  return TREASURE.success.map((_, level) => ({ level, to: level + 1, cost: costAt(level, kind), ...upgradeOdds(level) }));
 }
 
 // 강화 결과 문구에 붙이는 '이 결과가 나올 확률' 한 줄(사용자 결정 2026-11-23, 계획서 변경 이력 5).

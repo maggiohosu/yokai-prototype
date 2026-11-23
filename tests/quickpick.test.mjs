@@ -5,12 +5,14 @@ import { FORMS, FORM_BY_ID } from '../src/data/forms.js';
 import { createProgress } from '../src/systems/progress.js';
 import { buildChoices, evolutionCost } from '../src/systems/evolution.js';
 import { enhanceCost } from '../src/systems/enhance.js';
+import { ENHANCE, statUpgradeText } from '../src/systems/tuning-upgrade.js';
 import {
   allQuickCards, applyQuickCard, bodyCost, createRunLevel, earnedThisRun, evolutionCatalog,
-  pickQuickCards, quickEnhanceCost, QUICK_STAT_NAMES, rerollQuickCards, rerollsLeft,
+  pickQuickCards, quickEnhanceCost, quickStatNote, QUICK_STAT_NAMES, rerollQuickCards, rerollsLeft,
 } from '../src/systems/levelup.js';
 
 const L = CONFIG.levelUp;
+const MAX_ENH = ENHANCE.success.length; // 능력 최고 레벨(강화 레벨 20 지시 뒤에는 20)
 
 function setup(yoryeok, patch = {}) {
   const progress = Object.assign(createProgress(), { yoryeok }, patch);
@@ -62,8 +64,8 @@ test('진화를 살 수 있으면 진화 선택지를 모두 보여 주고(네 �
   }
 });
 
-test('진화를 살 수 없으면 종류가 겹치지 않는 3장(몸집·능력)이 나온다', () => {
-  const { progress, run } = setup(5000, { stage: 4, formId: 'gumiho' }); // 5단계 진화 8,000
+test('1단계에서 진화를 살 수 없으면 종류가 겹치지 않는 3장(몸집·능력)이 나온다', () => {
+  const { progress, run } = setup(evolutionCost(2) - 1); // 진화 100에 1 모자람(몸집 30·능력 +1 30은 살 수 있다)
   for (let seed = 1; seed <= 20; seed++) {
     const cards = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
     assert.ok(!kinds(cards).includes('evolve'));
@@ -72,8 +74,8 @@ test('진화를 살 수 없으면 종류가 겹치지 않는 3장(몸집·능력
   }
 });
 
-test('종류가 모자라면 같은 종류로 채운다(5단계: 진화 없음 → 몸집 + 능력 2장)', () => {
-  const { progress, run } = setup(5000, { stage: 5 });
+test('종류가 모자라면 같은 종류로 채운다(1단계, 진화를 못 사면 몸집 + 능력 2장)', () => {
+  const { progress, run } = setup(evolutionCost(2) - 1);
   for (let seed = 1; seed <= 20; seed++) {
     const cards = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
     assert.equal(cards.length, 3);
@@ -82,9 +84,16 @@ test('종류가 모자라면 같은 종류로 채운다(5단계: 진화 없음 �
   }
 });
 
-test('능력치가 모두 최고이고 5단계면 몸집 카드 한 장뿐', () => {
-  const { progress, run } = setup(5000, { stage: 5 });
-  for (const stat of Object.keys(progress.enh)) progress.enh[stat] = 10;
+test('2단계 이상은 진화를 살 수 없으면 카드가 없다(몸집·능력으로 채우지 않는다), 5단계는 늘 없다', () => {
+  for (const [stage, formId, yoryeok] of [[2, 'littleSnake', 399], [3, 'hillFox', 1999], [4, 'gumiho', 15999], [5, 'cheonho', 1e9]]) {
+    const { progress, run } = setup(yoryeok, { stage, formId });
+    for (let seed = 1; seed <= 10; seed++) assert.deepEqual(pickQuickCards(progress, run, FORMS, { rng: seeded(seed) }), [], stage + '단계');
+  }
+});
+
+test('1단계에서 진화를 못 사고 능력치가 모두 최고면 몸집 카드 한 장뿐', () => {
+  const { progress, run } = setup(evolutionCost(2) - 1);
+  for (const stat of Object.keys(progress.enh)) progress.enh[stat] = MAX_ENH;
   const cards = pickQuickCards(progress, run, FORMS);
   assert.deepEqual(kinds(cards), ['body']);
 });
@@ -197,14 +206,14 @@ test('능력 +1 카드: 실패·퇴화 없이 확정 +1, 비용은 quickEnhanceC
 });
 
 test('능력 +1 카드: 같은 카드를 거듭 사면 비용이 오르고, 요력이 모자라면 null, 최고 레벨은 안 팔린다', () => {
-  const { progress, run } = setup(100000);
+  const { progress, run } = setup(1e9);
   let last = 0;
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < MAX_ENH; i++) {
     const result = applyQuickCard(progress, run, { kind: 'ability', stat: 'speed' }, FORMS);
     assert.ok(result.cost > last);
     last = result.cost;
   }
-  assert.equal(progress.enh.speed, 10);
+  assert.equal(progress.enh.speed, MAX_ENH);
   const before = progress.yoryeok;
   assert.equal(applyQuickCard(progress, run, { kind: 'ability', stat: 'speed' }, FORMS), null);
   assert.equal(progress.yoryeok, before);
@@ -215,7 +224,7 @@ test('능력 +1 카드: 같은 카드를 거듭 사면 비용이 오르고, 요�
 
 test('최고 레벨 능력치는 카드로 나오지 않는다', () => {
   const { progress, run } = setup(5000);
-  progress.enh.speed = 10;
+  progress.enh.speed = MAX_ENH;
   const cards = allQuickCards(progress, run, FORMS);
   assert.ok(!cards.some((card) => card.kind === 'ability' && card.stat === 'speed'));
   assert.equal(cards.filter((card) => card.kind === 'ability').length, 2);
@@ -252,7 +261,7 @@ test('다시 뽑기 설정: 한 판에 1번이 기본이고, 판마다 새 run�
 });
 
 test('다시 뽑기: 한 번 쓰면 남은 횟수 0, 두 번째는 null이고 카드·요력·run이 그대로다', () => {
-  const { progress, run } = setup(5000, { stage: 5 });
+  const { progress, run } = setup(evolutionCost(2) - 1);
   const first = pickQuickCards(progress, run, FORMS, { rng: seeded(3) });
   const result = rerollQuickCards(progress, run, FORMS, { rng: seeded(4), previous: first });
   assert.ok(result);
@@ -264,7 +273,7 @@ test('다시 뽑기: 한 번 쓰면 남은 횟수 0, 두 번째는 null이고 �
 });
 
 test('다시 뽑기는 요력을 쓰지 않고, 같은 조건(살 수 있는 카드 규칙)으로 새로 뽑는다', () => {
-  for (const [yoryeok, patch] of [[5000, {}], [5000, { stage: 4, formId: 'gumiho' }], [5000, { stage: 5 }], [evolutionCost(2) - 1, {}]]) {
+  for (const [yoryeok, patch] of [[5000, {}], [evolutionCost(2) - 1, {}], [60, {}]]) {
     for (let seed = 1; seed <= 25; seed++) {
       const { progress, run } = setup(yoryeok, patch);
       const before = JSON.stringify(progress);
@@ -282,20 +291,20 @@ test('다시 뽑기는 요력을 쓰지 않고, 같은 조건(살 수 있는 카
 });
 
 test('다시 뽑기: 지금 화면과 다른 구성이 나온다(바뀔 여지가 있을 때)', () => {
-  for (const patch of [{}, { stage: 4, formId: 'gumiho' }, { stage: 5 }]) {
+  for (const yoryeok of [5000, evolutionCost(2) - 1]) {
     for (let seed = 1; seed <= 40; seed++) {
-      const { progress, run } = setup(5000, patch);
+      const { progress, run } = setup(yoryeok);
       const first = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
       const result = rerollQuickCards(progress, run, FORMS, { rng: seeded(seed * 7 + 1), previous: first });
       assert.equal(result.changed, true);
-      assert.notEqual(ids(result.cards), ids(first), JSON.stringify(patch) + ' seed ' + seed);
+      assert.notEqual(ids(result.cards), ids(first), '요력 ' + yoryeok + ' seed ' + seed);
     }
   }
 });
 
 test('다시 뽑기: 고를 수 있는 구성이 하나뿐이면 그대로 돌려주고 횟수는 쓰지 않는다', () => {
-  const { progress, run } = setup(5000, { stage: 5 });
-  for (const stat of Object.keys(progress.enh)) progress.enh[stat] = 10;
+  const { progress, run } = setup(evolutionCost(2) - 1);
+  for (const stat of Object.keys(progress.enh)) progress.enh[stat] = MAX_ENH;
   const first = pickQuickCards(progress, run, FORMS);
   assert.deepEqual(kinds(first), ['body']);
   const result = rerollQuickCards(progress, run, FORMS, { previous: first });
@@ -319,7 +328,7 @@ test('다시 뽑기 횟수는 설정값을 따른다(0이면 처음부터 쓸 �
     assert.equal(rerollsLeft(none.run), 0);
     assert.equal(rerollQuickCards(none.progress, none.run, FORMS), null);
     CONFIG.reroll.perRun = 3;
-    const three = setup(5000, { stage: 5 });
+    const three = setup(evolutionCost(2) - 1);
     let previous = pickQuickCards(three.progress, three.run, FORMS, { rng: seeded(9) });
     for (let n = 1; n <= 3; n++) {
       const result = rerollQuickCards(three.progress, three.run, FORMS, { rng: seeded(20 + n), previous });
@@ -334,11 +343,38 @@ test('다시 뽑기 횟수는 설정값을 따른다(0이면 처음부터 쓸 �
 });
 
 test('다시 뽑은 카드도 탭하면 그대로 적용된다(요력 차감·결과는 예전 카드와 같은 규칙)', () => {
-  const { progress, run } = setup(5000, { stage: 5 });
+  const { progress, run } = setup(evolutionCost(2) - 1);
   const first = pickQuickCards(progress, run, FORMS, { rng: seeded(11) });
   const { cards } = rerollQuickCards(progress, run, FORMS, { rng: seeded(12), previous: first });
   const card = cards.find((c) => c.kind === 'body');
   const result = applyQuickCard(progress, run, card, FORMS);
   assert.deepEqual(result, { kind: 'body', cost: bodyCost(0), mult: L.bodyMult });
-  assert.equal(progress.yoryeok, 5000 - bodyCost(0));
+  assert.equal(progress.yoryeok, evolutionCost(2) - 1 - bodyCost(0));
+});
+
+// ---- 능력 +1 카드 문구는 정비 화면과 같은 계산이다(+10 이후 레벨당 효과가 절반, 변경 이력 22) ----
+test('quickStatNote: 지금 → 다음 레벨의 실제 효과이고 statUpgradeText(정비 화면)와 글자가 같다', () => {
+  for (const stat of ENHANCE.stats) {
+    for (let level = 0; level < MAX_ENH; level++) {
+      assert.equal(quickStatNote(stat, level), statUpgradeText(stat, level, false), stat + ' Lv ' + level);
+    }
+  }
+  assert.equal(quickStatNote('growth', 0), '먹을 때 자라는 양 +0% → +8%');
+  assert.equal(quickStatNote('growth', 9), '먹을 때 자라는 양 +72% → +80%');
+  assert.equal(quickStatNote('growth', 10), '먹을 때 자라는 양 +80% → +84%', '+10 이후는 레벨당 효과가 절반이다');
+  assert.equal(quickStatNote('speed', 0), '이동 속도 +0% → +4%');
+  assert.equal(quickStatNote('speed', 10), '이동 속도 +40% → +42%');
+  assert.match(quickStatNote('vitality', 10), /^굶을 때 쓸 생명력 10초 → 10\.3초$/);
+  assert.equal(quickStatNote('growth'), quickStatNote('growth', 0), '레벨을 안 주면 0레벨이다');
+  assert.equal(quickStatNote('unknown', 3), '');
+});
+
+test('능력 +1 카드의 레벨로 문구를 만든다: +10 이후 카드의 효과 차이가 절반으로 보인다', () => {
+  const { progress, run } = setup(1e9);
+  progress.enh.growth = 10;
+  const card = allQuickCards(progress, run, FORMS).find((c) => c.kind === 'ability' && c.stat === 'growth');
+  assert.equal(card.level, 10);
+  assert.equal(quickStatNote(card.stat, card.level), '먹을 때 자라는 양 +80% → +84%');
+  const before = allQuickCards(setup(1e9).progress, run, FORMS).find((c) => c.kind === 'ability' && c.stat === 'growth');
+  assert.equal(quickStatNote(before.stat, before.level), '먹을 때 자라는 양 +0% → +8%');
 });

@@ -1,5 +1,5 @@
 import { CONFIG } from '../config.js';
-import { ENHANCE } from './tuning-upgrade.js';
+import { ENHANCE, statUpgradeText } from './tuning-upgrade.js';
 import { enhanceCost, getEnhanceOdds } from './enhance.js';
 import { buildChoices, evolutionCost, evolve } from './evolution.js';
 
@@ -12,7 +12,30 @@ import { buildChoices, evolutionCost, evolve } from './evolution.js';
 //   pauseFromEarned 이번 구간이 시작된 시점의 번 요력(게이지 계산용)
 //   lastPauseSec 마지막 멈춤의 실제 시각(초)
 //   rerollsLeft 카드 [다시 뽑기]를 쓸 수 있는 남은 횟수. 처음 쓸 때 채워진다(없으면 CONFIG.reroll.perRun이고, 판마다 새 run이라 판마다 다시 생긴다)
+//   evolveDeferredStage 2단계 이상에서 [계속 모으기]를 고른 단계(그 단계에서는 진화 카드를 다시 묻지 않는다). 없으면 undefined
 const LU = () => CONFIG.levelUp;
+
+// 2단계 이상(CONFIG.levelUp.evolveOnlyFromStage)은 판 안 성장이 [진화] 하나뿐이다(사용자 지시 2026-11-24, 변경 이력 21).
+// 먹으면 배고픔 해결·몸집·요력 적립만 일어나고 [몸집 강화]·[능력 강화] 카드와 그 멈춤은 없다. 1단계는 예전 그대로다.
+export function evolveOnly(progress) {
+  return (progress?.stage ?? 1) >= LU().evolveOnlyFromStage;
+}
+
+// 진화 전용 단계에서 요력이 다음 진화 비용에 닿았는가(5단계는 다음 진화가 없어 늘 false).
+export function evolveReady(progress) {
+  if (!evolveOnly(progress) || progress.stage >= LU().evolveMaxStage) return false;
+  return progress.yoryeok >= evolutionCost(progress.stage + 1);
+}
+
+// [계속 모으기]: 이 단계에서는 진화 카드가 자동으로 다시 열리지 않는다(HUD의 '진화 가능' 단추로만 연다). 단계가 오르면 다시 묻는다.
+export function deferEvolve(progress, run, nowSec) {
+  run.evolveDeferredStage = progress.stage;
+  run.lastPauseSec = nowSec;
+}
+
+export function evolveDeferred(progress, run) {
+  return run.evolveDeferredStage === progress.stage;
+}
 
 // 몸집 강화 n번째(0부터)의 요력 비용: bodyBaseCost × enhanceCostGrowth^n(모든 강화가 레벨마다 2배, 변경 이력 18).
 export function bodyCost(n) {
@@ -75,13 +98,11 @@ export function evolutionCatalog(forms) {
 // ---- 빠른 성장 카드 ----
 export const QUICK_STAT_NAMES = { growth: '크기 성장', speed: '이동 속도', vitality: '생명력' };
 
-// 능력 +1 카드 한 줄 설명. 수치는 설정값에서 읽는다.
-export function quickStatNote(stat) {
-  const percent = (value) => Math.round(value * 1000) / 10;
-  if (stat === 'growth') return '먹을 때 ' + percent(CONFIG.progression.growthPerLevel) + '% 더 자람';
-  if (stat === 'speed') return '더 빨라짐(진화와 함께 속도 곡선이 올라감)';
-  if (stat === 'vitality') return '굶어도 몸집이 줄기까지 ' + CONFIG.vitality.perLevelSec + '초 더';
-  return '';
+// 능력 +1 카드 한 줄 설명: 지금 레벨 → 다음 레벨의 실제 효과. 정비 화면 능력 카드와 같은 계산(tuning-upgrade.statUpgradeText)이라
+// +10 이후 레벨당 효과가 절반이 되는 것(enhance-curve.effectiveLevel)도 그대로 보인다. level은 카드의 지금 레벨(카드가 늘 넘긴다).
+export function quickStatNote(stat, level = 0) {
+  if (!ENHANCE.stats.includes(stat)) return '';
+  return statUpgradeText(stat, level, false);
 }
 const KIND_ORDER = { evolve: 0, body: 1, ability: 2 };
 
@@ -108,6 +129,7 @@ export function allQuickCards(progress, run, forms, { rng = Math.random } = {}) 
       }
     }
   }
+  if (evolveOnly(progress)) return cards; // 2단계 이상: 몸집·능력 카드는 없다
   cards.push({ kind: 'body', id: 'body', cost: bodyCost(run.bodyLevel ?? 0), mult: LU().bodyMult });
   for (const stat of ENHANCE.stats) {
     const level = progress.enh[stat];
@@ -143,7 +165,7 @@ export function pickQuickCards(progress, run, forms, { rng = Math.random, count 
       return true;
     });
     const others = affordable.filter((card) => card.kind !== 'evolve');
-    const alt = others.length ? [shuffle(others, rng)[0]] : [];
+    const alt = others.length ? [shuffle(others, rng)[0]] : []; // 2단계 이상은 others가 비어 진화 카드뿐이다([계속 모으기]는 화면이 단추로 곁들인다)
     return [...shown, ...alt].sort(byKind);
   }
   const groups = new Map();
@@ -202,6 +224,7 @@ export function rerollQuickCards(progress, run, forms, { rng = Math.random, prev
 //   body    → { kind, cost, mult }
 //   ability → { kind, cost, stat, from, to }
 export function applyQuickCard(progress, run, card, forms, { rng = Math.random } = {}) {
+  if (evolveOnly(progress) && card.kind !== 'evolve') return null; // 2단계 이상은 진화만
   if (card.kind === 'evolve') {
     const cost = evolutionCost(progress.stage + 1);
     if (progress.stage >= LU().evolveMaxStage || !(progress.yoryeok >= cost)) return null;
@@ -251,6 +274,9 @@ export function pauseOptions(progress, run) {
 
 // 지금 고를 수 있는 카드 중 가장 싼 비용. 몸집 강화는 항상 유한하므로 Infinity가 되지 않는다.
 export function cheapestCost(progress, run) {
+  if (evolveOnly(progress)) { // 진화만 고른다: 5단계는 살 카드가 없어 Infinity
+    return progress.stage < LU().evolveMaxStage ? evolutionCost(progress.stage + 1) : Infinity;
+  }
   let min = bodyCost(run.bodyLevel ?? 0);
   if (progress.stage < LU().evolveMaxStage) min = Math.min(min, evolutionCost(progress.stage + 1));
   for (const stat of ENHANCE.stats) min = Math.min(min, quickEnhanceCost(progress.enh[stat]));
@@ -267,6 +293,10 @@ export function pauseGap(cheapest) {
 // 멈춰야 하는가: 번 요력이 기준에 닿았고, 살 수 있는 카드가 있고, 실제 시간 간격도 지났을 때.
 // 기준이 없으면(판 시작) 여기서 정한다. 살 수 있는 카드가 없으면 기준을 넘겨도 멈추지 않는다.
 export function shouldPause(progress, run, nowSec) {
+  if (evolveOnly(progress)) { // 요력이 다음 진화 비용에 닿으면 한 번 멈춘다. [계속 모으기]를 고른 단계에서는 다시 멈추지 않는다
+    return evolveReady(progress) && !evolveDeferred(progress, run)
+      && nowSec - (run.lastPauseSec ?? -Infinity) >= CONFIG.levelUp.pauseCooldownSec;
+  }
   const cheapest = cheapestCost(progress, run);
   const earned = earnedThisRun(progress, run);
   if (run.nextPauseAt == null) {
@@ -296,6 +326,16 @@ export function pauseGauge(progress, run) {
   const span = Math.max(1, (run.nextPauseAt ?? earned + gap) - from);
   const fraction = Math.max(0, Math.min(1, (earned - from) / span, progress.yoryeok / cheapest));
   return { current: Math.round(fraction * gap), target: gap };
+}
+
+// HUD 성장 표시. 1단계는 예전 게이지(mode 'pause'), 2단계 이상은 다음 진화까지 남은 요력(mode 'evolve', ready면 HUD가 '진화 가능' 단추로 바꾼다), 5단계는 숨김(mode 'off').
+//   { mode:'pause', current, target } | { mode:'evolve', cost, current, remain, ready } | { mode:'off' }
+export function growthView(progress, run) {
+  if (!evolveOnly(progress)) return { mode: 'pause', ...pauseGauge(progress, run) };
+  const cost = progress.stage < LU().evolveMaxStage ? evolutionCost(progress.stage + 1) : Infinity;
+  if (!Number.isFinite(cost)) return { mode: 'off' };
+  const yoryeok = Math.max(0, progress.yoryeok);
+  return { mode: 'evolve', cost, current: Math.min(yoryeok, cost), remain: Math.max(0, Math.ceil(cost - yoryeok)), ready: yoryeok >= cost };
 }
 
 // 몸집 강화는 확정이다. 요력이 부족하면 아무것도 바꾸지 않고 null.

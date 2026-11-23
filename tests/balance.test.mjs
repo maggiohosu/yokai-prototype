@@ -38,15 +38,19 @@ test('tempoMultiplier는 단계가 오를수록 커지고, 이동 속도 강화 
   near(tempoMultiplier({ stage: NaN }), B.pace.stageMult[1]);
 });
 
-test('playerSpeedMultiplier: baseMult 0.5 × (1 + 0.04 × 이동 속도 강화 레벨)(+10이면 기본의 1.4배), 단계와 무관', () => {
+test('playerSpeedMultiplier: baseMult 0.5 × (1 + 0.04 × 효과 레벨)(+10이면 1.4배, +10 이후는 레벨당 절반이라 +20이면 1.6배), 단계와 무관', () => {
   const base = B.pace.baseMult;
   assert.equal(base, 0.5);
+  assert.equal(B.pace.maxSpeedLevel, 20);
   near(playerSpeedMultiplier(at(1, 0)), base);
   near(playerSpeedMultiplier(at(1, 5)), base * 1.2);
   near(playerSpeedMultiplier(at(1, 10)), base * 1.4);
+  near(playerSpeedMultiplier(at(1, 11)), base * 1.42); // 10 이후 한 레벨 = 효과 0.5레벨 = +2%
+  near(playerSpeedMultiplier(at(1, 15)), base * 1.5);
+  near(playerSpeedMultiplier(at(1, 20)), base * 1.6);
   for (let stage = 1; stage <= 5; stage++) near(playerSpeedMultiplier(at(stage, 7)), base * 1.28);
-  for (let level = 1; level <= 10; level++) assert.ok(playerSpeedMultiplier(at(1, level)) > playerSpeedMultiplier(at(1, level - 1)));
-  near(playerSpeedMultiplier(at(1, 99)), base * 1.4);
+  for (let level = 1; level <= 20; level++) assert.ok(playerSpeedMultiplier(at(1, level)) > playerSpeedMultiplier(at(1, level - 1)));
+  near(playerSpeedMultiplier(at(1, 99)), base * 1.6);
   near(playerSpeedMultiplier(at(1, -4)), base);
   near(playerSpeedMultiplier({ stage: 3 }), base);
   near(playerSpeedMultiplier({ stage: 3, enh: {} }), base);

@@ -8,14 +8,14 @@ import { sfx } from '../audio/sfx.js';
 import { musicToggle } from './TitleView.js';
 import { isNewWeapon } from '../game/fx.js';
 import { saveProgress } from '../state/save.js';
-import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
+import { applyDegradeChoice, autoEnhance, enhanceCost, enhanceTable, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
 import { recordTreasureSuccess } from '../systems/progress.js';
-import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, tryUpgrade, upgradeCost, upgradeOdds } from '../systems/treasure.js';
+import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, treasureTable, tryUpgrade, upgradeCost, upgradeOdds } from '../systems/treasure.js';
 import { blockerText, buy, buyBlocker, lockedText, shopCatalog } from '../systems/shop.js';
 import { itemTitle, previewRows, weaponOf, withSubject } from '../systems/weapons.js';
-import { ENHANCE, TREASURE, vitalityUpgradeText } from '../systems/tuning-upgrade.js';
-import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
+import { ENHANCE, TREASURE, statUpgradeText } from '../systems/tuning-upgrade.js';
+import { LevelTable, OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 import { playEnhanceFx, playSellFx, preloadEnhanceSounds } from './enhanceFx.js';
 
 export const statNames = { growth: '크기 성장', speed: '이동 속도', vitality: '생명력' };
@@ -35,6 +35,23 @@ function stopText(reason, progress, stat) {
     return '연속 강화 한도 도달';
   }
   return { target: '목표 도달', gold: '요력 부족', great: '대성공으로 중단', degrade: '퇴화로 중단' }[reason];
+}
+
+// 접이식 '확률표': 모든 레벨(본체 +1~+20, 보물 +1~+15)의 결과 확률(%)과 한 번 시도에 드는 요력을 한 표로 보여 준다(변경 이력 22).
+// 확률은 천장(실패마다 +5%p)·보호권을 반영하기 전의 기본값이다.
+function bodyLevelTable() {
+  const rows = enhanceTable().map((r) => ['+' + r.to, number(r.success), number(r.great), number(r.fail), number(r.degrade), number(r.cost)]);
+  const box = el('div');
+  box.append(el('p', 'yk-level-note', '+N은 그 레벨로 오르는 한 번의 시도예요. 확률(%)은 천장·보호권을 더하기 전이고, 실패할 때마다 성공률이 5%p씩 쌓여요. 요력은 한 번 시도에 드는 값이에요.'),
+    LevelTable('본체 강화 레벨별 확률표', ['단계', '성공', '대성공', '실패', '퇴화', '요력'], rows));
+  return disclosure('강화 확률표 (+1 ~ +' + ENHANCE.success.length + ')', box);
+}
+function treasureLevelTable(kind) {
+  const rows = treasureTable(kind).map((r) => ['+' + r.to, number(r.success), number(r.fail), number(r.break), number(r.cost)]);
+  const box = el('div');
+  box.append(el('p', 'yk-level-note', '모든 보물이 같은 확률표를 써요. 요력은 한 번 시도에 드는 값이에요.'),
+    LevelTable('보물 강화 레벨별 확률표', ['단계', '성공', '실패', '깨짐', '요력'], rows));
+  return disclosure('보물 강화 확률표 (+1 ~ +' + TREASURE.success.length + ')', box);
 }
 
 function upgradeOddsTable(level) {
@@ -200,7 +217,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const head = el('div', 'yk-line');
     head.append(el('h3', 'yk-stat-name', statNames[stat]), el('strong', 'yk-level', '+' + level));
     card.append(head);
-    if (stat === 'vitality') card.append(el('p', 'yk-hint', vitalityUpgradeText(level, !Number.isFinite(cost))));
+    card.append(el('p', 'yk-hint', statUpgradeText(stat, level, !Number.isFinite(cost))));
     if (!Number.isFinite(cost)) {
       card.append(el('p', 'yk-hint', '최고 레벨'));
       return card;
@@ -373,7 +390,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     dropOdds.append(OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
       [['직접 먹기', dropChance() * 100], ['보물로 처치', dropChance({ killedByTreasure: true }) * 100]]),
     el('p', 'yk-hint', '보통 요괴가 떨어뜨리는 보물은 여의주뿐이에요. 대요괴를 쓰러뜨리면 아직 없는 보패 하나가 나와요.'));
-    body.append(equipped, inventory, shards, disclosure('보물 획득 확률', dropOdds));
+    body.append(equipped, inventory, shards, disclosure('보물 획득 확률', dropOdds), treasureLevelTable(item ? weaponOf(item).id : 'yeouiju'));
   }
 
   function purchase(kind, level) {
@@ -468,6 +485,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     else if (tab === 'shop') shopPanel();
     else {
       for (const stat of ENHANCE.stats) body.append(statCard(stat));
+      body.append(bodyLevelTable());
     }
     body.scrollTop = scroll;
     body.inert = playingLog;

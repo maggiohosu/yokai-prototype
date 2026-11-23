@@ -6,7 +6,7 @@ import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
 import { bossRingFor, clamp, colorPicker, drawWorld, growMoveCount, offscreenPad, refillIncrement, regionAt, rollSpawnSize, seedField, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
-import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
+import { afterPause, applyQuickCard, createRunLevel, deferEvolve, evolveOnly, evolveReady, growthView, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
 import { drawStageMark, StageMarks } from '../art/marks.js';
 import { Player } from '../game/player.js';
 import { Enemy } from '../game/enemy.js';
@@ -226,7 +226,7 @@ export class PlayScene extends Phaser.Scene {
     const resize = size => { this.follow.recenter(size); this.viewChanged = true; };
     this.scale.on('resize', resize);
     this.events.once('shutdown', () => this.scale.off('resize', resize));
-    this.hud = new Hud(() => this.openAbilityInfo());
+    this.hud = new Hud(() => this.openAbilityInfo(), () => this.openEvolveFromHud());
     this.hud.setLives(hasLives(this.difficulty) ? this.progress.lives : null);
     this.refreshIdentity();
     document.getElementById('result').hidden = true;
@@ -257,12 +257,14 @@ export class PlayScene extends Phaser.Scene {
   }
   // 빠른 성장 선택: 요력이 기준에 닿으면 게임을 멈추고 화면 가운데 카드 3장을 띄운다. 카드 하나 = 결과 하나.
   // 탭하면 즉시 적용하고 바로 재개한다(확인 창·결과 창 없음). 살 수 있는 카드가 없으면 멈추지 않는다.
+  // 2단계 이상(변경 이력 21)은 진화 카드만 나오고 [계속 모으기]가 곁들여진다(요력이 진화 비용에 닿았을 때 한 번, 이후에는 HUD의 '진화 가능' 단추로).
   openQuickPick() {
     const cards = pickQuickCards(this.progress, this.level, FORMS);
     if (!cards.length) {
       afterPause(this.progress, this.level, performance.now() / 1000);
       return;
     }
+    const evolveOnlyPick = evolveOnly(this.progress);
     this.paused = true;
     bgm.duck(true);
     this.hungerTimeMs = null;
@@ -273,10 +275,18 @@ export class PlayScene extends Phaser.Scene {
       yoryeok: this.progress.yoryeok,
       getFormImage: (id) => this.formImage(id),
       onPick: (card) => this.pickCard(card),
+      title: evolveOnlyPick ? '진화할 수 있어요!' : undefined,
+      onDefer: evolveOnlyPick ? () => this.deferCard() : undefined,
       // 다시 뽑기(한 판에 CONFIG.reroll.perRun번): 같은 잔액·같은 규칙으로 새로 뽑는다. 새 카드는 여기서 이미 정해지고 화면은 보여주기만 한다.
-      rerollsLeft: rerollsLeft(this.level),
+      // 진화 전용 선택은 카드 구성이 늘 같아 바꿀 것이 없으므로 숨긴다.
+      rerollsLeft: evolveOnlyPick ? 0 : rerollsLeft(this.level),
       onReroll: (shown) => rerollQuickCards(this.progress, this.level, FORMS, { previous: shown }),
     });
+  }
+  // HUD의 '진화 가능' 단추: [계속 모으기]를 골랐거나 쿨다운 중인 진화 카드를 원할 때 연다.
+  openEvolveFromHud() {
+    if (this.paused || this.ended || this.preview || this.stress || !evolveReady(this.progress)) return;
+    this.openQuickPick();
   }
   pickCard(card) {
     this.quickPick = null;
@@ -288,12 +298,22 @@ export class PlayScene extends Phaser.Scene {
       }
     } finally {
       afterPause(this.progress, this.level, performance.now() / 1000);
-      this.fireRequested = false;
-      this.paused = false;
-      bgm.duck(false);
-      this.joystick?.resume();
-      this.boosterButton?.resume();
+      this.resumeAfterQuickPick();
     }
+  }
+  // [계속 모으기]: 아무것도 사지 않고 재개한다. 이 단계에서는 진화 카드가 자동으로 다시 열리지 않는다.
+  deferCard() {
+    this.quickPick = null;
+    deferEvolve(this.progress, this.level, performance.now() / 1000);
+    this.resumeAfterQuickPick();
+  }
+  resumeAfterQuickPick() {
+    this.fireRequested = false;
+    this.paused = false;
+    bgm.duck(false);
+    this.joystick?.resume();
+    this.boosterButton?.resume();
+    this.hudTime = 0; // 다음 틱에 HUD 성장 표시를 바로 갱신한다(진화했으면 새 단계의 게이지로, 미뤘으면 '진화 가능' 단추 그대로)
   }
   // 결과는 게임 화면에 떠오르는 글자로 짧게만 보여준다.
   showQuickResult(result) {
@@ -1181,8 +1201,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.hudTime <= 0) {
       this.hudTime = CONFIG.render.hudInterval;
       this.hud.update(this.player, view);
-      const gauge = pauseGauge(this.progress, this.level);
-      this.hud.setGauge(gauge.current, gauge.target, '다음 성장까지');
+      this.hud.setGrowth(growthView(this.progress, this.level));
       this.hud.setHerald(heraldOn ? heraldView(this.heraldState) : { mode: 'off' });
       this.hud.setResonance(resonanceView(this.resonance, this.playSec), DIR_NAME);
     }

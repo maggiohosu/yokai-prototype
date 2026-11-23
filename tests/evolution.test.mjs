@@ -6,8 +6,9 @@ import { STEMS } from '../src/data/stems.js';
 import { evolutionCatalog } from '../src/systems/levelup.js';
 import { createProgress, recordEat, recordTreasureSuccess, yoryeokFor } from '../src/systems/progress.js';
 import {
-  evolutionCost, canEvolve, buildChoices, evolve, rollGrade, gradeOdds, gradeMultiplier, devolve, GRADES, unknownPool,
+  evolutionCost, enemyEvolutionCost, canEvolve, buildChoices, evolve, rollGrade, gradeOdds, gradeMultiplier, devolve, GRADES, unknownPool,
 } from '../src/systems/evolution.js';
+import { EVOLVE_COST, LATE_EVOLVE } from '../src/systems/tuning-evolution.js';
 
 function seeded(seed = 12345) {
   let a = seed >>> 0;
@@ -42,12 +43,19 @@ test('progress: 생성/요력/식성/성향', () => {
   assert.equal(p.alignment, 100);
 });
 
-test('진화 비용: 4·5단계는 2,000 / 8,000(사용자 결정)', () => {
+test('진화 비용: 3·4단계는 400 / 2,000이고 4단계 이후 진화(4→5)는 기본 8,000의 2배인 16,000이다(변경 이력 21)', () => {
+  assert.deepEqual(LATE_EVOLVE, { fromStage: 4, costMult: 2 });
   assert.equal(evolutionCost(2), 100);
   assert.equal(evolutionCost(3), 400);
   assert.equal(evolutionCost(4), 2000);
-  assert.equal(evolutionCost(5), 8000);
+  assert.equal(evolutionCost(5), 8000 * LATE_EVOLVE.costMult);
+  assert.equal(evolutionCost(5), 16000);
   assert.equal(evolutionCost(6), Infinity);
+  // 1→2·2→3·3→4는 늦은 진화 배율을 받지 않는다(진화하기 전 단계가 fromStage 미만).
+  for (const next of [2, 3, 4]) assert.equal(evolutionCost(next), EVOLVE_COST[next], next + '단계');
+  // 적이 스스로 진화하는 비용은 기본 값 그대로다(적 진화 속도·단계 분포가 달라지지 않게).
+  assert.deepEqual([2, 3, 4, 5].map(enemyEvolutionCost), [100, 400, 2000, 8000]);
+  assert.equal(enemyEvolutionCost(6), Infinity);
   const p = createProgress();
   assert.equal(canEvolve(p), false);
   p.yoryeok = 100;
@@ -324,9 +332,14 @@ test('buildChoices: 4→5단계, 줄기 유지가 ①이면 ②는 곁줄기 입
   for (const choice of c.slice(0, 2)) assert.ok(FORM_BY_ID.gumiho.next.includes(choice.form.id));
 });
 
-test('evolve: 4→5 비용 8,000을 내고, 3→4는 2,000이 있어야 한다', () => {
+test('evolve: 4→5 비용 16,000을 내고(8,000으로는 모자란다), 3→4는 2,000이 있어야 한다', () => {
+  const poor = at('gumiho', { diet: { east: 10 } });
+  poor.yoryeok = 8000 + 123;
+  assert.equal(canEvolve(poor), false);
+  assert.throws(() => evolve(poor, buildChoices(poor, catalog, { rng: seeded() })[0], catalog), /요력/);
+  assert.equal(poor.stage, 4);
   const p = at('gumiho', { diet: { east: 10 } });
-  p.yoryeok = 8000 + 123;
+  p.yoryeok = 16000 + 123;
   const c = buildChoices(p, catalog, { rng: seeded() });
   const r = evolve(p, c[0], catalog, { rng: seeded(3) });
   assert.equal(r.form.stage, 5);
@@ -375,7 +388,7 @@ test('모든 줄기에서 mimul부터 5단계까지 3택으로 끝까지 올라�
   for (const stem of STEMS) {
     const p = at('mimul', { diet: { [stem.dir]: 10 } });
     for (let stage = 2; stage <= 5; stage++) {
-      p.yoryeok = 10000;
+      p.yoryeok = 20000;
       const c = buildChoices(p, catalog, { rng: seeded() });
       assert.ok(c.length >= 3);
       const pick = c.slice(0, 2).find((x) => x.form.stem === stem.id) ?? c[0];

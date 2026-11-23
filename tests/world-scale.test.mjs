@@ -13,12 +13,12 @@ test.afterEach(() => {
   applyWorldScale(1); // 다른 시험에 월드 크기가 남지 않게 되돌린다
 });
 
-test('단계마다 맵이 커지고(1000·1500·2000·2600·3300) 적 인구는 모든 단계에서 480마리다', () => {
+test('단계마다 맵이 커지고(1000·1500·2000·2600·3300) 적 인구는 모든 단계에서 300마리다', () => {
   const sizes = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).size);
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.deepEqual(sizes, [1000, 1500, 2000, 2600, 3300]);
-  assert.deepEqual(pops, [480, 480, 480, 480, 480]);
-  assert.equal(CONFIG.world.fixedPopulation, 480);
+  assert.deepEqual(pops, [300, 300, 300, 300, 300]);
+  assert.equal(CONFIG.world.fixedPopulation, 300);
   for (let i = 1; i < 5; i++) assert.ok(sizes[i] > sizes[i - 1]);
   assert.equal(stageWorldScale(1), 1);
 });
@@ -34,13 +34,13 @@ test('단계 범위 밖·이상한 입력은 1~5단계로 자른다', () => {
 test('applyWorldScale: CONFIG.world의 크기와 적 수를 바꾸고, 같은 단계로 여러 번 불러도 같고, 1단계로 돌아온다', () => {
   const r = applyWorldScale(4);
   assert.equal(CONFIG.world.size, 2600);
-  assert.equal(CONFIG.world.population, 480);
+  assert.equal(CONFIG.world.population, 300);
   assert.deepEqual(r, { scale: M.stageScale[4], size: 2600, population: CONFIG.world.population });
   applyWorldScale(4);
   assert.equal(CONFIG.world.size, 2600);
   applyWorldScale(1);
   assert.equal(CONFIG.world.size, 1000);
-  assert.equal(CONFIG.world.population, 480);
+  assert.equal(CONFIG.world.population, 300);
 });
 
 test('월드를 읽는 코드는 새 크기를 본다: 방위 경계는 새 중심, 액터는 새 월드 안에서만 움직인다', () => {

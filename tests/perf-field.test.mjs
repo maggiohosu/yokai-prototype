@@ -63,7 +63,7 @@ test('인구 시험의 생성 실패는 그 프레임만 중단하고 같은 배
   const stress = new PopulationStress(new URLSearchParams('stage=1'));
   let attempts = 0, ticks = 0, firstGrid;
   const scene = {
-    enemies: Array.from({ length: 477 }, (_, i) => ({ x: i, y: 500, size: 5 })), // 새 적(y 100)과 떨어진 줄에 둔다
+    enemies: Array.from({ length: 297 }, (_, i) => ({ x: i, y: 500, size: 5 })), // 새 적(y 100)과 떨어진 줄에 둔다
     cameras: { main: { worldView: {} } }, player: { size: 12 },
     spawn(_size, { grid }) {
       firstGrid ??= grid;
@@ -77,9 +77,9 @@ test('인구 시험의 생성 실패는 그 프레임만 중단하고 같은 배
     tick() { ticks++; },
   };
   stress.update(scene, 16);
-  assert.deepEqual([attempts, ticks, scene.enemies.length], [1, 1, 477]);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [1, 1, 297]);
   stress.update(scene, 16);
-  assert.deepEqual([attempts, ticks, scene.enemies.length], [4, 2, 480]);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [4, 2, 300]);
   assert.equal(queryGrid(firstGrid, 302, 100, 5).length, 3);
 });
 
@@ -321,7 +321,7 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
   const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const overBudget = [];
   try {
-    for (const [stage, worldSize, population] of [[1, 1000, 480], [3, 2000, 480], [5, 3300, 480]]) {
+    for (const [stage, worldSize, population] of [[1, 1000, 300], [3, 2000, 300], [5, 3300, 300]]) {
       for (const w of ['yeouiju', 'mirror']) {
         const results = [];
         for (let trial = 0; trial < rounds; trial++) {
@@ -552,7 +552,7 @@ async function liveField({ stage, seed, seconds }) {
   return { stage, seed, size: side, target: CONFIG.world.population, r0, n0, r60: R(), n60: scene.enemies.length, meanCount: sum / frames, minCount: min };
 }
 
-if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시작 직후와 60초 뒤 모두 0.9 이상이고 1~5단계 모두 평균 인구가 목표의 95%, 최저가 430 이상이다', { timeout: 600000 }, async t => {
+if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시작 직후와 60초 뒤 모두 0.9 이상이고 1~5단계 모두 평균 인구가 목표(300)의 95%, 최저가 목표의 90%(270) 이상이다', { timeout: 600000 }, async t => {
   const browser = await launchFieldBrowser();
   try {
     for (const stage of [1, 2, 3, 4, 5]) {
@@ -570,9 +570,9 @@ if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시�
         assert.equal(r.n0, r.target);
         assert.ok(r.r0 >= 0.9, `${stage}단계 시작 직후 R ${r.r0}`);
         assert.ok(r.r60 >= 0.9, `${stage}단계 60초 뒤 R ${r.r60}`);
-        // 사용자 지시 '적 수 480 고정': 1~5단계 모두 60초 평균 95%(456) 이상, 최저 430 이상이어야 한다(보충 묶음·한 프레임 보충 상한·새로 놓인 적 유예, plan.md 변경 이력 16).
+        // 사용자 지시 '적 수 고정'(480 → 300, 변경 이력 21): 1~5단계 모두 60초 평균 95%(285) 이상, 최저 90%(270) 이상이어야 한다(보충 묶음·한 프레임 보충 상한·새로 놓인 적 유예, plan.md 변경 이력 16). 옛 480마리 때의 최저 430은 같은 비율(약 90%)로 줄였다.
         assert.ok(r.meanCount >= r.target * 0.95, `${stage}단계 60초 평균 인구 ${r.meanCount} < 목표 ${r.target}의 95%`);
-        assert.ok(r.minCount >= 430, `${stage}단계 60초 최저 인구 ${r.minCount} < 430`);
+        assert.ok(r.minCount >= r.target * 0.9, `${stage}단계 60초 최저 인구 ${r.minCount} < 목표의 90%`);
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }

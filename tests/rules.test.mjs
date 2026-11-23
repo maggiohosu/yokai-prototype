@@ -6,7 +6,7 @@ import {
   stageOverrideMult,
 } from '../src/systems/rules.js';
 import { FORMS } from '../src/data/forms.js';
-import { evolutionCost } from '../src/systems/evolution.js';
+import { enemyEvolutionCost, evolutionCost } from '../src/systems/evolution.js';
 import { spawnStage, spawnPoint } from '../src/game/world.js';
 import { eatingPair } from '../src/game/actor.js';
 
@@ -126,12 +126,15 @@ test('preyValue: base × (먹이 크기 / 내 크기)^2 × 단계 배율, 4·5�
   assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C' }), 112);
   assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C', mySize: 0 }), 112);
   assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C', mySize: NaN }), 112);
-  // 같은 단계 먹이(내 크기)로 다음 진화비를 모으는 마리 수: 3.6 / 3.6 / 4.5 / 11.9
+  // 같은 단계 먹이(내 크기)로 다음 진화비를 모으는 마리 수: 3.6 / 3.6 / 4.5 / 23.8
+  // (4→5는 변경 이력 21로 비용이 8,000 → 16,000이 되어 11.9에서 2배인 23.8이다. 기본 비용 8,000으로는 여전히 11.9마리다.)
   assert.ok(Math.abs(evolutionCost(2) / same(1) - 3.6) < 0.05);
   assert.ok(Math.abs(evolutionCost(3) / same(2) - 3.6) < 0.05);
   assert.ok(Math.abs(evolutionCost(4) / same(3) - 4.5) < 0.05);
-  assert.ok(Math.abs(evolutionCost(5) / same(4) - 11.9) < 0.05);
-  assert.deepEqual([evolutionCost(2), evolutionCost(3), evolutionCost(4), evolutionCost(5)], [100, 400, 2000, 8000]);
+  assert.ok(Math.abs(evolutionCost(5) / same(4) - 23.8) < 0.05);
+  assert.ok(Math.abs(enemyEvolutionCost(5) / same(4) - 11.9) < 0.05);
+  assert.deepEqual([evolutionCost(2), evolutionCost(3), evolutionCost(4), evolutionCost(5)], [100, 400, 2000, 16000]);
+  assert.deepEqual([enemyEvolutionCost(2), enemyEvolutionCost(3), enemyEvolutionCost(4), enemyEvolutionCost(5)], [100, 400, 2000, 8000]);
 });
 
 test('preyValue: 나보다 높은 단계 먹이의 단계 배율은 aboveStageCap(48)을 넘지 못한다', () => {
@@ -254,17 +257,17 @@ test('nextProgress: 진화가 몸집 강화보다 우선, 5단계는 몸집 강�
   const body = bodyCostAt(0);
   assert.equal(nextProgress({ stage: 1, yoryeok: body - 1, bodyLevel: 0 }), null);
   assert.equal(nextProgress({ stage: 1, yoryeok: body, bodyLevel: 0 }), 'body');
-  assert.equal(nextProgress({ stage: 1, yoryeok: evolutionCost(2), bodyLevel: 0 }), 'evolve');
-  assert.equal(nextProgress({ stage: 2, yoryeok: evolutionCost(3), bodyLevel: 0 }), 'evolve');
-  assert.equal(nextProgress({ stage: 3, yoryeok: evolutionCost(4), bodyLevel: 0 }), 'evolve');
-  assert.equal(nextProgress({ stage: 4, yoryeok: evolutionCost(5), bodyLevel: 0 }), 'evolve');
-  assert.equal(nextProgress({ stage: 4, yoryeok: evolutionCost(5) - 1, bodyLevel: 0 }), 'body');
-  assert.equal(nextProgress({ stage: 5, yoryeok: evolutionCost(5) * 5, bodyLevel: 0 }), 'body');
+  assert.equal(nextProgress({ stage: 1, yoryeok: enemyEvolutionCost(2), bodyLevel: 0 }), 'evolve');
+  assert.equal(nextProgress({ stage: 2, yoryeok: enemyEvolutionCost(3), bodyLevel: 0 }), 'evolve');
+  assert.equal(nextProgress({ stage: 3, yoryeok: enemyEvolutionCost(4), bodyLevel: 0 }), 'evolve');
+  assert.equal(nextProgress({ stage: 4, yoryeok: enemyEvolutionCost(5), bodyLevel: 0 }), 'evolve');
+  assert.equal(nextProgress({ stage: 4, yoryeok: enemyEvolutionCost(5) - 1, bodyLevel: 0 }), 'body');
+  assert.equal(nextProgress({ stage: 5, yoryeok: enemyEvolutionCost(5) * 5, bodyLevel: 0 }), 'body');
   assert.equal(nextProgress({ stage: 1, yoryeok: body, bodyLevel: 1 }), null);
 });
 
 test('nextProgress: 플레이어 단계를 주면 적의 자가 진화는 min(5, 플레이어 단계 + 1) 미만일 때만(selfEvolveLead)', () => {
-  const rich = (stage) => ({ stage, yoryeok: evolutionCost(stage + 1), bodyLevel: 0 });
+  const rich = (stage) => ({ stage, yoryeok: enemyEvolutionCost(stage + 1), bodyLevel: 0 });
   assert.equal(CONFIG.enemy.selfEvolveLead, 1);
   assert.equal(nextProgress(rich(1), 1), 'evolve'); // 플레이어 1단계: 적은 2단계까지
   assert.notEqual(nextProgress(rich(2), 1), 'evolve');

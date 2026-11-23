@@ -1,11 +1,18 @@
 import {
-  EVOLVE_COST, SCORE, GRADES, GRADE_BASE, GRADE_MULT, GRADE_SHIFT, ALIGNMENT,
+  EVOLVE_COST, LATE_EVOLVE, SCORE, GRADES, GRADE_BASE, GRADE_MULT, GRADE_SHIFT, ALIGNMENT,
 } from './tuning-evolution.js';
 
 export { GRADES };
 
-export function evolutionCost(nextStage) {
+// 적이 스스로 진화할 때 드는 요력: 기본 값 그대로다(늦은 진화 배율은 플레이어에게만 건다).
+export function enemyEvolutionCost(nextStage) {
   return EVOLVE_COST[nextStage] ?? Infinity;
+}
+
+// 플레이어가 nextStage로 진화하는 데 드는 요력. 4단계 이후 진화(4→5)는 기본 값의 LATE_EVOLVE.costMult배다(변경 이력 21).
+export function evolutionCost(nextStage) {
+  const base = enemyEvolutionCost(nextStage);
+  return nextStage - 1 >= LATE_EVOLVE.fromStage ? base * LATE_EVOLVE.costMult : base;
 }
 
 export function canEvolve(p) {

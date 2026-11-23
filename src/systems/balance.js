@@ -1,4 +1,5 @@
 import { CONFIG } from '../config.js';
+import { effectiveLevel } from './enhance-curve.js';
 
 // 고레벨 밸런스(계획서 '변경 이력 4'). Phaser·DOM 의존이 없는 순수 규칙이며 모든 수치는 CONFIG.balance에 있다.
 // 시간 인자(dtSim)는 시뮬레이션 시간이다(실제 시간 × 게임 템포).
@@ -22,11 +23,12 @@ export function tempoMultiplier(progress) {
   return cfg().pace.stageMult[stageOf(progress)];
 }
 
-// 플레이어 이동 속도(CONFIG.player.speed)에만 곱하는 배율 = baseMult × (1 + speedPerLevel × 이동 속도 강화 레벨). 템포·적에게는 영향이 없다.
-// baseMult(0.45)는 초반이 너무 쉬워지지 않게 하는 기본값이고, 강화 레벨 효과는 그 위에 레벨당 +4%(+10이면 1.4배)로 얹힌다.
+// 플레이어 이동 속도(CONFIG.player.speed)에만 곱하는 배율 = baseMult × (1 + speedPerLevel × 효과 레벨). 템포·적에게는 영향이 없다.
+// baseMult(0.5)는 초반이 너무 쉬워지지 않게 하는 기본값이고, 강화 레벨 효과는 그 위에 레벨당 +4%로 얹힌다. 효과 레벨(enhance-curve.effectiveLevel)은 +10까지 1레벨 1이고
+// 그 위는 절반이라 +10이면 1.4배, +20이면 1.6배다(직선이면 1.8배).
 export function playerSpeedMultiplier(progress) {
   const { baseMult, speedPerLevel } = cfg().pace;
-  return baseMult * (1 + speedPerLevel * speedLevelOf(progress));
+  return baseMult * (1 + speedPerLevel * effectiveLevel(speedLevelOf(progress)));
 }
 
 // 플레이어가 화면에서 느끼는 속도 배율(템포 × 이동 속도). 5단계·+10 ≈ 1단계의 4.6배(baseMult는 약분된다).
