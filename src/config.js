@@ -194,7 +194,7 @@ export const CONFIG = {
     reversalNoticeMs: 800,
   },
   // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 balance.pace, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
-  // 강화 레벨은 0~20이다(ENHANCE.success의 길이, pace.maxSpeedLevel과 같다). 레벨당 효과는 kneeAt(10)까지는 그대로이고 그 위로는 kneeSlope(0.5)배만 센다(systems/enhance-curve.js effectiveLevel):
+  // 강화 레벨은 0~20이다(ENHANCE.outcomes의 길이, pace.maxSpeedLevel과 같다). 레벨당 효과는 kneeAt(10)까지는 그대로이고 그 위로는 kneeSlope(0.5)배만 센다(systems/enhance-curve.js effectiveLevel):
   // +10에서 성장 ×1.8·속도 ×1.4·생명력 10초(예전 최고)이고, +20에서 성장 ×2.2·속도 ×1.6·생명력 13초다. 직선으로 이으면 ×2.6·×1.8·16초다.
   progression: { growthPerLevel: 0.08, kneeAt: 10, kneeSlope: 0.5 },
   // 직접 먹은 뒤부터 필드에서 실제로 흐른 시간을 센다. hungerGraceSec: 먹지 않고 이만큼 지나면 생명력이 줄기 시작한다(사용자 지시 2026-11-23: 5 → 3초, 변경 이력 17).

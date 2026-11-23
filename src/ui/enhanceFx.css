@@ -156,6 +156,28 @@
   animation: ykfx-stamp 420ms 160ms cubic-bezier(.2, 1.6, .4, 1) both;
 }
 
+/* 깨짐 직전: 금이 가고 떤다. 결과는 아직이다. */
+.ykfx[data-kind='suspense'][data-phase='reveal'] .ykfx-orb {
+  filter: brightness(.88) saturate(.75);
+  animation: ykfx-tremble 90ms linear infinite;
+}
+.ykfx[data-kind='suspense'][data-phase='reveal'] .ykfx-title {
+  color: #ffd2a0; text-shadow: 0 0 18px #d4682d, 0 2px 0 #0008;
+  animation: ykfx-drop 420ms cubic-bezier(.3, 1.4, .5, 1) both;
+}
+/* 보호됨: 깨짐의 붉은 빛 대신 청록 빛 고리가 보물을 감싼다. */
+.ykfx[data-kind='protected'] {
+  --orb-glow: #8fe3c8; --title: #e6fff6; --title-glow: #5fc8aa;
+}
+.ykfx[data-kind='protected'][data-phase='reveal'] .ykfx-orb {
+  box-shadow: 0 0 0 6px #d4fff1aa, 0 0 56px 12px #5fc8aa, inset -8px -12px 24px #0006, inset 6px 8px 18px #fff4;
+  animation: ykfx-ward 700ms ease-out both;
+}
+.ykfx[data-kind='protected'][data-phase='reveal'] .ykfx-flash {
+  background: radial-gradient(circle at 50% 46%, #f2fffa 0, #8fe3c8cc 30%, transparent 62%);
+  animation: ykfx-flash 520ms ease-out both;
+}
+
 .ykfx-crack { position: absolute; inset: -6%; width: 112%; height: 112%; pointer-events: none; clip-path: circle(44.6%); }
 .ykfx-crack path { fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
 .ykfx-crack-line { stroke: #10201a; stroke-width: 2.2; animation: ykfx-draw 200ms calc(var(--i) * 30ms) ease-out forwards; }
@@ -176,6 +198,8 @@
 .ykfx-bump { display: inline-block; animation: ykfx-bump 560ms cubic-bezier(.2, 1.8, .4, 1); }
 
 @keyframes ykfx-spin { to { rotate: 360deg; } }
+@keyframes ykfx-tremble { 0% { translate: -2px 1px; } 25% { translate: 2px -1px; } 50% { translate: -1px -2px; } 75% { translate: 1px 2px; } 100% { translate: -2px 1px; } }
+@keyframes ykfx-ward { 0% { scale: 1.22; filter: brightness(2); } 100% { scale: 1; filter: brightness(1.1); } }
 @keyframes ykfx-veil-in { from { opacity: 0; } }
 @keyframes ykfx-slam { 0% { opacity: 0; scale: 2.4; } 60% { opacity: 1; } 100% { opacity: 1; scale: 1; } }
 @keyframes ykfx-slam-big { 0% { opacity: 0; scale: 3.2; filter: blur(6px); } 55% { opacity: 1; filter: none; } 100% { opacity: 1; scale: 1; } }

@@ -3,12 +3,22 @@ import { createProgress } from '../systems/progress.js';
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { FORMS } from '../data/forms.js';
 import { normalizeItem } from '../systems/weapons.js';
+import { normalizeDevolve } from '../systems/enhance.js';
+import { normalizePendingProtect } from '../systems/protect.js';
 import { DIFFICULTY, hasLives, livesFor, normalizeDifficulty } from '../systems/difficulty.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
 // 앞으로 형태 id를 바꿔야 할 때 { 옛id: 새id }를 여기에 적는다(normalizeProgress가 형태 검사 전에 바꾼다). 지금은 비어 있다.
 export const FORM_ID_ALIASES = {};
+
+// 연속 강화 방침 { degrade: 'A'|'B', protect: 'use'|'skip' }. 둘 다 올바를 때만 읽는다.
+export function normalizeAutoPolicy(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  if (raw.degrade !== 'A' && raw.degrade !== 'B') return undefined;
+  if (raw.protect !== 'use' && raw.protect !== 'skip') return undefined;
+  return { degrade: raw.degrade, protect: raw.protect };
+}
 
 // 알 수 없는 값·잘못된 타입은 기본값으로 대체
 export function normalizeProgress(raw, forms = FORMS) {
@@ -28,9 +38,9 @@ export function normalizeProgress(raw, forms = FORMS) {
   // 이전 저장본의 '대표 효과'(signature) 레벨은 같은 레벨의 '생명력'(vitality)으로 옮기고 signature는 버린다.
   const rawEnh = raw.enh && typeof raw.enh === 'object' ? { ...raw.enh } : {};
   if (!isNum(rawEnh.vitality) && isNum(rawEnh.signature)) rawEnh.vitality = rawEnh.signature;
-  // 강화 레벨은 0~ENHANCE.success.length(20)의 정수로 읽는다. 최고 레벨이 10에서 20으로 늘어도(변경 이력 22) 옛 저장본(0~10)은 그대로 유효하고 SAVE.version은 그대로다.
+  // 강화 레벨은 0~ENHANCE.outcomes.length(20)의 정수로 읽는다. 최고 레벨이 10에서 20으로 늘어도(변경 이력 22) 옛 저장본(0~10)은 그대로 유효하고 SAVE.version은 그대로다.
   // 범위를 벗어나거나 소수인 값은 가장 가까운 정수로 보정한다(예전에는 거르지 않아 enhanceCost가 RangeError를 냈다).
-  for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = Math.max(0, Math.min(ENHANCE.success.length, Math.trunc(rawEnh[k])));
+  for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = Math.max(0, Math.min(ENHANCE.outcomes.length, Math.trunc(rawEnh[k])));
   // 장착 칸·보관함의 물건은 { kind, level, paid? }로 읽는다(docs/design-weapons.md 7절): kind가 없으면 여의주, 레벨이 0~15 정수가 아니면 버리고,
   // 보관함은 TREASURE.inventorySlots(5칸)을 넘으면 앞에서부터 남긴다. SAVE.version은 그대로다(필드 추가는 '없으면 기본값'으로 읽는다).
   base.treasure = normalizeItem(raw.treasure);
@@ -42,7 +52,18 @@ export function normalizeProgress(raw, forms = FORMS) {
   }
   const pending = raw.pendingDegrade === 'signature' ? 'vitality' : raw.pendingDegrade;
   if (ENHANCE.stats.includes(pending)) base.pendingDegrade = pending;
-  if (raw.pendingDevolve === true && base.stage > 1) base.pendingDevolve = true;
+  // 보호권 선택 대기(변경 이력 23): 굴림이 끝나고 선택만 남은 상태. 강화 레벨·장착 보물과 맞지 않으면 버린다. 퇴화 선택(pendingDegrade)과 함께 있을 수 없어 보호권 쪽이 앞선다.
+  const protectPending = normalizePendingProtect(raw.pendingProtect, base);
+  if (protectPending) {
+    base.pendingProtect = protectPending;
+    delete base.pendingDegrade;
+  }
+  // 역진화 예약: true(한 단계) 또는 2 이상의 정수(연속 강화가 쌓은 단계 수, 내릴 수 있는 만큼까지).
+  const devolve = normalizeDevolve(raw.pendingDevolve, base.stage);
+  if (devolve !== undefined) base.pendingDevolve = devolve;
+  // 연속 강화에서 마지막으로 고른 방침(다음에 창을 열 때 먼저 골라 둔다). 알 수 없는 값은 버린다.
+  const auto = normalizeAutoPolicy(raw.autoEnhance);
+  if (auto) base.autoEnhance = auto;
   // 기존 저장은 노말이고 하드의 목숨은 0~10 정수다.
   base.difficulty = normalizeDifficulty(raw.difficulty);
   if (hasLives(base.difficulty)) {

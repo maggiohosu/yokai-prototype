@@ -25,7 +25,8 @@ export function announceWeaponUnlocks(progress, previousStage) {
   const run = unlockRuns.get(progress) ?? startUnlockRun(progress, previousStage);
   const stage = unlockedStage(progress);
   if (stage <= run.highest) return '';
-  const opened = WEAPONS.filter(w => w.unlockStage > run.highest && w.unlockStage <= stage);
+  // 상점에서 파는 무기만 단계로 열린다(대요괴 전용 보패는 상점에 없어 알리지 않는다, 변경 이력 24).
+  const opened = WEAPONS.filter(w => w.source === 'shop' && w.unlockStage > run.highest && w.unlockStage <= stage);
   run.highest = stage;
   if (!opened.length) return '';
   sfx.play('weapon-unlock');

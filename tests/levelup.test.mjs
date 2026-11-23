@@ -13,7 +13,7 @@ import {
 import { FORMS } from '../src/data/forms.js';
 
 const L = CONFIG.levelUp;
-const MAX_ENH = ENHANCE.success.length; // 능력 최고 레벨(강화 레벨 20 지시 뒤에는 20)
+const MAX_ENH = ENHANCE.outcomes.length; // 능력 최고 레벨(강화 레벨 20 지시 뒤에는 20)
 
 function setup(yoryeok = 0, patch = {}) {
   const progress = Object.assign(createProgress(), { yoryeok }, patch);

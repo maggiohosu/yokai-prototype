@@ -1,13 +1,14 @@
 // EvolveView(progress, forms, { getFormImage, onDone, save })를 호출하면 선택 화면이 열린다.
 // getFormImage(formId, grade)는 텍스처의 이미지 URL 또는 canvas를 반환한다.
 // 진화 즉시 save(progress)를 호출한다(기본 saveProgress). 닫으면 onDone(진화 결과 또는 null)을 호출한다.
-// HubView에서 B를 택했다면 같은 progress를 넘긴다. pendingDevolve 처리는 이 화면이 한 번 맡는다.
+// HubView에서 B를 택했다면 같은 progress를 넘긴다. pendingDevolve 처리는 이 화면이 한 번 맡는다(연속 강화가 B를 여러 번 골랐으면 예약한 단계 수만큼 한꺼번에 내린다).
 
 import { REGIONS } from '../config.js';
 import { sfx } from '../audio/sfx.js';
 import { announceWeaponUnlocks } from '../game/fx.js';
 import { unlockedStage } from '../systems/weapons.js';
 import { saveProgress } from '../state/save.js';
+import { devolveSteps } from '../systems/enhance.js';
 import { buildChoices, canEvolve, devolve, evolve, evolutionCost, gradeOdds, unknownPool } from '../systems/evolution.js';
 import { abilityLabel } from '../systems/abilities.js';
 import { ALIGNMENT } from '../systems/tuning-evolution.js';
@@ -78,7 +79,11 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
   const catalog = evolutionForms(forms);
   let previous;
   if (progress.pendingDevolve) {
-    previous = devolve(progress, catalog);
+    for (let steps = devolveSteps(progress); steps > 0; steps--) {
+      const step = devolve(progress, catalog);
+      if (!step) break;
+      previous = step;
+    }
     delete progress.pendingDevolve;
     save(progress);
   }

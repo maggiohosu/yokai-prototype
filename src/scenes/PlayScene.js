@@ -20,6 +20,7 @@ import { FireButton } from '../game/fireButton.js';
 import { BoosterButton, boosterMult, createBooster, stepBoosterSim } from '../game/booster.js';
 import { MaintButton } from '../game/maintButton.js';
 import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenance.js';
+import { hasPendingChoice } from '../systems/protect.js';
 import { getCurrentSlot, loadProgress, saveProgress } from '../state/save.js';
 import { hasLives, normalizeDifficulty, onRunEnd } from '../systems/difficulty.js';
 import { takeTitleSelection } from '../ui/TitleView.js';
@@ -244,6 +245,17 @@ export class PlayScene extends Phaser.Scene {
     } else if (debug && debug !== 'music' && !data.progress) {
       if (preview) { this.progress.yoryeok += 5000; this.progress.diet.south += 40; this.progress.treasure ??= { level: 9 }; }
       setTimeout(() => (debug === 'evolve' ? EvolveView(this.progress, FORMS, { getFormImage: (id) => this.formImage(id), save: this.saveProgress, onDone: () => this.openHub() }) : this.openHub()), 300);
+    }
+    // 보호권·퇴화 선택이 저장된 채 열렸다면(새로고침) 판을 시작하기 전에 정비 화면으로 같은 선택창을 연다(변경 이력 23). 굴림은 이미 끝났고 선택만 남아 있다.
+    // 다른 창(진화 카드 등)이 판을 멈춰 두고 있으면 닫힐 때까지 기다렸다가(최대 약 10초) 연다.
+    if (!sandbox && hasPendingChoice(this.progress)) {
+      let tries = 0;
+      const openPending = () => {
+        if (this.ended || this.maintenance || !hasPendingChoice(this.progress) || ++tries > 20) return;
+        if (this.paused) setTimeout(openPending, 500);
+        else this.openMaintenance();
+      };
+      setTimeout(openPending, 300);
     }
   }
   refreshIdentity() {

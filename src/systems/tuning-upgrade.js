@@ -20,20 +20,43 @@ export function statUpgradeText(stat, level, maxed) {
   return maxed ? label + percent(level) + '%' : label + percent(level) + '% → +' + percent(level + 1) + '%';
 }
 
-// 확률표 단위는 %. 배열의 인덱스는 시도 전 현재 레벨이다(길이 20 = 최고 레벨 +20).
+// 본체 강화 확률표. 단위는 %다. 배열의 인덱스는 시도 전 현재 레벨이다(인덱스 n = +(n+1)로 올리는 시도, 길이 20 = 최고 레벨 +20).
+// 사용자 지시(2026-11-24): 5단계(+5로 올리는 시도)는 성공 50·대성공 20·실패 20·퇴화 10, 20단계는 성공 4·대성공 1·실패 55·퇴화 40으로 두고 사이는 단계별로 조정한다.
+// 네 값은 서로 배타적인 전체 확률이라 합이 100이다. 성공 = +1, 대성공 = +greatLevels(2), 실패 = 그대로, 퇴화 = 보호권을 쓰지 않으면 A(−1레벨) 또는 B(역진화).
+// 만든 규칙(docs/plan.md 변경 이력 23): +5와 +20은 위 고정점 그대로, +6~+19는 네 값을 두 고정점 사이에서 선형 보간해 소수 첫째 자리로 반올림하고 합 100은 실패 칸에서 맞췄다.
+// +1~+4는 퇴화 0·대성공 20(+5와 같다)·실패 5·10·15·20(+5의 20으로 5씩 이어짐)·성공은 나머지다. 그래서 표 전체에서 성공·대성공은 내려가기만 하고 실패·퇴화는 올라가기만 한다.
+// 이 표가 2026-11-23의 '퇴화 확률 2배'와 같은 날의 '퇴화 확률 1/2' 지시를 대체한다(보물 깨짐 확률은 그대로, TREASURE.breakOnFailure).
+// 천장(pity): 실패·퇴화마다 다음 시도의 '총 성공 확률'(성공 + 대성공)에 +pityStep%p를 얹고 성공하면 0으로 돌린다(어느 레벨이든 시도 20번 안에 성공이 보장된다).
+// 얹은 만큼 늘어난 성공 확률은 표에서 정해진 대성공 몫(대성공 ÷ 총 성공)으로 나뉘고, 줄어든 실패는 표의 퇴화 몫(퇴화 ÷ (실패 + 퇴화))으로 나뉜다. 천장이 0이면 표의 값 그대로다.
 export const ENHANCE = {
   stats: ['growth', 'speed', 'vitality'],
-  // 사용자 지시(2026-11-24): 최고 레벨 10 → 20. +10 이후(인덱스 10~19)는 성공률 10% 바닥을 그대로 잇는다. 천장(pity: 실패·퇴화마다 +5%p, 성공하면 0)이 쌓여 어느 레벨이든 19번 안에 성공이 보장되고 평균은 레벨마다 4번 안팎이다.
-  // 근거(모의 시험 표)는 docs/plan.md 변경 이력 22.
-  success: [95, 90, 80, 70, 60, 50, 40, 30, 20, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
-  // 사용자 지시(2026-11-23): 파괴 확률 2배. 본체는 파괴 대신 퇴화가 그 자리라 퇴화 확률을 2배(100 상한)로 해석한다. 옛 값 [0,0,0,0,30,30,40,40,50,50].
-  // +10 이후는 100 상한의 연장이다. 퇴화 A(−1레벨)만 고르면 +12부터는 사실상 막히지만(시도 1만 회 이상), B(강화 유지하고 역진화)·보호권으로 레벨을 지키면 +20까지 약 60번이다.
-  degradeOnFailure: [0, 0, 0, 0, 60, 60, 80, 80, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100],
-  greatOnSuccess: 5, // 레벨과 상관없이 같다(레벨별로 나누지 않았다). 20번째 레벨 직전에서는 +1만 오른다(상한 20).
+  outcomes: [
+    { success: 75, great: 20, fail: 5, degrade: 0 },
+    { success: 70, great: 20, fail: 10, degrade: 0 },
+    { success: 65, great: 20, fail: 15, degrade: 0 },
+    { success: 60, great: 20, fail: 20, degrade: 0 },
+    { success: 50, great: 20, fail: 20, degrade: 10 }, // 고정점: 5단계
+    { success: 46.9, great: 18.7, fail: 22.4, degrade: 12 },
+    { success: 43.9, great: 17.5, fail: 24.6, degrade: 14 },
+    { success: 40.8, great: 16.2, fail: 27, degrade: 16 },
+    { success: 37.7, great: 14.9, fail: 29.4, degrade: 18 },
+    { success: 34.7, great: 13.7, fail: 31.6, degrade: 20 },
+    { success: 31.6, great: 12.4, fail: 34, degrade: 22 },
+    { success: 28.5, great: 11.1, fail: 36.4, degrade: 24 },
+    { success: 25.5, great: 9.9, fail: 38.6, degrade: 26 },
+    { success: 22.4, great: 8.6, fail: 41, degrade: 28 },
+    { success: 19.3, great: 7.3, fail: 43.4, degrade: 30 },
+    { success: 16.3, great: 6.1, fail: 45.6, degrade: 32 },
+    { success: 13.2, great: 4.8, fail: 48, degrade: 34 },
+    { success: 10.1, great: 3.5, fail: 50.4, degrade: 36 },
+    { success: 7.1, great: 2.3, fail: 52.6, degrade: 38 },
+    { success: 4, great: 1, fail: 55, degrade: 40 }, // 고정점: 20단계
+  ],
   greatLevels: 2,
   pityStep: 5,
   baseCost: 20, // 첫 레벨(+0 → +1) 비용. 이후 곡선은 CONFIG.enhanceCost(1~5레벨 1.6배씩, 5레벨 이후 2배씩)다(enhance.enhanceCost)
-  autoLimit: 200,
+  // 연속 강화는 한 번 누를 때 이 횟수만큼 멈추지 않고 이어서 시도한다(사용자 지시 2026-11-24, 변경 이력 23). 옛 autoLimit(200)은 이 값이 대신한다.
+  autoBatch: 20,
   singleAttemptGrades: ['S', 'S+'],
 };
 

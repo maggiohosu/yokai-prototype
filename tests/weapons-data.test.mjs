@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
-import { WEAPONS, WEAPON_BY_ID, WEAPON_IDS, DEFAULT_WEAPON } from '../src/data/weapons.js';
+import { WEAPONS, WEAPON_BY_ID, WEAPON_IDS, DEFAULT_WEAPON, SHOP_BOPAE, HERALD_BOPAE, SUCCESS_MULT } from '../src/data/weapons.js';
 import { FORMS } from '../src/data/forms.js';
 import { createProgress } from '../src/systems/progress.js';
 import { TREASURE } from '../src/systems/tuning-upgrade.js';
 import {
-  weaponStats, itemTitle, withSubject, unlockedStage, isUnlocked, normalizeItem, previewRows, kindOf, isWeaponKind,
+  weaponStats, itemTitle, withSubject, unlockedStage, isUnlocked, isShopKind, normalizeItem, previewRows, kindOf, isWeaponKind,
 } from '../src/systems/weapons.js';
 import {
   tryUpgrade, sellPrice, upgradeCost, tablePrice, upgradeOdds, chanceText, treasureStats, equip, sell,
@@ -17,14 +17,20 @@ const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg ?? ''} ${a}
 const rich = (yoryeok = 10_000_000) => Object.assign(createProgress(), { yoryeok });
 const MAX = TREASURE.success.length;
 const formOfStage = (stage) => FORMS.find((f) => f.stage === stage).id;
+const SHOP_IDS = WEAPON_IDS.filter((kind) => isShopKind(kind)); // 상점에서 파는 무기: 여의주 + 보패 4종(변경 이력 24)
 
 // ---- 데이터 8행 ----
-test('무기 데이터는 8행이고 id가 겹치지 않으며 진열 순서와 해금 단계가 1·2·2·3·3·4·4·5다', () => {
+test('무기 데이터는 8행이고 id가 겹치지 않으며 진열 순서와 상점 해금 단계가 1·2·2·3·3이고 대요괴 보패는 단계가 없다', () => {
   assert.equal(WEAPONS.length, 8);
   assert.equal(new Set(WEAPON_IDS).size, 8);
   assert.equal(DEFAULT_WEAPON, 'yeouiju');
   assert.deepEqual(WEAPON_IDS, ['yeouiju', 'fan', 'sword', 'mirror', 'beads', 'seal', 'gourd', 'bell']);
-  assert.deepEqual(WEAPONS.map((w) => w.unlockStage), [1, 2, 2, 3, 3, 4, 4, 5]);
+  assert.deepEqual(WEAPONS.map((w) => w.unlockStage), [1, 2, 2, 3, 3, null, null, null], '옥인·단호로·삼청령은 상점에 없어 해금 단계가 없다');
+  assert.deepEqual(WEAPONS.map((w) => w.source), ['shop', 'shop', 'shop', 'shop', 'shop', 'herald', 'herald', 'herald']);
+  assert.deepEqual(WEAPONS.map((w) => w.successMult), [1, 0.7, 0.7, 0.7, 0.7, 0.5, 0.5, 0.5]);
+  assert.deepEqual(SUCCESS_MULT, { base: 1, shop: 0.7, herald: 0.5 });
+  assert.deepEqual(SHOP_BOPAE, ['fan', 'sword', 'mirror', 'beads']);
+  assert.deepEqual(HERALD_BOPAE, ['seal', 'gourd', 'bell']);
   assert.deepEqual(WEAPONS.map((w) => w.order), [0, 1, 2, 3, 4, 5, 6, 7]);
   assert.deepEqual(WEAPONS.map((w) => w.name), ['여의주', '학우선', '도목검', '팔괘경', '염주', '옥인', '단호로', '삼청령']);
   assert.deepEqual(WEAPONS.map((w) => w.hanja), ['如意珠', '鶴羽扇', '桃木劍', '八卦鏡', '念珠', '玉印', '丹葫蘆', '三清鈴']);
@@ -211,14 +217,18 @@ function scripted(...values) {
   return () => (queue.length ? queue.shift() : 0.5);
 }
 
-test('모든 무기·레벨의 성공률·깨짐·파편이 여의주와 같다(결정 D3)', () => {
+test('무기마다 성공률은 여의주 표 × 배율이고 깨짐 몫·파편은 모든 무기가 같다(변경 이력 24)', () => {
   const rolls = [0, 0.05, 0.1, 0.3, 0.5, 0.6, 0.899, 0.9, 0.95, 0.999];
   for (const kind of WEAPON_IDS) {
+    const mult = WEAPON_BY_ID[kind].successMult;
     for (let level = 0; level < MAX; level++) {
+      const success = Math.round(TREASURE.success[level] * mult * 10) / 10; // 기준을 따로 다시 적은 식
       for (const a of rolls) for (const b of rolls) {
-        const want = tryUpgrade({ kind: 'yeouiju', level }, { rng: scripted(a, b) });
         const got = tryUpgrade({ kind, level }, { rng: scripted(a, b) });
-        assert.deepEqual(got, want, `${kind} +${level} rolls ${a},${b}`);
+        const where = `${kind} +${level} rolls ${a},${b}`;
+        if (a * 100 < success) assert.deepEqual(got, { result: 'success', from: level, to: level + 1, shards: 0 }, where);
+        else if (TREASURE.breakOnFailure[level] > 0 && b * 100 < TREASURE.breakOnFailure[level]) assert.deepEqual(got, { result: 'break', from: level, to: null, shards: level * TREASURE.shardsPerLevel }, where);
+        else assert.deepEqual(got, { result: 'fail', from: level, to: level, shards: 0 }, where);
       }
     }
     assert.throws(() => tryUpgrade({ kind, level: MAX }), RangeError, `${kind} 최고 레벨`);
@@ -252,13 +262,14 @@ test('chanceText: 이 결과가 나올 확률 한 줄(소수 첫째 자리까지
   assert.throws(() => chanceText('success', null), RangeError);
 });
 
-test('가격표 4-2: 모든 무기 +0~+5의 판매가·구매가·강화비가 같다', () => {
+test('가격표 4-2: 모든 무기 +0~+5의 판매가·강화비가 같고 상점에서 파는 무기는 구매가도 같다', () => {
   for (const kind of WEAPON_IDS) {
     const levels = shopLevels();
     assert.deepEqual(levels.map((level) => tablePrice(level, kind)), [5, 11, 26, 58, 132, 300], kind);
     assert.deepEqual(levels.map((level) => sellPrice({ kind, level })), [5, 11, 26, 58, 132, 300], kind);
-    assert.deepEqual(levels.map((level) => buyPrice(kind, level)), [13, 28, 65, 145, 330, 750], kind);
     assert.deepEqual(levels.map((level) => upgradeCost({ kind, level })), [2, 4, 7, 14, 29, 58], kind);
+    if (isShopKind(kind)) assert.deepEqual(levels.map((level) => buyPrice(kind, level)), [13, 28, 65, 145, 330, 750], kind);
+    else for (const level of levels) assert.throws(() => buyPrice(kind, level), RangeError, `${kind} 상점에서 팔지 않는다`);
   }
   assert.equal(upgradeCost({ kind: 'fan', level: MAX }), Infinity);
   assert.deepEqual([0, 5, 10, 15].map((l) => sellPrice({ level: l })), [5, 300, 5000, 100000], 'kind가 없으면 여의주');
@@ -270,14 +281,22 @@ test('가격표 4-2: 모든 무기 +0~+5의 판매가·구매가·강화비가 �
   }
 });
 
-test('상점 구매는 무기마다 { kind, level, paid } 한 줄을 보관함에 넣는다', () => {
-  for (const [kind, stage] of [['yeouiju', 1], ['fan', 2], ['sword', 2], ['mirror', 3], ['beads', 3], ['seal', 4], ['gourd', 4], ['bell', 5]]) {
+test('상점 구매는 상점 무기마다 { kind, level, paid } 한 줄을 보관함에 넣는다', () => {
+  for (const [kind, stage] of [['yeouiju', 1], ['fan', 2], ['sword', 2], ['mirror', 3], ['beads', 3]]) {
     const p = rich(5000);
     p.discovered = [formOfStage(stage)];
     const r = buy(p, kind, 2);
     assert.deepEqual(r, { ok: true, kind, level: 2, price: 65 }, kind);
     assert.deepEqual(p.inventory, [{ kind, level: 2, paid: 65 }]);
     assert.equal(p.yoryeok, 5000 - 65);
+  }
+  // 옥인·단호로·삼청령은 몇 단계든 상점에서 살 수 없다
+  for (const kind of HERALD_BOPAE) {
+    const p = rich(5000);
+    p.discovered = [formOfStage(5)];
+    assert.deepEqual(buy(p, kind, 2), { ok: false, reason: 'kind' }, kind);
+    assert.deepEqual(p.inventory, []);
+    assert.equal(p.yoryeok, 5000);
   }
 });
 
@@ -294,8 +313,8 @@ function mulberry(seed) {
 }
 const unlockAll = (p) => { p.discovered = [formOfStage(5)]; return p; };
 
-test('4-4: 모든 무기·+0~+5에서 사서 +15까지 강화(성공만)해 팔아도 받는 요력이 들인 요력보다 많지 않다', () => {
-  for (const kind of WEAPON_IDS) {
+test('4-4: 상점 무기·+0~+5에서 사서 +15까지 강화(성공만)해 팔아도 받는 요력이 들인 요력보다 많지 않다', () => {
+  for (const kind of SHOP_IDS) {
     for (const from of shopLevels()) {
       const p = unlockAll(rich());
       const start = p.yoryeok;
@@ -311,14 +330,14 @@ test('4-4: 모든 무기·+0~+5에서 사서 +15까지 강화(성공만)해 팔�
   }
 });
 
-test('4-4: 난수(실패·깨짐 섞임)로 강화해도 이익이 없다(모든 무기, 가격 배율 1·1.5·2)', () => {
+test('4-4: 난수(실패·깨짐 섞임)로 강화해도 이익이 없다(상점 무기, 가격 배율 1·1.5·2)', () => {
   const original = Object.fromEntries(WEAPONS.map((w) => [w.id, w.priceMult]));
   try {
     for (const mult of [1, 1.5, 2]) {
       for (const w of WEAPONS) w.priceMult = mult;
       const rng = mulberry(0xb0a7 + mult * 10);
       for (let trial = 0; trial < 400; trial++) {
-        const kind = WEAPON_IDS[trial % WEAPON_IDS.length];
+        const kind = SHOP_IDS[trial % SHOP_IDS.length];
         const from = shopLevels()[Math.floor(rng() * shopLevels().length)];
         const p = unlockAll(rich());
         const start = p.yoryeok;
@@ -379,15 +398,16 @@ test('unlockedStage: 발견한 형태의 최고 단계, 역진화로 다시 잠�
   assert.equal(unlockedStage({ discovered: ['x'] }, custom), 4);
 });
 
-test('isUnlocked와 상점 카드의 locked: 단계마다 정해진 무기가 열린다', () => {
+test('isUnlocked와 상점 카드의 locked: 단계마다 정해진 상점 무기가 열리고 대요괴 보패는 어느 단계에서도 상점에 없다', () => {
   const opens = { 1: ['yeouiju'], 2: ['yeouiju', 'fan', 'sword'], 3: ['yeouiju', 'fan', 'sword', 'mirror', 'beads'],
-    4: ['yeouiju', 'fan', 'sword', 'mirror', 'beads', 'seal', 'gourd'], 5: WEAPON_IDS };
+    4: ['yeouiju', 'fan', 'sword', 'mirror', 'beads'], 5: ['yeouiju', 'fan', 'sword', 'mirror', 'beads'] };
   for (const stage of [1, 2, 3, 4, 5]) {
     const p = createProgress();
     p.discovered = [formOfStage(stage)];
     const open = WEAPON_IDS.filter((kind) => isUnlocked(p, kind));
     assert.deepEqual(open, opens[stage], `단계 ${stage}`);
     const cards = shopCatalog(p);
+    assert.deepEqual(cards.map((c) => c.kind), SHOP_IDS, `진열 ${stage}: 여의주 + 보패 4종만`);
     assert.deepEqual(cards.filter((c) => !c.locked).map((c) => c.kind), opens[stage], `카드 ${stage}`);
     for (const card of cards) assert.equal(card.unlockStage, WEAPON_BY_ID[card.kind].unlockStage);
   }
@@ -396,27 +416,32 @@ test('isUnlocked와 상점 카드의 locked: 단계마다 정해진 무기가 �
   assert.deepEqual(shopCatalog().filter((c) => !c.locked).map((c) => c.kind), ['yeouiju'], 'progress를 안 줘도 처음 상태');
 });
 
-test('잠긴 무기를 사려 하면 locked로 막고 요력·보관함이 그대로다', () => {
+test('잠긴 무기를 사려 하면 locked로 막고, 상점에 없는 무기는 kind로 막으며 요력·보관함이 그대로다', () => {
   const p = rich();
   const snapshot = structuredClone(p);
-  for (const kind of WEAPON_IDS.filter((k) => k !== 'yeouiju')) {
+  for (const kind of SHOP_BOPAE) {
     assert.equal(buyBlocker(p, kind, 0), 'locked', kind);
     assert.deepEqual(buy(p, kind, 0), { ok: false, reason: 'locked' });
+  }
+  for (const kind of HERALD_BOPAE) {
+    assert.equal(buyBlocker(p, kind, 0), 'kind', kind);
+    assert.deepEqual(buy(p, kind, 0), { ok: false, reason: 'kind' });
   }
   assert.deepEqual(p, snapshot);
   p.discovered = [formOfStage(3)];
   assert.equal(buyBlocker(p, 'mirror', 0), null);
-  assert.equal(buyBlocker(p, 'bell', 0), 'locked');
+  assert.equal(buyBlocker(p, 'seal', 0), 'kind', '단계가 올라도 열리지 않는다');
   assert.ok(buy(p, 'mirror', 0).ok);
-  assert.equal(buy(p, 'bell', 0).reason, 'locked');
+  assert.equal(buy(p, 'bell', 0).reason, 'kind');
 });
 
-test('막힘 이유의 우선순위: 레벨 → 없는 보물 → 잠김 → 가득 참 → 요력 부족', () => {
+test('막힘 이유의 우선순위: 레벨 → 없는 보물(상점에 없는 것 포함) → 잠김 → 가득 참 → 요력 부족', () => {
   const p = rich(0);
   assert.equal(buyBlocker(p, 'bell', 99), 'level');
   assert.equal(buyBlocker(p, 'banana', 0), 'kind');
   assert.equal(buyBlocker(p, 'banana', 99), 'level');
-  assert.equal(buyBlocker(p, 'bell', 0), 'locked', '잠김이 요력 부족보다 먼저');
+  assert.equal(buyBlocker(p, 'mirror', 0), 'locked', '잠김이 요력 부족보다 먼저');
+  assert.equal(buyBlocker(p, 'bell', 0), 'kind', '상점에 없는 보패는 해금 단계가 없다');
   assert.equal(buyBlocker(p, 'yeouiju', 0), 'funds');
   for (let i = 0; i < TREASURE.inventorySlots; i++) p.inventory.push({ kind: 'yeouiju', level: 0 });
   assert.equal(buyBlocker(p, 'yeouiju', 0), 'full');
@@ -424,7 +449,7 @@ test('막힘 이유의 우선순위: 레벨 → 없는 보물 → 잠김 → 가
   assert.throws(() => buyPrice('fan', 6), RangeError);
   for (const reason of ['level', 'kind', 'locked', 'full', 'funds']) assert.ok(blockerText[reason].length > 0, reason);
   assert.equal(lockedText('fan'), '2단계에 닿으면 열려요');
-  assert.equal(lockedText('bell'), '5단계에 닿으면 열려요');
+  assert.equal(lockedText('beads'), '3단계에 닿으면 열려요');
 });
 
 test('옛 호출 buy(state, level)·buyPrice(level)·buyBlocker(state, level)은 여의주로 본다', () => {

@@ -369,6 +369,8 @@ test('같은 progress로 다시 시작하면 이전 판의 해금 표시는 사�
   assert.equal(announceWeaponUnlocks(progress, 2), '상점에 새 보패 · 팔괘경 · 염주');
   assert.equal(isNewWeapon(progress, 3), true);
   assert.equal(isNewWeapon(progress, 2), false);
+  progress.stage = 5;
+  assert.equal(announceWeaponUnlocks(progress, 3), '', '4·5단계에는 상점에 새로 열리는 보패가 없다(옥인·단호로·삼청령은 대요괴로만)');
 });
 
 test('무기 여덟 종은 발사 한 번에 발사음과 섬광을 한 번씩 낸다', t => {

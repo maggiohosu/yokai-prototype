@@ -1,5 +1,8 @@
 // 여의주 강화·판매 연출. 확률 결과는 treasure.tryUpgrade가 먼저 정하고, 여기서는 보여주기만 한다.
-//   playEnhanceFx(attempt, { shake, sub, onDone })  attempt = tryUpgrade 결과({ result, from, to, shards })
+//   playEnhanceFx(attempt, { shake, sub, onDone, skipCharge })  attempt = tryUpgrade 결과({ result, from, to, shards })
+//   보호권을 쓸 수 있는 깨짐은 두 번에 나눠 보여 준다(사용자 지시 2026-11-24, 변경 이력 23):
+//     ① result 'suspense'(깨짐 직전): 긴장 → '깨질 위기' 한 장면을 보이고 끝난다. 이어서 호출 측이 보호권 선택창을 연다.
+//     ② 선택 뒤 result 'protected'(보호됨) 또는 'break'(기존 깨짐 연출)를 skipCharge: true로 결과 장면만 보여 준다(긴장은 ①에서 이미 봤다).
 //   playSellFx({ origin, wallet, amount, from, to, format, level })
 // 위쪽의 순수 함수(fxTier·planFx·clock)는 node 테스트에서 그대로 쓴다. DOM은 play* 안에서만 만진다.
 
@@ -8,7 +11,7 @@ import { sfx } from '../audio/sfx.js';
 export const FX = {
   chargeMs: 800,
   reducedChargeMs: 250,
-  revealMs: { success: 1300, great: 2100, fail: 1000, break: 1500 },
+  revealMs: { success: 1300, great: 2100, fail: 1000, break: 1500, suspense: 900, protected: 1300 },
   tierRevealBonus: { base: 0, gold: 250, grand: 650 },
   reducedRevealMs: 900,
   // 긴장을 건너뛴 탭이 결과까지 곧바로 닫지 않게 한다.
@@ -54,8 +57,7 @@ export function chargePlan(from, { reduced = false } = {}) {
 }
 
 export function revealPlan(attempt, { reduced = false } = {}) {
-  const kind = attempt.result === 'great' ? 'great' : attempt.result === 'break' ? 'break'
-    : attempt.result === 'success' ? 'success' : 'fail';
+  const kind = { great: 'great', break: 'break', success: 'success', protected: 'protected', suspense: 'suspense' }[attempt.result] ?? 'fail';
   const up = kind === 'success' || kind === 'great';
   const level = up ? attempt.to : attempt.from + 1;
   const tier = fxTier(level);
@@ -93,6 +95,20 @@ export function revealPlan(attempt, { reduced = false } = {}) {
     plan.sub = '+' + attempt.from + ' 유지';
     plan.cracks = 2 + rank;
     plan.impactPx = round1(3 + rank * 1.5);
+  } else if (kind === 'suspense') {
+    // 깨짐 직전: 금만 가고 결과는 아직이다. 소리는 내지 않아 긴장이 끊긴 정적이 된다.
+    plan.title = '깨질 위기';
+    plan.sub = '보호권으로 막을 수 있어요';
+    plan.cracks = 3 + rank;
+    plan.impactPx = round1(2 + rank * 1.5);
+    plan.sounds = [];
+  } else if (kind === 'protected') {
+    plan.title = '보호됨';
+    plan.sub = '+' + attempt.from + ' 유지 · 보호권 1장 사용';
+    plan.sparks = Math.round(24 + t * 30);
+    plan.flash = round1(0.35 + rank * 0.1);
+    plan.impactPx = round1(1.5 + rank);
+    plan.sounds = [{ name: SOUNDS.success, volume: 0.7 }];
   } else {
     plan.title = '파괴';
     plan.sub = '파편 +' + (attempt.shards ?? 0);
@@ -110,6 +126,9 @@ export function revealPlan(attempt, { reduced = false } = {}) {
 export function planFx(attempt, { reduced = false } = {}) {
   return { charge: chargePlan(attempt.from, { reduced }), reveal: revealPlan(attempt, { reduced }), reduced };
 }
+
+// 결과 장면만 보이는 연출인가(보호권 선택 뒤의 보호됨·깨짐). 이때 긴장 구간은 건너뛴다.
+export const resultOnly = (attempt) => attempt.result === 'protected';
 
 export function sellPlan(amount, { reduced = false } = {}) {
   const coins = reduced ? 0 : Math.round(Math.min(36, Math.max(6, Math.log10(Math.max(1, amount)) * 7)));
@@ -172,6 +191,8 @@ const PALETTE = {
   gold: { spark: ['#fff6d6', '#f3d68a', '#e0a93b'], shard: ['#e3b85a', '#a8741f', '#f6dc98'], edge: '#fff4cf' },
   grand: { spark: ['#ffffff', '#ffe9a8', '#ffd36b', '#ffb44a'], shard: ['#f2c96a', '#b98325', '#fff0c2'], edge: '#ffffff' },
 };
+// 보호됨은 불꽃 대신 차가운 청록 빛으로 감싼다(깨짐의 붉은 빛과 구분).
+const WARD = { spark: ['#ffffff', '#d4fff1', '#8fe3c8', '#5fc8aa'], shard: [], edge: '#ffffff' };
 const FIREWORK_COLORS = ['#ffd36b', '#f28a6b', '#9fe0bd', '#ffffff', '#f6b3d0'];
 
 function el(tag, className, text) {
@@ -351,16 +372,16 @@ function burst(list, x, y, { count, colors, speed = [260, 620], gravity = 260, l
 let active = null;
 
 // attempt는 이미 정해진 결과다. onDone은 연출이 끝나거나 건너뛰어 닫힐 때 한 번 불린다.
-export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersReducedFx() } = {}) {
+export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersReducedFx(), skipCharge = false } = {}) {
   active?.finish();
   const plan = planFx(attempt, { reduced });
   const { charge, reveal } = plan;
-  const timing = { chargeMs: charge.ms, revealMs: reveal.ms };
-  const palette = PALETTE[reveal.tier];
+  const timing = { chargeMs: skipCharge ? 0 : charge.ms, revealMs: reveal.ms };
+  const palette = reveal.kind === 'protected' ? WARD : PALETTE[reveal.tier];
 
   const layer = el('dialog', 'ykfx');
-  layer.dataset.tier = charge.tier;
-  layer.dataset.phase = 'charge';
+  layer.dataset.tier = skipCharge ? reveal.tier : charge.tier;
+  layer.dataset.phase = skipCharge ? 'reveal' : 'charge';
   layer.dataset.kind = reveal.kind;
   layer.dataset.full = String(reveal.fullscreen);
   if (reduced) layer.dataset.reduced = 'true';
@@ -383,7 +404,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
   words.append(stake, title, subLine);
   stage.append(orbBox, words);
   const flash = el('div', 'ykfx-flash');
-  const hint = el('p', 'ykfx-hint', '탭하면 건너뛰기');
+  const hint = el('p', 'ykfx-hint', skipCharge ? '탭하면 닫기' : '탭하면 건너뛰기');
   layer.prepend(veil, rays);
   layer.append(stage, flash, hint);
   document.body.append(layer);
@@ -406,7 +427,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
     : Math.min(window.innerWidth, window.innerHeight) * 0.42);
 
   const t0 = performance.now();
-  let clock = startClock(t0);
+  let clock = skipCharge ? { phase: 'reveal', since: t0, skipped: true } : startClock(t0);
   let revealedAt = 0;
   let last = t0;
   let raf = 0;
@@ -415,7 +436,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
   let moteBudget = charge.motes;
   let moteClock = 0;
   const schedule = [];
-  const chargeVoice = sfx.play(charge.sound, { waitMs: 300 });
+  const chargeVoice = skipCharge ? { stop() {} } : sfx.play(charge.sound, { waitMs: 300 });
 
   function setShake(px) {
     if (!shake) return;
@@ -436,7 +457,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
     if (reveal.cracks) orbBox.append(crackSvg(reveal.cracks));
     if (reduced) return;
     const c = center();
-    if (reveal.kind === 'success' || reveal.kind === 'great') {
+    if (reveal.kind === 'success' || reveal.kind === 'great' || reveal.kind === 'protected') {
       burst(particles, c.x, c.y, {
         count: reveal.sparks, colors: palette.spark,
         speed: reveal.fullscreen ? [380, 1100] : [240, 640],
@@ -444,7 +465,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
       });
       const ringSize = reveal.fullscreen ? Math.hypot(window.innerWidth, window.innerHeight) * 0.6 : c.r * 3.2;
       particles.push({ kind: 'ring', x: c.x, y: c.y, r0: c.r, r1: ringSize, size: 10, alpha: 0.9, color: palette.spark[1], age: 0, life: 0.6, vx: 0, vy: 0, gravity: 0, drag: 0, delay: 0 });
-      if (reveal.tier !== 'base') particles.push({ kind: 'ring', x: c.x, y: c.y, r0: c.r, r1: ringSize * 0.7, size: 5, alpha: 0.7, color: '#ffffff', age: 0, life: 0.75, vx: 0, vy: 0, gravity: 0, drag: 0, delay: 0.12 });
+      if (reveal.tier !== 'base' || reveal.kind === 'protected') particles.push({ kind: 'ring', x: c.x, y: c.y, r0: c.r, r1: ringSize * 0.7, size: 5, alpha: 0.7, color: '#ffffff', age: 0, life: 0.75, vx: 0, vy: 0, gravity: 0, drag: 0, delay: 0.12 });
       for (let i = 0; i < reveal.fireworks; i++) {
         schedule.push({
           at: now + 180 + i * 260,
@@ -457,7 +478,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
           },
         });
       }
-    } else if (reveal.kind === 'fail') {
+    } else if (reveal.kind === 'fail' || reveal.kind === 'suspense') {
       for (let i = 0; i < 14; i++) {
         particles.push({ kind: 'dust', x: c.x + rand(-c.r, c.r) * 0.7, y: c.y + rand(-c.r, c.r) * 0.5, vx: rand(-30, 30), vy: rand(10, 80), gravity: 320, drag: 0.5, size: rand(1.5, 3), color: '#c9c2a8', age: 0, life: rand(0.5, 0.9), delay: rand(0, 0.15) });
       }
@@ -565,6 +586,7 @@ export function playEnhanceFx(attempt, { shake, sub, onDone, reduced = prefersRe
     else window.setTimeout(remove, 160);
   }
 
+  if (skipCharge) enterReveal(t0);
   layer.addEventListener('pointerdown', tap);
   layer.addEventListener('cancel', (event) => { event.preventDefault(); tap(); });
   // 브라우저가 Esc 연타로 창을 강제로 닫아도 결과 알림은 한 번 보낸다.

@@ -1,4 +1,4 @@
-// 무기(여의주 + 보패 7종)의 수치·이름·해금·저장 정규화. 설계: docs/design-weapons.md 2-2·5-1·7절. Phaser·DOM 의존 없음.
+// 무기(여의주 + 보패 7종: 상점 4종 + 대요괴 3종)의 수치·이름·해금·저장 정규화. 설계: docs/design-weapons.md 2-2·5-1·7절. Phaser·DOM 의존 없음.
 // 모든 무기가 TREASURE.levels 한 표(방향 수 W, 방향당 발사 K, 속도 배율 S, 파워 배율, 유도 H)를 읽고 무기마다 자기 모양의 수로 바꿔 쓴다.
 // 물건 한 개 = { kind, level, paid? }. kind가 없거나 모르는 값이면 여의주로 읽는다(옛 저장 호환).
 
@@ -132,8 +132,12 @@ export function unlockedStage(progress, forms = FORMS) {
   return stage;
 }
 
+// 상점에서 파는 무기인가(출처 'shop': 여의주와 보패 4종). 대요괴 전용 보패(옥인·단호로·삼청령)는 상점에 없다(변경 이력 24).
+export const isShopKind = (kind) => isWeaponKind(kind) && WEAPON_BY_ID[kind].source === 'shop';
+
+// 상점 진열이 열렸는가. 상점에서 파는 무기만 단계(unlockStage)로 열리고, 대요괴 전용 보패는 어느 단계에서도 상점이 열어 주지 않는다(false).
 export function isUnlocked(progress, kind, forms = FORMS) {
-  return isWeaponKind(kind) && WEAPON_BY_ID[kind].unlockStage <= unlockedStage(progress, forms);
+  return isShopKind(kind) && WEAPON_BY_ID[kind].unlockStage <= unlockedStage(progress, forms);
 }
 
 // ---- 저장 정규화(설계 7절): 장착 칸·보관함의 물건 하나를 읽는다. 버릴 물건이면 null. ----

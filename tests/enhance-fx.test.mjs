@@ -239,3 +239,59 @@ test('소리: 첫 사용자 입력에서 잠금이 풀리고 불러온 소리를
   assert.equal(played.length, 1);
   assert.equal(played[0].bytes, 8);
 });
+
+// ---- 보호권 선택 연출(사용자 지시 2026-11-24, 변경 이력 23) ----
+// 깨짐 직전: 긴장 → '깨질 위기' 장면 → (선택창) → 보호됨 또는 기존 깨짐 연출(긴장은 건너뜀).
+test('깨짐 직전(suspense): 긴장은 다른 결과와 같고, 결과 장면은 금만 가고 소리·파편이 없다', () => {
+  const suspense = { result: 'suspense', from: 11, to: 11, shards: 11 };
+  for (const other of outcomes(11)) assert.deepEqual(planFx(suspense).charge, planFx(other).charge, '긴장은 결과와 무관하다');
+  const reveal = revealPlan(suspense);
+  assert.equal(reveal.kind, 'suspense');
+  assert.equal(reveal.title, '깨질 위기');
+  assert.equal(reveal.sub, '보호권으로 막을 수 있어요');
+  assert.ok(reveal.cracks > 0);
+  assert.equal(reveal.shards, 0, '아직 깨지지 않았다');
+  assert.deepEqual(reveal.sounds, []);
+  assert.ok(reveal.ms < FX.revealMs.break, '결과 장면보다 짧다');
+  assert.equal(reveal.tier, 'gold', '시도한 레벨(+12)의 강도');
+  // 동작 줄이기: 입자·번쩍임 없이 글자만
+  const reduced = revealPlan(suspense, { reduced: true });
+  for (const key of ['sparks', 'fireworks', 'shards', 'flash', 'impactPx']) assert.equal(reduced[key], 0, key);
+  assert.equal(reduced.title, '깨질 위기');
+});
+
+test('보호됨(protected): "+N 유지 · 보호권 1장 사용"과 성공 종소리(작게), 불꽃은 있고 금·파편은 없다', () => {
+  const protectedPlan = revealPlan({ result: 'protected', from: 9, to: 9, shards: 0 });
+  assert.equal(protectedPlan.kind, 'protected');
+  assert.equal(protectedPlan.title, '보호됨');
+  assert.equal(protectedPlan.sub, '+9 유지 · 보호권 1장 사용');
+  assert.equal(protectedPlan.cracks, 0);
+  assert.equal(protectedPlan.shards, 0);
+  assert.ok(protectedPlan.sparks > 0 && protectedPlan.flash > 0);
+  assert.deepEqual(protectedPlan.sounds, [{ name: SOUNDS.success, volume: 0.7 }]);
+  const reduced = revealPlan({ result: 'protected', from: 9, to: 9 }, { reduced: true });
+  assert.equal(reduced.sparks, 0);
+  assert.equal(reduced.title, '보호됨');
+  assert.deepEqual(reduced.sounds, [{ name: SOUNDS.success, volume: 0.7 }], '소리는 그대로');
+});
+
+test('선택 뒤 깨짐 연출은 기존 그대로다(파괴·파편 수·소리)', () => {
+  const broken = revealPlan({ result: 'break', from: 7, to: null, shards: 7 });
+  assert.equal(broken.kind, 'break');
+  assert.equal(broken.title, '파괴');
+  assert.equal(broken.sub, '파편 +7');
+  assert.ok(broken.shards > 0);
+  assert.deepEqual(broken.sounds.map((s) => s.name), [SOUNDS.break]);
+});
+
+test('연출은 결과를 바꾸지 않는다: suspense·protected 계획을 세워도 입력이 그대로', () => {
+  const treasure = { level: 9 };
+  const draws = [0.99, 0.1]; // 실패 쪽 굴림 뒤 깨짐 굴림(+9 시도: 실패 중 깨짐 40%)
+  const attempt = tryUpgrade(treasure, { rng: () => draws.shift(), canProtect: true });
+  assert.equal(attempt.needsProtect, true);
+  const frozen = structuredClone({ attempt, treasure });
+  planFx({ ...attempt, result: 'suspense' });
+  planFx({ ...attempt, result: 'protected' }, { reduced: true });
+  assert.deepEqual({ attempt, treasure }, frozen);
+  assert.equal(treasure.level, 9);
+});

@@ -14,10 +14,11 @@ const SHOP = CONFIG.shop;
 
 const rich = (yoryeok = 1_000_000) => Object.assign(createProgress(), { yoryeok });
 
-test('상점은 무기 8종을 해금 단계 순서로 진열하고 카드마다 +0~+5를 낮은 레벨부터 담는다', () => {
+test('상점은 여의주와 보패 4종(학우선·도목검·팔괘경·염주)을 해금 단계 순서로 진열하고 카드마다 +0~+5를 낮은 레벨부터 담는다', () => {
   assert.deepEqual(shopLevels(), [0, 1, 2, 3, 4, 5]);
   const catalog = shopCatalog(rich());
-  assert.deepEqual(catalog.map((card) => card.kind), ['yeouiju', 'fan', 'sword', 'mirror', 'beads', 'seal', 'gourd', 'bell']);
+  assert.deepEqual(catalog.map((card) => card.kind), ['yeouiju', 'fan', 'sword', 'mirror', 'beads'], '옥인·단호로·삼청령은 대요괴로만 얻는다(변경 이력 24)');
+  assert.deepEqual(catalog.map((card) => card.unlockStage), [1, 2, 2, 3, 3]);
   for (const card of catalog) {
     assert.deepEqual(card.levels.map((x) => x.level), [0, 1, 2, 3, 4, 5], card.kind);
     const prices = card.levels.map((x) => x.price);

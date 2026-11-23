@@ -10,13 +10,15 @@
 
 import { saveProgress } from '../state/save.js';
 import { enhanceCost, tryEnhance } from '../systems/enhance.js';
+import { hasPendingChoice, protectPrompt, settleProtect } from '../systems/protect.js';
 import { applyBody, pauseOptions } from '../systems/levelup.js';
 import { vitalityUpgradeText } from '../systems/tuning-upgrade.js';
 import { attemptText, degradeDialog, statNames } from './HubView.js';
+import { protectCopy, protectDialog } from './EnhanceDialogs.js';
 import { button, el, formImage, number, openOverlay } from './OddsTable.js';
 
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
-const attemptTone = { great: 'great', degrade: 'bad', fail: 'fail', success: 'good' };
+const attemptTone = { great: 'great', degrade: 'bad', fail: 'fail', success: 'good', protected: 'protect' };
 
 function setTone(node, tone) {
   node.dataset.tone = tone ?? '';
@@ -43,7 +45,7 @@ export function LevelUpView(progress, forms, run, {
   footer.append(status, resume);
 
   function leave(callback, ...args) {
-    if (!dialog.open || progress.pendingDegrade) return;
+    if (!dialog.open || hasPendingChoice(progress)) return;
     save(progress);
     close();
     callback?.(...args);
@@ -69,7 +71,7 @@ export function LevelUpView(progress, forms, run, {
   }
 
   function chooseBody() {
-    if (!dialog.open || progress.pendingDegrade) return;
+    if (!dialog.open || hasPendingChoice(progress)) return;
     const applied = applyBody(progress, run);
     if (!applied) return;
     save(progress);
@@ -78,7 +80,7 @@ export function LevelUpView(progress, forms, run, {
   }
 
   function chooseAbility(stat) {
-    if (!dialog.open || progress.pendingDegrade) return;
+    if (!dialog.open || hasPendingChoice(progress)) return;
     const cost = enhanceCost(progress.enh[stat]);
     if (!Number.isFinite(cost) || progress.yoryeok < cost) return;
     // 결과를 먼저 정하고, 화면은 그 결과를 보여주기만 한다.
@@ -88,7 +90,28 @@ export function LevelUpView(progress, forms, run, {
     onAbility?.(stat, outcome);
     say(statNames[stat] + ' ' + attemptText(outcome), attemptTone[outcome.result]);
     render();
-    if (outcome.needsChoice) askDegrade(stat, outcome);
+    if (outcome.needsProtect) askProtect();
+    else if (outcome.needsChoice) askDegrade(stat, outcome);
+  }
+
+  // 퇴화가 나왔고 보호권이 있으면 결과를 확정하기 전에 쓸지 묻는다(HubView와 같은 선택창, systems/protect.js).
+  function askProtect() {
+    const model = protectPrompt(progress);
+    if (!model) return;
+    protectDialog(dialog, protectCopy(model, statNames[model.stat]), model.canUse, (use) => {
+      const outcome = settleProtect(progress, use);
+      save(progress);
+      if (outcome.ok && use) {
+        onAbility?.(outcome.stat, { result: 'fail', from: outcome.from, to: outcome.to, protectedUsed: true });
+        say(statNames[outcome.stat] + ' 보호됨, 보호권 1장으로 +' + outcome.from + ' 유지', 'protect');
+      } else if (outcome.ok) {
+        say(statNames[outcome.stat] + ' 퇴화, 퇴화 방식을 고르세요', 'bad');
+        render();
+        askDegrade(outcome.stat, { result: 'degrade', needsChoice: true });
+        return;
+      }
+      render();
+    });
   }
 
   function askDegrade(stat, outcome) {
@@ -173,12 +196,13 @@ export function LevelUpView(progress, forms, run, {
     const scroll = body.scrollTop;
     body.replaceChildren(evolveCard(evolve), bodyCard(bodyOption), abilityCard(ability));
     body.scrollTop = scroll;
-    resume.disabled = !!progress.pendingDegrade;
+    resume.disabled = hasPendingChoice(progress);
   }
 
   render();
   // 저장된 퇴화 선택이 남은 채 열렸다면 먼저 고르게 한다.
-  if (progress.pendingDegrade) askDegrade(progress.pendingDegrade, { result: 'degrade', needsChoice: true });
+  if (progress.pendingProtect) askProtect();
+  else if (progress.pendingDegrade) askDegrade(progress.pendingDegrade, { result: 'degrade', needsChoice: true });
   return { close: () => leave(onResume) };
 }
 

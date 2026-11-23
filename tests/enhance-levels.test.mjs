@@ -21,7 +21,7 @@ import { loadProgress, normalizeProgress, saveProgress } from '../src/state/save
 import { LevelTable } from '../src/ui/OddsTable.js';
 
 const near = (actual, expected, eps = 1e-9) => assert.ok(Math.abs(actual - expected) <= eps, actual + ' !≈ ' + expected);
-const MAX = ENHANCE.success.length;
+const MAX = ENHANCE.outcomes.length;
 
 function seeded(seed) {
   let a = seed | 0;
@@ -35,7 +35,7 @@ function seeded(seed) {
 
 test('최고 레벨: 본체 능력은 20, 속도 상한 설정도 20, 보물은 그대로 15', () => {
   assert.equal(MAX, 20);
-  assert.equal(ENHANCE.degradeOnFailure.length, MAX);
+  assert.equal(ENHANCE.outcomes.length, MAX);
   assert.equal(CONFIG.pace.maxSpeedLevel, MAX);
   assert.equal(CONFIG.balance.pace.maxSpeedLevel, MAX);
   assert.equal(TREASURE.success.length, 15);
@@ -139,43 +139,82 @@ test('보물 판매가·본전 상한은 강화 비용 곡선과 무관하다: �
   assert.ok(cumulative < tablePrice(15), cumulative + ' ≥ ' + tablePrice(15));
 });
 
-test('확률표: 20칸, 성공 10% 바닥(+10 이후), 퇴화 100 상한의 연장, 네 결과의 합은 100', () => {
+// 확률표(사용자 지시 2026-11-24, 변경 이력 23): 5단계(+5로 올리는 시도) = 성공 50·대성공 20·실패 20·퇴화 10, 20단계 = 성공 4·대성공 1·실패 55·퇴화 40.
+// 그 사이는 선형 보간(소수 첫째 자리 반올림, 합 100은 실패 칸에서 맞춤), +1~+4는 퇴화 0·대성공 20·실패 5씩 늘려 +5의 20에 닿는다.
+test('확률표: 20칸, 고정점 두 줄이 정확하고 모든 줄의 합은 100이다', () => {
   const rows = enhanceTable();
   assert.equal(rows.length, MAX);
+  assert.deepEqual(ENHANCE.outcomes[4], { success: 50, great: 20, fail: 20, degrade: 10 }); // 5단계
+  assert.deepEqual(ENHANCE.outcomes[19], { success: 4, great: 1, fail: 55, degrade: 40 }); // 20단계
   rows.forEach((r, level) => {
     assert.equal(r.level, level);
     assert.equal(r.to, level + 1);
     assert.equal(r.cost, enhanceCost(level));
     near(r.success + r.great + r.fail + r.degrade, 100, 1e-9);
-    near(r.great, ENHANCE.success[level] * ENHANCE.greatOnSuccess / 100);
-    assert.ok(ENHANCE.degradeOnFailure[level] >= 0 && ENHANCE.degradeOnFailure[level] <= 100, level + '');
-    assert.deepEqual({ success: r.success, great: r.great, fail: r.fail, degrade: r.degrade }, getEnhanceOdds((() => { const p = createProgress(); p.enh.growth = level; return p; })(), 'growth'));
-    if (level > 0) {
-      assert.ok(ENHANCE.success[level] <= ENHANCE.success[level - 1], '성공률은 내려가기만 한다 ' + level);
-      assert.ok(ENHANCE.degradeOnFailure[level] >= ENHANCE.degradeOnFailure[level - 1], '퇴화는 올라가기만 한다 ' + level);
-    }
+    assert.deepEqual({ success: r.success, great: r.great, fail: r.fail, degrade: r.degrade }, ENHANCE.outcomes[level]);
+    const p = createProgress();
+    p.enh.growth = level;
+    assert.deepEqual(getEnhanceOdds(p, 'growth'), ENHANCE.outcomes[level], '표시 확률 = 표 (천장 0) +' + (level + 1));
+    for (const value of Object.values(ENHANCE.outcomes[level])) assert.ok(value >= 0 && value <= 100);
   });
-  for (let level = 9; level < MAX; level++) {
-    assert.equal(ENHANCE.success[level], 10, '+' + level + ' 성공률 바닥');
-    assert.equal(ENHANCE.degradeOnFailure[level], 100, '+' + level + ' 퇴화 상한');
-  }
-  // 2026-11-23의 1~10칸은 그대로다.
-  assert.deepEqual(ENHANCE.success.slice(0, 10), [95, 90, 80, 70, 60, 50, 40, 30, 20, 10]);
-  assert.deepEqual(ENHANCE.degradeOnFailure.slice(0, 10), [0, 0, 0, 0, 60, 60, 80, 80, 100, 100]);
-  assert.equal(ENHANCE.greatOnSuccess, 5);
+  assert.equal(ENHANCE.greatLevels, 2, '대성공은 지금처럼 +2');
+  assert.equal(ENHANCE.pityStep, 5);
 });
 
-test('천장(pity): 어느 레벨에서든 실패가 쌓이면 성공률이 100%에 닿아 막히지 않는다', () => {
+test('확률표: 성공·대성공은 내려가기만 하고 실패·퇴화는 올라가기만 한다(+1~+20 전체)', () => {
+  const rows = ENHANCE.outcomes;
+  for (let level = 1; level < MAX; level++) {
+    assert.ok(rows[level].success <= rows[level - 1].success, '성공 +' + (level + 1));
+    assert.ok(rows[level].great <= rows[level - 1].great, '대성공 +' + (level + 1));
+    assert.ok(rows[level].fail >= rows[level - 1].fail, '실패 +' + (level + 1));
+    assert.ok(rows[level].degrade >= rows[level - 1].degrade, '퇴화 +' + (level + 1));
+  }
+  // +6~+19는 두 고정점 사이에서 단계마다 일정하게 움직인다(소수 첫째 자리 반올림 오차 0.1 이내).
+  for (let level = 5; level < MAX; level++) {
+    const t = (level - 4) / 15;
+    for (const key of ['success', 'great', 'degrade']) {
+      const line = rows[4][key] + (rows[19][key] - rows[4][key]) * t;
+      assert.ok(Math.abs(rows[level][key] - line) <= 0.05 + 1e-9, key + ' +' + (level + 1) + ' ' + rows[level][key] + ' vs ' + line);
+    }
+    // 합 100은 실패 칸이 맞춘다(선형값과 0.15 이내).
+    const failLine = rows[4].fail + (rows[19].fail - rows[4].fail) * t;
+    assert.ok(Math.abs(rows[level].fail - failLine) <= 0.15 + 1e-9, 'fail +' + (level + 1));
+  }
+  // +1~+4: 퇴화 0, 대성공 20(+5와 같다), 실패는 5·10·15·20.
+  for (let level = 0; level < 4; level++) {
+    assert.equal(rows[level].degrade, 0);
+    assert.equal(rows[level].great, 20);
+    assert.equal(rows[level].fail, 5 * (level + 1));
+  }
+});
+
+test('천장(pity): 얹은 %p는 총 성공(성공+대성공)에 더해지고, 대성공 몫과 퇴화 몫은 표대로 나뉜다', () => {
+  const p = createProgress();
+  p.enh.growth = 4; // +5 시도: 총 성공 70(대성공 몫 2/7), 실패 30 중 퇴화 몫 1/3
+  p.pity = 10;
+  const odds = getEnhanceOdds(p, 'growth');
+  near(odds.success + odds.great, 80);
+  near(odds.great, 80 * 20 / 70);
+  near(odds.fail + odds.degrade, 20);
+  near(odds.degrade, 20 / 3);
+  near(odds.success + odds.great + odds.fail + odds.degrade, 100);
+  p.pity = 100; // 100 상한
+  assert.deepEqual(getEnhanceOdds(p, 'growth').fail, 0);
+  assert.deepEqual(getEnhanceOdds(p, 'growth').degrade, 0);
+});
+
+test('천장(pity): 어느 레벨에서든 실패가 쌓이면 성공률이 100%에 닿아 막히지 않는다(최대 20번)', () => {
   for (let level = 0; level < MAX; level++) {
     const p = createProgress();
     p.enh.speed = level;
     p.protect = 1e9;
     let attempts = 0;
     while (p.enh.speed === level) {
-      tryEnhance(p, 'speed', { rng: () => 0.999999 }); // 항상 실패 쪽 굴림
+      tryEnhance(p, 'speed', { rng: () => 0.999999, protect: 'use' }); // 항상 실패 쪽 굴림
       assert.ok(++attempts <= 20, '+' + level + ' 천장이 안 쌓인다');
     }
-    assert.equal(attempts, Math.ceil((100 - ENHANCE.success[level]) / ENHANCE.pityStep) + 1, '+' + level);
+    const total = ENHANCE.outcomes[level].success + ENHANCE.outcomes[level].great;
+    assert.equal(attempts, Math.ceil((100 - total) / ENHANCE.pityStep) + 1, '+' + level);
   }
 });
 
@@ -188,19 +227,19 @@ test('+19 → +20 시도: 대성공이어도 최고 레벨 20을 넘지 않는�
   assert.equal(p.enh.growth, 20);
 });
 
-test('퇴화 선택(A: −1레벨)은 +20에서도 같다', () => {
+test('퇴화 선택(A: −1레벨)은 +20 가까이에서도 같다', () => {
   const p = createProgress();
   p.enh.vitality = 15;
-  const queue = [0.999999, 0.5];
+  const queue = [0.999999, 0.1];
   const result = tryEnhance(p, 'vitality', { rng: () => queue.shift() });
   assert.equal(result.result, 'degrade');
   assert.deepEqual(applyDegradeChoice(p, 'A', 'vitality'), { ok: true });
   assert.equal(p.enh.vitality, 14);
 });
 
-test('모의 시험(시드 고정): 레벨을 지키면(B 선택·보호권) +20까지 평균 약 60번, A만 고르면 +12부터 사실상 막힌다', () => {
-  // 레벨을 지키는 정책: 퇴화가 나와도 레벨을 잃지 않는다(보호권·역진화 B). 처음부터 +20까지 시도 횟수와 쓴 요력.
-  const guard = { attempts: 0, yoryeok: 0 };
+test('모의 시험(시드 고정): 레벨을 지키면(B 선택·보호권) +20까지 평균 약 38번, A만 골라도 +20까지 닿는다(평균 약 119번)', () => {
+  // 레벨을 지키는 정책: 퇴화가 나와도 레벨을 잃지 않는다(보호권 자동 사용). 처음부터 +20까지 시도 횟수와 쓴 요력. 정확한 기대값(마르코프 풀이)은 38번·약 2,590만.
+  const guard = { attempts: 0, yoryeok: 0, protects: 0 };
   const runs = 300;
   for (let i = 0; i < runs; i++) {
     const p = createProgress();
@@ -209,42 +248,43 @@ test('모의 시험(시드 고정): 레벨을 지키면(B 선택·보호권) +20
     while (p.enh.growth < MAX) {
       guard.yoryeok += enhanceCost(p.enh.growth);
       guard.attempts++;
-      tryEnhance(p, 'growth', { rng });
+      if (tryEnhance(p, 'growth', { rng, protect: 'use' }).protectedUsed) guard.protects++;
     }
   }
   const meanAttempts = guard.attempts / runs;
-  assert.ok(meanAttempts > 50 && meanAttempts < 80, '레벨을 지키는 평균 시도 ' + meanAttempts);
+  assert.ok(meanAttempts > 32 && meanAttempts < 44, '레벨을 지키는 평균 시도 ' + meanAttempts);
   const meanYoryeok = guard.yoryeok / runs;
-  // 실패 없이 한 번에 오르는 비용(합 6,872,054)의 3~6배(기대 약 4.3배, 약 2,990만).
-  assert.ok(meanYoryeok > 3 * 6_872_054 && meanYoryeok < 6 * 6_872_054, '평균 요력 ' + meanYoryeok);
+  // 실패 없이 한 번에 오르는 비용(합 6,872,054)의 3~5배(기대 약 3.8배).
+  assert.ok(meanYoryeok > 3 * 6_872_054 && meanYoryeok < 5 * 6_872_054, '평균 요력 ' + meanYoryeok);
+  assert.ok(guard.protects / runs > 6 && guard.protects / runs < 12, '보호권 평균 ' + guard.protects / runs);
 
-  // A만 고르는 정책(퇴화하면 한 레벨 내려감, 보호권 없음): +10까지는 수백 번, +12는 수천 번 이상이라 +15 이상은 사실상 못 간다.
-  let toTen = 0, toTwelve = 0;
-  const trials = 40;
+  // A만 고르는 정책(퇴화하면 한 레벨 내려감, 보호권 없음): 퇴화 확률이 낮아져 +20까지 닿는다(기대 약 119번). 보호권·B로 지키는 것보다 3배쯤 든다.
+  let attempts = 0, worst = 0;
+  const trials = 100;
   for (let i = 0; i < trials; i++) {
-    for (const [target, add] of [[10, (n) => { toTen += n; }], [12, (n) => { toTwelve += n; }]]) {
-      const p = createProgress();
-      const rng = seeded(1000 + i);
-      let n = 0;
-      while (p.enh.speed < target && n < 200_000) {
-        n++;
-        const r = tryEnhance(p, 'speed', { rng });
-        if (r.needsChoice) applyDegradeChoice(p, 'A', 'speed');
-      }
-      add(n);
+    const p = createProgress();
+    const rng = seeded(1000 + i);
+    let n = 0;
+    while (p.enh.speed < MAX && n < 50_000) {
+      n++;
+      const r = tryEnhance(p, 'speed', { rng });
+      if (r.needsChoice) applyDegradeChoice(p, 'A', 'speed');
     }
+    assert.equal(p.enh.speed, MAX, '시드 ' + i + '는 ' + n + '번 안에 +20에 닿지 못했다');
+    attempts += n;
+    worst = Math.max(worst, n);
   }
-  assert.ok(toTen / trials < 800, '+10까지 평균 ' + toTen / trials);
-  assert.ok(toTwelve / trials > 2000, '+12까지 평균 ' + toTwelve / trials);
+  assert.ok(attempts / trials > 80 && attempts / trials < 170, 'A만 평균 ' + attempts / trials);
+  assert.ok(worst < 2000, '가장 오래 걸린 판 ' + worst);
 });
 
-test('보물 확률표: 15칸, 성공 + 실패 + 깨짐 = 100, 비용은 upgradeCost와 같다(무기 8종 공통)', () => {
+test('보물 확률표: 15칸, 성공 + 실패 + 깨짐 = 100, 성공률은 그 무기의 것(여의주 × 배율), 비용은 upgradeCost와 같다(무기 8종)', () => {
   for (const kind of WEAPON_IDS) {
     const rows = treasureTable(kind);
     assert.equal(rows.length, 15);
     rows.forEach((r, level) => {
       near(r.success + r.fail + r.break, 100, 1e-9);
-      assert.deepEqual({ success: r.success, fail: r.fail, break: r.break }, upgradeOdds(level));
+      assert.deepEqual({ success: r.success, fail: r.fail, break: r.break }, upgradeOdds(level, kind));
       assert.equal(r.cost, upgradeCost({ kind, level }));
       assert.equal(r.to, level + 1);
     });

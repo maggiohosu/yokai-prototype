@@ -1,6 +1,8 @@
 import { CONFIG } from '../config.js';
 import { TREASURE } from './tuning-upgrade.js';
 import { costMultiplier } from './enhance-curve.js';
+import { hasPendingChoice } from './protect.js';
+import { recordTreasureSuccess } from './progress.js';
 import { kindOf, weaponOf, weaponStats } from './weapons.js';
 
 const maxLevel = TREASURE.success.length;
@@ -53,19 +55,26 @@ export function upgradeCost(target) {
   return typeof target === 'number' ? costAt(target, 'yeouiju') : costAt(target?.level, kindOf(target));
 }
 
-// 다음 강화의 결과별 확률(%). 성공 / 깨짐(실패 중 깨질 몫) / 실패(유지). 세 값의 합은 100. 모든 무기가 같은 표를 쓴다(결정 D3).
-export function upgradeOdds(level) {
+// 그 무기의 레벨별 성공률(%) = 여의주 성공률(TREASURE.success) × 무기의 successMult(상점 보패 0.7·대요괴 보패 0.5·여의주 1, data/weapons.js SUCCESS_MULT), 소수 첫째 자리까지
+// (사용자 지시 2026-11-24, docs/plan.md 변경 이력 24). 여의주 표가 15칸이라 +14 → +15까지 모든 레벨이 소수 한 자리로 딱 떨어진다.
+export function successRate(level, kind = 'yeouiju') {
   checkLevel(level);
   if (level === maxLevel) throw new RangeError('이미 최고 강화 레벨입니다.');
-  const success = TREASURE.success[level];
+  return Math.round(TREASURE.success[level] * weaponOf(kind).successMult * 10) / 10;
+}
+
+// 다음 강화의 결과별 확률(%). 성공 / 깨짐(실패 중 깨질 몫) / 실패(유지). 세 값의 합은 100. kind를 주지 않으면 여의주의 표다.
+// 성공은 successRate(level, kind)이고, 실패했을 때 깨질 몫(TREASURE.breakOnFailure)과 비용·판매가는 무기와 무관하게 같다(결정 D3는 '무기마다 확률표가 다르다'로 바뀌었다).
+export function upgradeOdds(level, kind = 'yeouiju') {
+  const success = successRate(level, kind);
   const broken = (100 - success) * TREASURE.breakOnFailure[level] / 100;
   return { success, fail: 100 - success - broken, break: broken };
 }
 
-// 레벨별 확률·비용 표(정비 화면의 '확률표', 여의주). 한 행 = 현재 레벨에서 다음 레벨로 올리는 한 번(+0 → +1 … +14 → +15). 모든 무기가 같은 표를 쓴다.
+// 레벨별 확률·비용 표(정비 화면의 '확률표'). 한 행 = 현재 레벨에서 다음 레벨로 올리는 한 번(+0 → +1 … +14 → +15). 성공률은 그 무기의 것(successRate), 비용은 그 무기의 강화비다.
 // success + fail + break = 100(upgradeOdds와 같은 식).
 export function treasureTable(kind = 'yeouiju') {
-  return TREASURE.success.map((_, level) => ({ level, to: level + 1, cost: costAt(level, kind), ...upgradeOdds(level) }));
+  return TREASURE.success.map((_, level) => ({ level, to: level + 1, cost: costAt(level, kind), ...upgradeOdds(level, kind) }));
 }
 
 // 강화 결과 문구에 붙이는 '이 결과가 나올 확률' 한 줄(사용자 결정 2026-11-23, 계획서 변경 이력 5).
@@ -87,21 +96,45 @@ export const saleValue = (treasure) => sellPrice(treasure);
 
 // 호출자가 비용을 지불한다. break면 소유 슬롯에서 여의주를 제거하고 shards를 적립한다.
 // 상점품(paid)이면 시도할 때마다(성공·실패 모두) 그 강화비를 paid에 더한다.
-export function tryUpgrade(treasure, { rng = Math.random } = {}) {
+// canProtect: 보호권이 있어 깨짐을 막을 수 있다. 깨짐이 추첨돼도 물건을 없애지 않고 { result: 'break', needsProtect: true }로 돌려준다
+// (보호권을 쓸지는 호출자가 묻는다: upgradeTreasure·systems/protect.settleProtect). 이때 to는 아직 그대로인 레벨이다.
+export function tryUpgrade(treasure, { rng = Math.random, canProtect = false } = {}) {
   const from = treasure.level;
   checkLevel(from);
   if (from === maxLevel) throw new RangeError('이미 최고 강화 레벨입니다.');
   if (hasPaid(treasure)) treasure.paid += upgradeCost(treasure);
-  if (rng() * 100 < TREASURE.success[from]) {
+  if (rng() * 100 < successRate(from, kindOf(treasure))) {
     treasure.level = from + 1;
     return { result: 'success', from, to: treasure.level, shards: 0 };
   }
   const risk = TREASURE.breakOnFailure[from];
   if (risk > 0 && rng() * 100 < risk) {
+    const shards = from * TREASURE.shardsPerLevel;
+    if (canProtect) return { result: 'break', from, to: from, shards, needsProtect: true };
     treasure.level = null;
-    return { result: 'break', from, to: null, shards: from * TREASURE.shardsPerLevel };
+    return { result: 'break', from, to: null, shards };
   }
   return { result: 'fail', from, to: from, shards: 0 };
+}
+
+// 장착한 보물을 한 번 강화한다(진행도 단위). 비용은 호출자가 지불한다. 확률 굴림이 여기서 끝나고, 결과는 모두 state에 반영된다:
+//   성공: 레벨 +1과 성향 점수(recordTreasureSuccess).
+//   깨짐 + 보호권 없음: 보물이 사라지고 파편을 받는다.
+//   깨짐 + 보호권 1장 이상: 결과를 확정하지 않고 state.pendingProtect를 세운다(outcome.needsProtect). 보물은 그대로이고, 쓸지 말지는 settleProtect가 정한다.
+export function upgradeTreasure(state, { rng = Math.random } = {}) {
+  const item = state.treasure;
+  if (!item) throw new Error('장착한 보물이 없습니다.');
+  if (hasPendingChoice(state)) throw new Error('먼저 보호권을 쓸지 선택해야 합니다.');
+  const outcome = tryUpgrade(item, { rng, canProtect: state.protect > 0 });
+  if (outcome.needsProtect) {
+    state.pendingProtect = { kind: 'treasure', from: outcome.from };
+  } else if (outcome.result === 'break') {
+    state.treasure = null;
+    state.shards += outcome.shards;
+  } else if (outcome.result === 'success') {
+    recordTreasureSuccess(state);
+  }
+  return outcome;
 }
 
 // 교환 가능한 보호권을 모두 지급하고 그 수를 반환한다.

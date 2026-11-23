@@ -4,59 +4,63 @@
 // B에서도 같은 progress로 EvolveView를 열면 된다. 각 콜백은 이 화면을 닫은 뒤 호출된다.
 
 import { drawWeaponIcon } from '../art/weapons.js';
+import { HERALD_BOPAE, SUCCESS_MULT, WEAPON_BY_ID } from '../data/weapons.js';
 import { sfx } from '../audio/sfx.js';
 import { musicToggle } from './TitleView.js';
 import { isNewWeapon } from '../game/fx.js';
 import { saveProgress } from '../state/save.js';
-import { applyDegradeChoice, autoEnhance, enhanceCost, enhanceTable, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
+import { applyDegradeChoice, autoEnhance, canDevolve, enhanceCost, enhanceTable, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
-import { recordTreasureSuccess } from '../systems/progress.js';
-import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, treasureTable, tryUpgrade, upgradeCost, upgradeOdds } from '../systems/treasure.js';
+import { hasPendingChoice, protectPrompt, settleProtect } from '../systems/protect.js';
+import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, treasureTable, upgradeCost, upgradeOdds, upgradeTreasure } from '../systems/treasure.js';
 import { blockerText, buy, buyBlocker, lockedText, shopCatalog } from '../systems/shop.js';
-import { itemTitle, previewRows, weaponOf, withSubject } from '../systems/weapons.js';
+import { itemTitle, kindOf, previewRows, weaponOf, withSubject } from '../systems/weapons.js';
 import { ENHANCE, TREASURE, statUpgradeText } from '../systems/tuning-upgrade.js';
 import { LevelTable, OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 import { playEnhanceFx, playSellFx, preloadEnhanceSounds } from './enhanceFx.js';
+import { autoSetupDialog, autoStopText, autoSummary, protectCopy, protectDialog, summaryBlock } from './EnhanceDialogs.js';
 
 export const statNames = { growth: '크기 성장', speed: '이동 속도', vitality: '생명력' };
 const outcomeNames = { success: '성공', great: '대성공', fail: '실패', degrade: '퇴화' };
 
 export function attemptText(attempt) {
+  if (attempt.needsProtect) return '퇴화 직전, 보호권을 쓸지 골라 주세요';
   if (attempt.protectedUsed) return '보호권 1장으로 +' + attempt.from + ' 유지';
+  if (attempt.degradeChoice === 'A') return '퇴화, +' + attempt.from + '에서 +' + attempt.to + '로';
+  if (attempt.degradeChoice === 'B') return '퇴화, 역진화로 +' + attempt.from + ' 유지';
   if (attempt.needsChoice) return '퇴화 방식을 고르세요';
   if (attempt.from === attempt.to) return '실패, +' + attempt.to + ' 유지';
   return outcomeNames[attempt.result] + ', +' + attempt.from + '에서 +' + attempt.to + '로';
 }
 
-function stopText(reason, progress, stat) {
-  if (reason === 'max') {
-    if (progress.enh[stat] === ENHANCE.success.length) return '최고 레벨 도달';
-    if (ENHANCE.singleAttemptGrades.includes(progress.grade)) return progress.grade + '등급은 한 번씩 강화할 수 있어요';
-    return '연속 강화 한도 도달';
-  }
-  return { target: '목표 도달', gold: '요력 부족', great: '대성공으로 중단', degrade: '퇴화로 중단' }[reason];
-}
-
 // 접이식 '확률표': 모든 레벨(본체 +1~+20, 보물 +1~+15)의 결과 확률(%)과 한 번 시도에 드는 요력을 한 표로 보여 준다(변경 이력 22).
-// 확률은 천장(실패마다 +5%p)·보호권을 반영하기 전의 기본값이다.
+// 확률은 천장(실패마다 성공률 +5%p)을 반영하기 전의 기본값이다(성공·대성공·실패·퇴화의 합이 100).
 function bodyLevelTable() {
   const rows = enhanceTable().map((r) => ['+' + r.to, number(r.success), number(r.great), number(r.fail), number(r.degrade), number(r.cost)]);
   const box = el('div');
-  box.append(el('p', 'yk-level-note', '+N은 그 레벨로 오르는 한 번의 시도예요. 확률(%)은 천장·보호권을 더하기 전이고, 실패할 때마다 성공률이 5%p씩 쌓여요. 요력은 한 번 시도에 드는 값이에요.'),
+  box.append(el('p', 'yk-level-note', '+N은 그 레벨로 오르는 한 번의 시도예요. 확률(%)은 천장을 더하기 전이고, 실패할 때마다 성공률이 5%p씩 쌓여요. 퇴화가 나왔을 때 보호권이 있으면 쓸지 물어봐요. 요력은 한 번 시도에 드는 값이에요.'),
     LevelTable('본체 강화 레벨별 확률표', ['단계', '성공', '대성공', '실패', '퇴화', '요력'], rows));
-  return disclosure('강화 확률표 (+1 ~ +' + ENHANCE.success.length + ')', box);
+  return disclosure('강화 확률표 (+1 ~ +' + ENHANCE.outcomes.length + ')', box);
 }
+// 성공률 배율을 사람이 읽는 말로: 여의주는 '여의주 성공률이 기준', 보패는 '성공률은 여의주의 70%'(상점 보패)·'50%'(대요괴 보패). 숫자는 data/weapons.js SUCCESS_MULT에서 읽는다.
+const percentOf = (mult) => Math.round(mult * 100);
+const successNote = (weapon) => (weapon.successMult === 1 ? '성공률은 여의주가 기준이에요.' : '성공률은 여의주의 ' + percentOf(weapon.successMult) + '%예요.');
 function treasureLevelTable(kind) {
-  const rows = treasureTable(kind).map((r) => ['+' + r.to, number(r.success), number(r.fail), number(r.break), number(r.cost)]);
+  const weapon = weaponOf(kind);
+  const rows = treasureTable(weapon.id).map((r) => ['+' + r.to, number(r.success), number(r.fail), number(r.break), number(r.cost)]);
   const box = el('div');
-  box.append(el('p', 'yk-level-note', '모든 보물이 같은 확률표를 써요. 요력은 한 번 시도에 드는 값이에요.'),
-    LevelTable('보물 강화 레벨별 확률표', ['단계', '성공', '실패', '깨짐', '요력'], rows));
-  return disclosure('보물 강화 확률표 (+1 ~ +' + TREASURE.success.length + ')', box);
+  box.append(el('p', 'yk-level-note', weapon.name + ' 확률표예요. ' + successNote(weapon) + ' 실패했을 때 깨질 몫과 요력은 모든 보물이 같아요. 요력은 한 번 시도에 드는 값이에요.'),
+    LevelTable(weapon.name + ' 강화 레벨별 확률표', ['단계', '성공', '실패', '깨짐', '요력'], rows));
+  return disclosure(weapon.name + ' 강화 확률표 (+1 ~ +' + TREASURE.success.length + ')', box);
 }
 
-function upgradeOddsTable(level) {
-  const odds = upgradeOdds(level);
-  return OddsTable('다음 보물 강화 확률', [['성공', odds.success], ['실패', odds.fail], ['깨짐', odds.break]]);
+function upgradeOddsTable(level, kind) {
+  const weapon = weaponOf(kind);
+  const odds = upgradeOdds(level, weapon.id);
+  const box = el('div');
+  box.append(OddsTable('다음 ' + weapon.name + ' 강화 확률', [['성공', odds.success], ['실패', odds.fail], ['깨짐', odds.break]]));
+  if (weapon.successMult !== 1) box.append(el('p', 'yk-hint', weapon.name + ' ' + successNote(weapon)));
+  return box;
 }
 
 export function degradeDialog(parent, progress, stat, onChoice) {
@@ -70,13 +74,13 @@ export function degradeDialog(parent, progress, stat, onChoice) {
     onChoice(choice);
   };
   const b = button('강화 유지하고 역진화', () => select('B'));
-  b.disabled = progress.stage <= 1;
+  b.disabled = !canDevolve(progress);
   const from = progress.enh[stat];
   modal.append(el('h2', 'yk-section-title', '퇴화 선택'),
     el('p', 'yk-caption', statNames[stat] + ' +' + from),
     el('p', 'yk-intro', '강화를 한 칸 낮추거나 이전 모습으로 돌아갈 수 있어요.'),
     button('강화를 +' + (from - 1) + '로 낮추기', () => select('A'), 'yk-primary'), b);
-  if (b.disabled) modal.append(el('p', 'yk-hint', '1단계에서는 역진화할 수 없어요.'));
+  if (b.disabled) modal.append(el('p', 'yk-hint', progress.stage <= 1 ? '1단계에서는 역진화할 수 없어요.' : '더 내릴 진화 단계가 없어요.'));
   parent.append(modal);
   modal.showModal();
 }
@@ -95,15 +99,16 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   const wallet = el('div', 'yk-wallet');
   header.append(identity, wallet);
 
-  let tab = 'body';
+  // 새로고침으로 다시 열었을 때 보물의 보호권 선택이 남아 있으면 보물 탭에서 이어 간다.
+  let tab = progress.pendingProtect?.kind === 'treasure' ? 'treasure' : 'body';
   let playingLog = false;
-  const targets = {};
+  let shielded = null; // 방금 보호권으로 지킨 능력. 다음 한 번의 그리기에서만 '보호됨' 효과를 낸다.
   const tabs = el('div', 'yk-tabs');
   tabs.setAttribute('role', 'group');
   tabs.setAttribute('aria-label', '정비 항목');
   for (const [key, label] of [['body', '본체 강화'], ['treasure', '보물'], ['shop', '상점']]) {
     const item = button(label, () => {
-      if (tab === key || playingLog || progress.pendingDegrade) return;
+      if (tab === key || playingLog || hasPendingChoice(progress)) return;
       tab = key;
       clearFeedback();
       render();
@@ -119,10 +124,11 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   status.setAttribute('role', 'status');
   const log = el('ol', 'yk-log');
   log.setAttribute('aria-label', '연속 강화 기록');
-  feedback.append(status, log);
+  const summaryBox = el('div', 'yk-summary-box');
+  feedback.append(status, log, summaryBox);
   const actions = el('div', 'yk-actions yk-hub-actions');
   function leave(callback, ...args) {
-    if (!dialog.open || playingLog || progress.pendingDegrade) return;
+    if (!dialog.open || playingLog || hasPendingChoice(progress)) return;
     close();
     callback?.(...args);
   }
@@ -141,6 +147,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
 
   function clearFeedback() {
     log.replaceChildren();
+    summaryBox.replaceChildren();
     status.textContent = '';
     status.dataset.tone = '';
   }
@@ -148,8 +155,8 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     status.textContent = message;
     status.dataset.tone = tone;
   }
-  const attemptTone = { great: 'great', degrade: 'bad', fail: 'fail', success: 'good' };
-  const autoTone = { great: 'great', degrade: 'bad', target: 'good', max: 'good', gold: '' };
+  const attemptTone = { great: 'great', degrade: 'bad', fail: 'fail', success: 'good', protected: 'protect' };
+  const autoTone = { batch: 'good', max: 'good', gold: '', devolve: 'bad', single: '' };
   function commit(message, tone = '') {
     save(progress);
     clearFeedback();
@@ -159,6 +166,18 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     void status.offsetWidth;
     status.classList.add('yk-flash');
     render();
+  }
+  // 창이 닫히고 화면이 다시 그려진 뒤 초점을 돌려준다(그려 두었던 단추는 사라졌으므로 같은 자리의 새 단추를 찾는다).
+  function focusAfter(selector) {
+    const target = body.querySelector(selector);
+    if (target && !target.disabled) target.focus({ preventScroll: true });
+  }
+  const statSelector = (kind, stat) => '[data-fx="' + kind + '"][data-stat="' + stat + '"]';
+
+  // 보호권 선택과 퇴화 선택이 남아 있으면 먼저 보호권, 그다음 퇴화 순서로 묻는다. 둘 다 저장돼 있어 새로고침 뒤에도 같은 창이 뜬다.
+  function askPending() {
+    if (progress.pendingProtect) askProtect();
+    else askDegrade();
   }
   function askDegrade() {
     const stat = progress.pendingDegrade;
@@ -171,28 +190,90 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         save(progress);
         setStatus(statNames[stat] + ' 강화 +' + progress.enh[stat]);
         render();
+        focusAfter(statSelector('enhance', stat));
       }
+    });
+  }
+  // 한 번씩 누르는 강화에서 퇴화(본체)·깨짐(보물)이 나왔고 보호권이 있을 때. 굴림은 이미 끝났고 이 선택은 결과만 바꾼다(systems/protect.js).
+  function askProtect() {
+    const model = protectPrompt(progress);
+    if (!model) return;
+    const subject = model.kind === 'body' ? statNames[model.stat] : weaponOf(progress.treasure).name;
+    protectDialog(dialog, protectCopy(model, subject), model.canUse, use => settleChoice(use, subject));
+  }
+  function settleChoice(use, subject) {
+    const kind = kindOf(progress.treasure); // 깨지면 장착 칸이 비므로 확률 문구에 쓸 무기 종류는 먼저 구해 둔다
+    const outcome = settleProtect(progress, use);
+    save(progress);
+    if (!outcome.ok) {
+      render();
+      askPending();
+      return;
+    }
+    if (outcome.kind === 'body') {
+      const { stat } = outcome;
+      if (use) {
+        shielded = stat;
+        commit(statNames[stat] + ' 보호됨, 보호권 1장으로 +' + outcome.from + ' 유지', 'protect');
+      } else {
+        commit(statNames[stat] + ' 퇴화, 퇴화 방식을 고르세요', 'bad');
+        askDegrade();
+        return;
+      }
+      focusAfter(statSelector('enhance', stat));
+      return;
+    }
+    const chance = chanceText('break', upgradeOdds(outcome.from, kind));
+    const message = use
+      ? '보호됨, ' + subject + ' +' + outcome.from + ' 유지 · 보호권 1장 사용 · ' + chance
+      : withSubject(subject) + ' 깨졌어요. 파편 +' + outcome.shards + ' · ' + chance;
+    // 선택은 이미 저장했다. 연출은 긴장을 건너뛰고 결과 장면(보호됨 또는 기존 깨짐)만 보여 준다.
+    upgradeFx = playEnhanceFx(outcome, {
+      shake: dialog,
+      skipCharge: true,
+      onDone() {
+        upgradeFx = null;
+        commit(message, use ? 'protect' : 'bad');
+        focusAfter('[data-fx="upgrade"]');
+      },
     });
   }
   function enhance(stat) {
     const cost = enhanceCost(progress.enh[stat]);
-    if (progress.yoryeok < cost || playingLog || progress.pendingDegrade) return;
+    if (progress.yoryeok < cost || playingLog || hasPendingChoice(progress)) return;
     const result = tryEnhance(progress, stat);
     progress.yoryeok -= cost;
     commit(statNames[stat] + ' ' + attemptText(result), attemptTone[result.result]);
-    if (result.needsChoice) askDegrade();
+    if (result.needsProtect) askProtect();
+    else if (result.needsChoice) askDegrade();
   }
-  function runAuto(stat, target) {
-    if (playingLog || progress.pendingDegrade) return;
-    const { attempts, reason } = autoEnhance(progress, stat, target);
-    // 여기서 결제와 추첨이 모두 끝난다. 아래 타이머는 받은 기록만 재생한다.
-    if (attempts.length) save(progress);
+  // 연속 강화: 누르면 시작 전에 한 번만 묻고(퇴화 A/B, 보호권 자동 사용/쓰지 않기), ENHANCE.autoBatch(20)번을 멈추지 않고 이어서 한다.
+  // 이 흐름에서는 보호권 선택창이 뜨지 않는다. 선택은 시작 전에 이미 했다.
+  function startAuto(stat) {
+    if (playingLog || upgradeFx || hasPendingChoice(progress) || ENHANCE.singleAttemptGrades.includes(progress.grade)) return;
+    const level = progress.enh[stat];
+    if (!Number.isFinite(enhanceCost(level))) return;
+    autoSetupDialog(dialog, {
+      statName: statNames[stat], level, batch: ENHANCE.autoBatch,
+      canDevolve: canDevolve(progress), protect: progress.protect, initial: progress.autoEnhance,
+    }, {
+      onStart: (choice) => runAuto(stat, choice),
+      onCancel: () => focusAfter(statSelector('auto', stat)),
+    });
+  }
+  function runAuto(stat, choice) {
+    if (playingLog || hasPendingChoice(progress)) return;
+    progress.autoEnhance = { degrade: choice.degrade, protect: choice.protect };
+    const { attempts, reason, summary } = autoEnhance(progress, stat, { degrade: choice.degrade, useProtect: choice.protect === 'use' });
+    // 여기서 결제와 추첨이 모두 끝나고 저장한다. 아래 타이머는 받은 기록만 재생한다.
+    save(progress);
     clearFeedback();
     playingLog = true;
     render();
     setStatus(statNames[stat] + ' 연속 강화');
     let shown = 0;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // 20번이 길게 늘어지지 않게 여러 줄씩 묶어 보인다(약 0.6초).
     const batch = reduced ? attempts.length : Math.ceil(attempts.length / 8);
     function showNext() {
       const end = Math.min(shown + batch, attempts.length);
@@ -202,9 +283,12 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
         window.setTimeout(showNext, 80);
       } else {
         playingLog = false;
-        setStatus(statNames[stat] + ' ' + attempts.length + '회, ' + stopText(reason, progress, stat), autoTone[reason] ?? '');
+        const view = autoSummary({ summary, reason, statName: statNames[stat], grade: progress.grade, batch: ENHANCE.autoBatch });
+        setStatus(view.headline + ' · ' + view.stop, autoTone[reason] ?? '');
+        summaryBox.replaceChildren(summaryBlock(view));
         render();
         askDegrade();
+        focusAfter(statSelector('auto', stat));
       }
     }
     showNext();
@@ -227,48 +311,55 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       OddsTable('다음 ' + statNames[stat] + ' 강화 확률', Object.entries(odds).map(([key, value]) => [outcomeNames[key], value])));
     const controls = el('div', 'yk-enhance-actions');
     const single = button('강화', () => enhance(stat));
-    const picker = el('select', 'yk-select');
-    picker.setAttribute('aria-label', statNames[stat] + ' 연속 강화 목표');
-    const target = Math.max(level + 1, targets[stat] ?? level + 1);
-    for (let n = level + 1; n <= ENHANCE.success.length; n++) {
-      const option = el('option', '', '목표 +' + n);
-      option.value = n;
-      option.selected = n === target;
-      picker.append(option);
-    }
-    const auto = button('연속 강화', () => runAuto(stat, Number(picker.value)));
-    function updateTarget() {
-      targets[stat] = Number(picker.value);
-      auto.setAttribute('aria-label', statNames[stat] + ' 목표 +' + picker.value + '까지 연속 강화');
-    }
-    picker.addEventListener('change', updateTarget);
-    updateTarget();
+    single.dataset.fx = 'enhance';
+    single.dataset.stat = stat;
+    const auto = button('연속 강화 ' + ENHANCE.autoBatch + '회', () => startAuto(stat));
+    auto.dataset.fx = 'auto';
+    auto.dataset.stat = stat;
+    auto.setAttribute('aria-label', statNames[stat] + ' 연속 강화 ' + ENHANCE.autoBatch + '회');
+    // S·S+ 등급은 연속 강화 대신 한 번씩만 강화한다(ENHANCE.singleAttemptGrades). 한 번뿐인 시도라 퇴화·보호권 선택창이 그때그때 뜨는 단일 강화가 맞다.
+    const singleGrade = ENHANCE.singleAttemptGrades.includes(progress.grade);
     auto.disabled = single.disabled = progress.yoryeok < cost;
-    controls.append(single, picker, auto);
+    if (singleGrade) auto.disabled = true;
+    controls.append(single, auto);
     card.append(controls);
+    if (singleGrade) card.append(el('p', 'yk-hint', progress.grade + '등급은 한 번씩 강화할 수 있어요.'));
+    if (shielded === stat) card.dataset.shield = 'true';
     return card;
   }
 
   let upgradeFx = null;
   function upgrade() {
     const item = progress.treasure;
-    if (!item || upgradeFx) return;
+    if (!item || upgradeFx || hasPendingChoice(progress)) return;
     const cost = upgradeCost(item);
     if (progress.yoryeok < cost) return;
     // 깨지면 item.level이 null이 되므로 이름·확률은 시도 전에 구해 둔다.
     const name = weaponOf(item).name;
-    const odds = upgradeOdds(item.level);
-    const result = tryUpgrade(item);
+    const odds = upgradeOdds(item.level, kindOf(item));
+    const result = upgradeTreasure(progress);
     progress.yoryeok -= cost;
+    if (result.needsProtect) {
+      // 깨짐이 나왔고 보호권이 있다: 결과는 아직 확정하지 않는다. 선택 대기를 저장한 뒤 긴장 연출(깨질 위기) 다음에 선택창을 연다.
+      save(progress);
+      upgradeFx = playEnhanceFx({ ...result, result: 'suspense' }, {
+        shake: dialog,
+        onDone() {
+          upgradeFx = null;
+          clearFeedback();
+          setStatus('깨질 위기, 보호권을 쓸지 골라 주세요', 'bad');
+          render();
+          askProtect();
+        },
+      });
+      return;
+    }
     const chance = chanceText(result.result, odds);
     let message;
     let tone = attemptTone[result.result] ?? (result.result === 'break' ? 'bad' : '');
     if (result.result === 'success') {
-      recordTreasureSuccess(progress);
       message = '강화 성공, ' + itemTitle(item) + ' · ' + chance;
     } else if (result.result === 'break') {
-      progress.treasure = null;
-      progress.shards += result.shards;
       message = withSubject(name) + ' 깨졌어요. 파편 +' + result.shards + ' · ' + chance;
     } else {
       message = '강화 실패, +' + result.from + ' 유지 · ' + chance;
@@ -342,7 +433,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       const cost = upgradeCost(item);
       const controls = el('div', 'yk-actions');
       if (Number.isFinite(cost)) {
-        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOddsTable(item.level));
+        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOddsTable(item.level, kindOf(item)));
         const up = button('강화', upgrade);
         up.dataset.fx = 'upgrade';
         up.disabled = cost > progress.yoryeok;
@@ -389,7 +480,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const dropOdds = el('div');
     dropOdds.append(OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
       [['직접 먹기', dropChance() * 100], ['보물로 처치', dropChance({ killedByTreasure: true }) * 100]]),
-    el('p', 'yk-hint', '보통 요괴가 떨어뜨리는 보물은 여의주뿐이에요. 대요괴를 쓰러뜨리면 아직 없는 보패 하나가 나와요.'));
+    el('p', 'yk-hint', '보통 요괴가 떨어뜨리는 보물은 여의주뿐이에요. 대요괴를 쓰러뜨리면 ' + HERALD_BOPAE.map((id) => WEAPON_BY_ID[id].name).join('·') + ' 같은 대요괴 보패가 나와요.'));
     body.append(equipped, inventory, shards, disclosure('보물 획득 확률', dropOdds), treasureLevelTable(item ? weaponOf(item).id : 'yeouiju'));
   }
 
@@ -467,7 +558,8 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     list.setAttribute('aria-label', '보물 진열대');
     for (const card of shopCatalog(progress)) list.append(shopCard(card));
     const terms = el('div', 'yk-shop-terms');
-    terms.append(el('p', '', '모든 보물의 강화 확률은 같아요.'),
+    terms.append(el('p', '', '강화 성공률은 여의주가 기준이에요. 여기서 파는 보패는 여의주의 ' + percentOf(SUCCESS_MULT.shop) + '%예요.'),
+      el('p', '', HERALD_BOPAE.map((id) => WEAPON_BY_ID[id].name).join('·') + '은 상점에 없어요. 대요괴를 쓰러뜨리면 나와요(강화 성공률은 여의주의 ' + percentOf(SUCCESS_MULT.herald) + '%).'),
       el('p', '', '상점에서 산 보물은 본전까지만 돌려받아요.'));
     body.append(intro, list, terms);
   }
@@ -488,6 +580,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       body.append(bodyLevelTable());
     }
     body.scrollTop = scroll;
+    shielded = null;
     body.inert = playingLog;
     playButton.disabled = playingLog || !!progress.pendingDevolve;
     const cost = evolutionCost(progress.stage + 1);
@@ -496,7 +589,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       Number.isFinite(cost) ? '진화 (요력 ' + number(cost) + ')' : '최고 진화 단계';
   }
   render();
-  askDegrade();
+  askPending();
   return { close: () => { if (!progress.pendingDevolve) leave(onPlay); } };
 }
 
