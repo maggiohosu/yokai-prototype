@@ -1,4 +1,5 @@
 import { TREASURE } from './tuning-upgrade.js';
+import { kindOf, weaponOf, weaponStats } from './weapons.js';
 
 const maxLevel = TREASURE.success.length;
 
@@ -20,25 +21,57 @@ function priceAt(table, level) {
   return Math.round(startPrice * (endPrice / startPrice) ** fraction);
 }
 
-export function sellPrice(level) {
+// 표 판매가(본전 상한을 적용하기 전). 무기마다 priceMult를 곱한다(지금 모두 1.0, docs/design-weapons.md 4-1).
+export function tablePrice(level, kind = 'yeouiju') {
   checkLevel(level);
-  return priceAt(TREASURE.prices, level);
+  return Math.round(priceAt(TREASURE.prices, level) * weaponOf(kind).priceMult);
 }
 
-// 강화 비용은 판매가와 따로 정한다(costPrices × upgradeCostRatio).
-export function upgradeCost(level) {
+// 강화 비용은 판매가와 따로 정한다(costPrices × upgradeCostRatio × 무기 priceMult).
+function costAt(level, kind) {
   checkLevel(level);
-  return level === maxLevel ? Infinity : Math.round(priceAt(TREASURE.costPrices ?? TREASURE.prices, level + 1) * TREASURE.upgradeCostRatio);
+  return level === maxLevel ? Infinity : Math.round(priceAt(TREASURE.costPrices ?? TREASURE.prices, level + 1) * TREASURE.upgradeCostRatio * weaponOf(kind).priceMult);
 }
 
-// 상점에서 산 여의주에는 paid(산 값 + 강화에 쓴 요력)가 붙는다. 상점품 본전 상한(docs/design-weapons.md 4-4):
+// 인자는 물건({ kind?, level, paid? }) 또는 레벨(옛 호출, 여의주로 본다).
+//   sellPrice(item): 상점에서 산 물건(paid)이면 min(표 판매가, paid)(본전 상한). 드롭품(paid 없음)은 표 판매가.
+//   sellPrice(level): 여의주의 표 판매가.
+export function sellPrice(target) {
+  if (typeof target === 'number') return tablePrice(target);
+  const table = tablePrice(target?.level, kindOf(target));
+  return hasPaid(target) ? Math.min(table, target.paid) : table;
+}
+
+// upgradeCost(item)은 그 무기의 강화비, upgradeCost(level)은 여의주의 강화비. 최고 레벨은 Infinity.
+export function upgradeCost(target) {
+  return typeof target === 'number' ? costAt(target, 'yeouiju') : costAt(target?.level, kindOf(target));
+}
+
+// 다음 강화의 결과별 확률(%). 성공 / 깨짐(실패 중 깨질 몫) / 실패(유지). 세 값의 합은 100. 모든 무기가 같은 표를 쓴다(결정 D3).
+export function upgradeOdds(level) {
+  checkLevel(level);
+  if (level === maxLevel) throw new RangeError('이미 최고 강화 레벨입니다.');
+  const success = TREASURE.success[level];
+  const broken = (100 - success) * TREASURE.breakOnFailure[level] / 100;
+  return { success, fail: 100 - success - broken, break: broken };
+}
+
+// 강화 결과 문구에 붙이는 '이 결과가 나올 확률' 한 줄(사용자 결정 2026-11-23, 계획서 변경 이력 5).
+// result는 tryUpgrade의 결과('success'|'fail'|'break'), odds는 강화 전에 구한 upgradeOdds(from). 소수 첫째 자리까지: '성공 확률 45%', '깨질 확률 5.6%'.
+const CHANCE_LABEL = { success: '성공 확률', fail: '실패 확률', break: '깨질 확률' };
+export function chanceText(result, odds) {
+  if (!Object.hasOwn(CHANCE_LABEL, result) || !Number.isFinite(odds?.[result])) throw new RangeError('확률을 보여 줄 수 없는 결과입니다.');
+  return CHANCE_LABEL[result] + ' ' + Math.round(odds[result] * 10) / 10 + '%';
+}
+
+// 상점에서 산 물건(여의주·보패)에는 paid(산 값 + 강화에 쓴 요력)가 붙는다. 상점품 본전 상한(docs/design-weapons.md 4-4):
 // 판매가 = min(표 판매가, paid). paid가 없는 드롭 여의주는 표 판매가 그대로라 '강화해서 팔기'가 이익이다.
-export const hasPaid = (treasure) => Number.isFinite(treasure?.paid) && treasure.paid >= 0;
-
-export function saleValue(treasure) {
-  const table = sellPrice(treasure.level);
-  return hasPaid(treasure) ? Math.min(table, treasure.paid) : table;
+export function hasPaid(treasure) {
+  return Number.isFinite(treasure?.paid) && treasure.paid >= 0;
 }
+
+// 물건 하나를 팔 때 받는 요력(sellPrice(item)과 같다). 화면 문구에서 읽기 좋은 이름으로 남겨 둔다.
+export const saleValue = (treasure) => sellPrice(treasure);
 
 // 호출자가 비용을 지불한다. break면 소유 슬롯에서 여의주를 제거하고 shards를 적립한다.
 // 상점품(paid)이면 시도할 때마다(성공·실패 모두) 그 강화비를 paid에 더한다.
@@ -46,7 +79,7 @@ export function tryUpgrade(treasure, { rng = Math.random } = {}) {
   const from = treasure.level;
   checkLevel(from);
   if (from === maxLevel) throw new RangeError('이미 최고 강화 레벨입니다.');
-  if (hasPaid(treasure)) treasure.paid += upgradeCost(from);
+  if (hasPaid(treasure)) treasure.paid += upgradeCost(treasure);
   if (rng() * 100 < TREASURE.success[from]) {
     treasure.level = from + 1;
     return { result: 'success', from, to: treasure.level, shards: 0 };
@@ -67,13 +100,14 @@ export function exchangeShards(state) {
   return count;
 }
 
+// 여의주(기준 무기)의 수치. 옛 호출 호환용이고 계산은 weaponStats가 한다.
 export function treasureStats(level) {
   checkLevel(level);
-  const [ways, perWay, speedMult, powerMult, homing] = TREASURE.levels[level];
+  const s = weaponStats({ kind: 'yeouiju', level });
   return {
-    damage: TREASURE.damageBase * powerMult,
-    ways, perWay, speedMult, homing,
-    shots: ways * perWay,
+    damage: s.P,
+    ways: s.ways, perWay: s.perWay, speedMult: s.speedMult, homing: s.homing,
+    shots: s.count,
     chargePower: TREASURE.chargeBase + level * TREASURE.chargePerLevel,
   };
 }

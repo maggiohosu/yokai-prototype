@@ -12,6 +12,10 @@ export const ENHANCE = {
   singleAttemptGrades: ['S', 'S+'],
 };
 
+// 보물 강화 표. 무기 8종(여의주 + 보패 7종)이 모두 이 표 하나를 같이 읽는다(docs/design-weapons.md D3·D10):
+// 성공률·깨짐·파편·판매가·강화비·레벨별 [방향 수, 방향당 발사, 속도 배율, 파워 배율, 유도]를 무기마다 따로 두지 않는다.
+// 무기마다 달라지는 것은 data/weapons.js의 쏘는 방식·한 번 피해·쿨타임·사거리와 priceMult(판매가·강화비 배율, 지금 모두 1.0)뿐이고,
+// 그 값을 레벨 표와 합치는 계산은 systems/weapons.js의 weaponStats가 한다.
 export const TREASURE = {
   success: [90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 30, 25, 20, 15, 10],
   breakOnFailure: [0, 0, 0, 0, 0, 10, 12.5, 15, 17.5, 20, 30, 35, 40, 45, 50],

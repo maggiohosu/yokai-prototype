@@ -161,3 +161,28 @@ test('일반 처치와 보물 처치 드롭률 각 10만 회', () => {
     close(drops / 1000, percent, '드롭');
   }
 });
+
+test('물건 기준 API: sellPrice(item)·upgradeCost(item)은 kind와 paid를 따르고 레벨 숫자 호출과 값이 같다', () => {
+  for (let level = 0; level <= 15; level++) {
+    assert.equal(sellPrice({ kind: 'fan', level }), sellPrice(level));
+    assert.equal(upgradeCost({ kind: 'bell', level }), upgradeCost(level));
+  }
+  assert.equal(sellPrice({ kind: 'seal', level: 5, paid: 55 }), 55);
+  assert.equal(sellPrice({ kind: 'seal', level: 5, paid: 5000 }), 300);
+});
+
+test('보패도 보관함·장착 칸을 같은 규칙으로 쓴다: 장착을 바꾸면 물건이 통째로 맞바뀌고 kind·paid가 따라온다', () => {
+  const p = createProgress();
+  const fan = { kind: 'fan', level: 3, paid: 80 };
+  const bell = { kind: 'bell', level: 1, paid: 28 };
+  assert.equal(addToInventory(p, fan), true);
+  assert.equal(addToInventory(p, bell), true);
+  assert.equal(equip(p, 0), true);
+  assert.equal(p.treasure, fan);
+  assert.deepEqual(p.inventory, [bell]);
+  assert.equal(addToInventory(p, { kind: 'mirror', level: 99 }), false, '레벨이 이상한 물건은 받지 않는다');
+  assert.equal(equip(p, 0), true);
+  assert.equal(p.treasure, bell);
+  assert.deepEqual(p.inventory, [fan]);
+  assert.equal(sell(p, 0), 58, '산 값 80이어도 표 판매가 58까지만(본전 상한은 둘 중 작은 값)');
+});

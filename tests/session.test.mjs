@@ -89,3 +89,14 @@ test('playerStats: 여의주 위력(signature)은 더 이상 없고, 생명력 �
   const high = Object.assign(createProgress(), { enh: { growth: 0, speed: 0, vitality: 10 } });
   near(playerStats(high).vitalityMax, CONFIG.vitality.baseSec + CONFIG.vitality.perLevelSec * 10);
 });
+
+test('요괴가 떨어뜨리는 보물은 { kind: "yeouiju", level: 0 }뿐이다(빈 장착 칸 → 보관함 순서)', () => {
+  const scene = { events: new EventEmitter() };
+  const progress = createProgress();
+  attachSession(scene, progress, () => 0, () => {});
+  scene.events.emit('eat', { dir: 'east', preySize: 10 });
+  assert.deepEqual(progress.treasure, { kind: 'yeouiju', level: 0 });
+  scene.events.emit('eat', { dir: 'east', preySize: 10 });
+  scene.events.emit('eat', { dir: 'east', preySize: 10, killedByTreasure: true });
+  assert.deepEqual(progress.inventory, [{ kind: 'yeouiju', level: 0 }, { kind: 'yeouiju', level: 0 }]);
+});

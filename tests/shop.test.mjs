@@ -14,11 +14,15 @@ const SHOP = CONFIG.shop;
 
 const rich = (yoryeok = 1_000_000) => Object.assign(createProgress(), { yoryeok });
 
-test('상점은 여의주 +0~+5를 낮은 레벨부터 진열한다', () => {
+test('상점은 무기 8종을 해금 단계 순서로 진열하고 카드마다 +0~+5를 낮은 레벨부터 담는다', () => {
   assert.deepEqual(shopLevels(), [0, 1, 2, 3, 4, 5]);
-  assert.deepEqual(shopCatalog().map((x) => x.level), [0, 1, 2, 3, 4, 5]);
-  const prices = shopCatalog().map((x) => x.price);
-  for (let i = 1; i < prices.length; i++) assert.ok(prices[i] > prices[i - 1]);
+  const catalog = shopCatalog(rich());
+  assert.deepEqual(catalog.map((card) => card.kind), ['yeouiju', 'fan', 'sword', 'mirror', 'beads', 'seal', 'gourd', 'bell']);
+  for (const card of catalog) {
+    assert.deepEqual(card.levels.map((x) => x.level), [0, 1, 2, 3, 4, 5], card.kind);
+    const prices = card.levels.map((x) => x.price);
+    for (let i = 1; i < prices.length; i++) assert.ok(prices[i] > prices[i - 1], card.kind);
+  }
 });
 
 test('구매가 = 같은 레벨 판매가 × 2.5(반올림)', () => {
@@ -38,12 +42,12 @@ test('팔지 않는 레벨(범위 밖·정수 아님)은 가격을 묻거나 사
   assert.deepEqual(p.inventory, []);
 });
 
-test('사면 요력이 구매가만큼 빠지고 보관함에 { level, paid }가 들어간다', () => {
+test('사면 요력이 구매가만큼 빠지고 보관함에 { kind, level, paid }가 들어간다', () => {
   const p = rich(1000);
   const r = buy(p, 3);
-  assert.deepEqual(r, { ok: true, level: 3, price: 145 });
+  assert.deepEqual(r, { ok: true, kind: 'yeouiju', level: 3, price: 145 });
   assert.equal(p.yoryeok, 1000 - 145);
-  assert.deepEqual(p.inventory, [{ level: 3, paid: 145 }]);
+  assert.deepEqual(p.inventory, [{ kind: 'yeouiju', level: 3, paid: 145 }]);
   assert.equal(p.treasure, null, '장착은 하지 않는다(보관함에서 고른다)');
   assert.equal(equip(p, 0), true, '산 여의주는 그대로 장착할 수 있다');
   assert.equal(p.treasure.level, 3);
@@ -111,7 +115,7 @@ test('요력이 모자라면 구매 불가, 딱 구매가만큼이면 살 수 �
     assert.equal(poor.yoryeok, price - 1);
     assert.deepEqual(poor.inventory, []);
     const exact = rich(price);
-    assert.deepEqual(buy(exact, level), { ok: true, level, price });
+    assert.deepEqual(buy(exact, level), { ok: true, kind: 'yeouiju', level, price });
     assert.equal(exact.yoryeok, 0);
     assert.equal(exact.inventory.length, 1);
   }
@@ -261,15 +265,15 @@ test('상점품 표시(paid)는 저장했다 불러와도 유지되고, 이상�
   p.inventory.push({ level: 1 });
   assert.ok(saveProgress(p, storage));
   const loaded = loadProgress(storage);
-  assert.deepEqual(loaded.inventory, [{ level: 2, paid: 65 }, { level: 1 }]);
-  assert.deepEqual(loaded.treasure, { level: 4, paid: 77.5 });
+  assert.deepEqual(loaded.inventory, [{ kind: 'yeouiju', level: 2, paid: 65 }, { kind: 'yeouiju', level: 1 }]);
+  assert.deepEqual(loaded.treasure, { kind: 'yeouiju', level: 4, paid: 77.5 });
   assert.equal(saleValue(loaded.inventory[0]), sellPrice(2), '표 판매가 26이 산 값 65보다 작아 26');
   const dirty = normalizeProgress({
     treasure: { level: 3, paid: 'x' },
     inventory: [{ level: 1, paid: -5 }, { level: 2, paid: NaN }, { level: 0, paid: 0 }],
   });
-  assert.deepEqual(dirty.treasure, { level: 3 });
-  assert.deepEqual(dirty.inventory, [{ level: 1 }, { level: 2 }, { level: 0, paid: 0 }]);
+  assert.deepEqual(dirty.treasure, { kind: 'yeouiju', level: 3 });
+  assert.deepEqual(dirty.inventory, [{ kind: 'yeouiju', level: 1 }, { kind: 'yeouiju', level: 2 }, { kind: 'yeouiju', level: 0, paid: 0 }]);
 });
 
 test('저장 버전은 1 그대로다(버전이 다르면 슬롯을 버리므로 바꾸지 않는다)', () => {

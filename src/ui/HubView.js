@@ -7,8 +7,9 @@ import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
 import { recordTreasureSuccess } from '../systems/progress.js';
-import { dropChance, equip, exchangeShards, hasPaid, saleValue, sell, treasureStats, treasureTitle, tryUpgrade, upgradeCost } from '../systems/treasure.js';
-import { blockerText, buy, buyBlocker, shopCatalog } from '../systems/shop.js';
+import { chanceText, dropChance, equip, exchangeShards, hasPaid, saleValue, sell, tryUpgrade, upgradeCost, upgradeOdds } from '../systems/treasure.js';
+import { blockerText, buy, buyBlocker, lockedText, shopCatalog } from '../systems/shop.js';
+import { itemTitle, previewRows, weaponOf, withSubject } from '../systems/weapons.js';
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
 import { playEnhanceFx, playSellFx, preloadEnhanceSounds } from './enhanceFx.js';
@@ -32,10 +33,9 @@ function stopText(reason, progress, stat) {
   return { target: '목표 도달', gold: '요력 부족', great: '대성공으로 중단', degrade: '퇴화로 중단' }[reason];
 }
 
-function upgradeOdds(level) {
-  const success = TREASURE.success[level];
-  const broken = (100 - success) * TREASURE.breakOnFailure[level] / 100;
-  return OddsTable('다음 여의주 강화 확률', [['성공', success], ['실패', 100 - success - broken], ['깨짐', broken]]);
+function upgradeOddsTable(level) {
+  const odds = upgradeOdds(level);
+  return OddsTable('다음 보물 강화 확률', [['성공', odds.success], ['실패', odds.fail], ['깨짐', odds.break]]);
 }
 
 export function degradeDialog(parent, progress, stat, onChoice) {
@@ -79,7 +79,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   const tabs = el('div', 'yk-tabs');
   tabs.setAttribute('role', 'group');
   tabs.setAttribute('aria-label', '정비 항목');
-  for (const [key, label] of [['body', '본체 강화'], ['treasure', '여의주'], ['shop', '상점']]) {
+  for (const [key, label] of [['body', '본체 강화'], ['treasure', '보물'], ['shop', '상점']]) {
     const item = button(label, () => {
       if (tab === key || playingLog || progress.pendingDegrade) return;
       tab = key;
@@ -230,27 +230,31 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
   function upgrade() {
     const item = progress.treasure;
     if (!item || upgradeFx) return;
-    const cost = upgradeCost(item.level);
+    const cost = upgradeCost(item);
     if (progress.yoryeok < cost) return;
+    // 깨지면 item.level이 null이 되므로 이름·확률은 시도 전에 구해 둔다.
+    const name = weaponOf(item).name;
+    const odds = upgradeOdds(item.level);
     const result = tryUpgrade(item);
     progress.yoryeok -= cost;
+    const chance = chanceText(result.result, odds);
     let message;
     let tone = attemptTone[result.result] ?? (result.result === 'break' ? 'bad' : '');
     if (result.result === 'success') {
       recordTreasureSuccess(progress);
-      message = '강화 성공, ' + treasureTitle(result.to);
+      message = '강화 성공, ' + itemTitle(item) + ' · ' + chance;
     } else if (result.result === 'break') {
       progress.treasure = null;
       progress.shards += result.shards;
-      message = '여의주가 깨졌어요. 파편 +' + result.shards;
+      message = withSubject(name) + ' 깨졌어요. 파편 +' + result.shards + ' · ' + chance;
     } else {
-      message = '강화 실패, +' + result.from + ' 유지';
+      message = '강화 실패, +' + result.from + ' 유지 · ' + chance;
     }
     // 결과는 위에서 정해졌다. 연출 전에 저장해 새로고침으로 다시 굴릴 수 없게 하고, 연출은 그 결과만 보여준다.
     save(progress);
     upgradeFx = playEnhanceFx(result, {
       shake: dialog,
-      sub: result.result === 'success' ? treasureTitle(result.to) : undefined,
+      sub: result.result === 'success' ? itemTitle(item) + ' · ' + chance : undefined,
       onDone() {
         upgradeFx = null;
         commit(message, tone);
@@ -265,7 +269,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       const before = progress.yoryeok;
       const price = sell(progress, slot);
       if (!price) return;
-      commit(treasureTitle(item.level) + ' 판매로 요력 +' + number(price), 'good');
+      commit(itemTitle(item) + ' 판매로 요력 +' + number(price), 'good');
       playSellFx({
         origin, host: dialog, amount: price, from: before, to: progress.yoryeok,
         wallet: wallet.querySelector('strong'), format: (v) => '요력 ' + number(v), label: '+' + number(price),
@@ -273,20 +277,15 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     });
     return control;
   }
-  function statLine(level) {
-    const a = treasureStats(level);
-    const b = level < TREASURE.success.length ? treasureStats(level + 1) : null;
-    const arrow = (x, y) => (b && x !== y ? x + ' → ' + y : x);
-    const m = (v) => '×' + v.toFixed(2);
-    const homing = (s) => (s.homing > 0 ? '있음' : '없음');
+  // 장착한 물건의 핵심 수를 '지금 → 다음 레벨'로 보여 준다. 무기마다 라벨이 다르다(systems/weapons.js previewRows).
+  function statLine(item) {
+    const now = previewRows(item);
+    const next = item.level < TREASURE.success.length ? previewRows({ ...item, level: item.level + 1 }) : null;
     const stats = el('dl', 'yk-attributes');
-    for (const [label, value] of [
-      ['발사 방향', arrow(a.ways, b?.ways)],
-      ['방향당 구슬', arrow(a.perWay, b?.perWay) + '개'],
-      ['속도', arrow(m(a.speedMult), b && m(b.speedMult))],
-      ['파워', arrow(m(a.damage / TREASURE.damageBase), b && m(b.damage / TREASURE.damageBase))],
-      ['유도', arrow(homing(a), b && homing(b))],
-    ]) stats.append(el('dt', '', label), el('dd', '', value));
+    now.forEach(([label, value], i) => {
+      const after = next?.[i]?.[1];
+      stats.append(el('dt', '', label), el('dd', '', after != null && after !== value ? value + ' → ' + after : value));
+    });
     return stats;
   }
 
@@ -294,15 +293,15 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     preloadEnhanceSounds();
     const equipped = el('section', 'yk-card');
     const item = progress.treasure;
-    equipped.append(el('p', 'yk-label', '장착한 여의주'));
+    equipped.append(el('p', 'yk-label', '장착한 보물'));
     if (item) {
-      const title = el('h3', 'yk-orb-title', treasureTitle(item.level));
-      equipped.append(title);
-      equipped.append(statLine(item.level));
-      const cost = upgradeCost(item.level);
+      const title = el('h3', 'yk-orb-title', itemTitle(item));
+      equipped.append(title, el('p', 'yk-hint', weaponOf(item).line));
+      equipped.append(statLine(item));
+      const cost = upgradeCost(item);
       const controls = el('div', 'yk-actions');
       if (Number.isFinite(cost)) {
-        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOdds(item.level));
+        equipped.append(el('p', 'yk-cost', '다음 +' + (item.level + 1) + '에 필요한 요력 ' + number(cost)), upgradeOddsTable(item.level));
         const up = button('강화', upgrade);
         up.dataset.fx = 'upgrade';
         up.disabled = cost > progress.yoryeok;
@@ -313,7 +312,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       controls.append(sellButton('equipped', item));
       equipped.append(controls);
     } else {
-      equipped.append(el('p', 'yk-intro', '장착한 여의주가 없어요.'));
+      equipped.append(el('p', 'yk-intro', '장착한 보물이 없어요.'));
     }
     const inventory = el('section', 'yk-card');
     inventory.append(el('h3', 'yk-stat-name', '보관함 ' + progress.inventory.length + '/' + TREASURE.inventorySlots));
@@ -322,11 +321,11 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       const stored = progress.inventory[i];
       const slot = el('li');
       slot.append(el('span', 'yk-slot-no', String(i + 1)),
-        el('strong', '', stored ? treasureTitle(stored.level) + (hasPaid(stored) ? ' (상점)' : '') : '빈 칸'));
+        el('strong', '', stored ? itemTitle(stored) + (hasPaid(stored) ? ' (상점)' : '') : '빈 칸'));
       if (stored) {
         const controls = el('div', 'yk-actions');
         controls.append(button(item ? '장착 바꾸기' : '장착', () => {
-          if (equip(progress, i)) commit(treasureTitle(stored.level) + ' 장착');
+          if (equip(progress, i)) commit(itemTitle(stored) + ' 장착');
         }), sellButton(i, stored));
         slot.append(controls);
       }
@@ -343,48 +342,77 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     });
     exchange.disabled = !count;
     shards.append(exchange);
-    body.append(equipped, inventory, shards, disclosure('여의주 획득 확률',
-      OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
-        [['직접 먹기', dropChance() * 100], ['여의주로 처치', dropChance({ killedByTreasure: true }) * 100]])));
+    const dropOdds = el('div');
+    dropOdds.append(OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
+      [['직접 먹기', dropChance() * 100], ['보물로 처치', dropChance({ killedByTreasure: true }) * 100]]),
+    el('p', 'yk-hint', '요괴가 떨어뜨리는 보물은 여의주뿐이에요.'));
+    body.append(equipped, inventory, shards, disclosure('보물 획득 확률', dropOdds));
   }
 
-  function purchase(level) {
-    const result = buy(progress, level);
+  function purchase(kind, level) {
+    const result = buy(progress, kind, level);
     if (!result.ok) {
-      setStatus(blockerText[result.reason], 'bad');
+      setStatus(result.reason === 'locked' ? lockedText(kind) : blockerText[result.reason], 'bad');
       return;
     }
-    commit(treasureTitle(level) + ' 구매, 요력 ' + number(result.price) + ' 사용', 'good');
+    commit(itemTitle({ kind, level }) + ' 구매, 요력 ' + number(result.price) + ' 사용', 'good');
+  }
+  // 카드마다 고른 레벨은 화면을 다시 그려도 남긴다(구매할 때마다 render가 돈다).
+  const shopPick = {};
+  function shopCard(card) {
+    const row = el('li', 'yk-shop-item');
+    row.dataset.kind = card.kind;
+    row.dataset.locked = String(card.locked);
+    const info = el('div', 'yk-shop-info');
+    info.append(el('strong', '', card.name + ' (' + card.hanja + ')'), el('span', 'yk-hint', card.line),
+      el('span', 'yk-hint', '강점 ' + card.strong + ' · 약점 ' + card.weak));
+    if (card.locked) {
+      info.append(el('span', 'yk-notice', lockedText(card.kind)));
+      row.append(info);
+      return row;
+    }
+    const picker = el('select', 'yk-select');
+    picker.setAttribute('aria-label', card.name + ' 레벨');
+    for (const { level, price } of card.levels) {
+      const option = el('option', '', '+' + level + ' (요력 ' + number(price) + ')');
+      option.value = level;
+      picker.append(option);
+    }
+    picker.value = String(shopPick[card.kind] ?? card.levels[0].level);
+    const buyButton = button('', () => purchase(card.kind, Number(picker.value)));
+    const need = el('span', 'yk-hint');
+    function refreshBuy() {
+      const level = Number(picker.value);
+      shopPick[card.kind] = level;
+      const { price } = card.levels.find((x) => x.level === level);
+      const blocker = buyBlocker(progress, card.kind, level);
+      buyButton.textContent = '구매 (요력 ' + number(price) + ')';
+      buyButton.setAttribute('aria-label', itemTitle({ kind: card.kind, level }) + ' 구매, 요력 ' + number(price));
+      buyButton.disabled = !!blocker;
+      need.textContent = blocker === 'funds' ? '요력 ' + number(price - progress.yoryeok) + ' 모자라요' : '';
+    }
+    picker.addEventListener('change', refreshBuy);
+    refreshBuy();
+    // 오른쪽 칸(132px)은 구매 버튼 하나만 들어가므로 레벨 고르기는 설명 아래 왼쪽 칸에 둔다.
+    info.append(picker, need);
+    row.append(info, buyButton);
+    return row;
   }
   function shopPanel() {
-    const orbs = el('section', 'yk-card');
+    const intro = el('section', 'yk-card');
     const used = progress.inventory.length;
-    orbs.append(el('h3', 'yk-stat-name', '여의주'),
-      el('p', 'yk-cost', '산 여의주는 보관함에 들어가요. 보관함 ' + used + '/' + TREASURE.inventorySlots),
-      el('p', 'yk-cost', '상점에서 산 여의주는 산 값과 강화에 쓴 요력까지만 돌려받아요.'));
+    intro.append(el('h3', 'yk-stat-name', '상점'),
+      el('p', 'yk-cost', '산 보물은 보관함에 들어가요. 보관함 ' + used + '/' + TREASURE.inventorySlots),
+      el('p', 'yk-cost', '모든 보물의 강화 확률은 같아요.'),
+      el('p', 'yk-cost', '상점에서 산 보물은 산 값과 강화에 쓴 요력까지만 돌려받아요.'));
     if (used >= TREASURE.inventorySlots) {
-      orbs.append(el('p', 'yk-notice', blockerText.full + '. 여의주를 팔거나 장착해서 칸을 비워 주세요.'));
+      intro.append(el('p', 'yk-notice', blockerText.full + '. 보물을 팔거나 장착해서 칸을 비워 주세요.'));
     }
     const list = el('ol', 'yk-shop');
-    for (const { level, price } of shopCatalog()) {
-      const stats = treasureStats(level);
-      const row = el('li', 'yk-shop-item');
-      const info = el('div', 'yk-shop-info');
-      info.append(el('strong', '', treasureTitle(level)),
-        el('span', 'yk-hint', stats.ways + '방향, 방향당 ' + stats.perWay + '개'));
-      const blocker = buyBlocker(progress, level);
-      if (blocker === 'funds') info.append(el('span', 'yk-hint', '요력 ' + number(price - progress.yoryeok) + ' 모자라요'));
-      const buyButton = button('구매 (요력 ' + number(price) + ')', () => purchase(level));
-      buyButton.setAttribute('aria-label', treasureTitle(level) + ' 구매, 요력 ' + number(price));
-      buyButton.disabled = !!blocker;
-      row.append(info, buyButton);
-      list.append(row);
-    }
-    orbs.append(list);
-    const patch = el('section', 'yk-card');
-    patch.append(el('h3', 'yk-stat-name', '보패'),
-      el('p', 'yk-intro', '새로운 무기를 준비하고 있어요. 곧 열려요.'));
-    body.append(orbs, patch);
+    for (const card of shopCatalog(progress)) list.append(shopCard(card));
+    const shelf = el('section', 'yk-card');
+    shelf.append(list);
+    body.append(intro, shelf);
   }
 
   function render() {

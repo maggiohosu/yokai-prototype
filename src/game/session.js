@@ -44,7 +44,7 @@ export function attachSession(scene, progress, rng = Math.random, save = savePro
     progress.yoryeok += gain;
     run.yoryeok += gain;
     if (rng() < dropChance({ killedByTreasure: meal.killedByTreasure })) {
-      const treasure = { level: 0 };
+      const treasure = { kind: 'yeouiju', level: 0 }; // 요괴가 떨어뜨리는 보물은 여의주뿐(docs/design-weapons.md D2)
       let got = false;
       if (!progress.treasure) { progress.treasure = treasure; got = true; }
       else got = addToInventory(progress, treasure);

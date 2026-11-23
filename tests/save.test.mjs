@@ -8,6 +8,8 @@ import {
 import { FORMS } from '../src/data/forms.js';
 import { evolutionCatalog } from '../src/systems/levelup.js';
 import { devolve } from '../src/systems/evolution.js';
+import { sell } from '../src/systems/treasure.js';
+import { buy } from '../src/systems/shop.js';
 
 function fakeStorage(init = {}) {
   const m = new Map(Object.entries(init));
@@ -27,8 +29,8 @@ test('저장 후 불러오기 왕복', () => {
   p.stage = 2;
   p.diet.east = 7;
   p.enh.growth = 4;
-  p.inventory = [{ type: 'yeouiju', level: 3 }];
-  p.treasure = { type: 'yeouiju', level: 5 };
+  p.inventory = [{ kind: 'yeouiju', level: 3 }];
+  p.treasure = { kind: 'fan', level: 5, paid: 90 };
   p.discovered = ['baem'];
   assert.equal(saveProgress(p, s), true);
   assert.ok(s.m.has(slotKey(1)), '지금 슬롯(기본 1번)에 저장한다');
@@ -347,4 +349,75 @@ test('슬롯별로도 형태·단계 보정이 그대로 적용된다', () => {
   assert.equal(sum.formId, 'mimul');
   assert.equal(sum.stage, 1);
   assert.equal(sum.yoryeok, 40);
+});
+
+// ---- 무기 저장 정규화(docs/design-weapons.md 7절 검사 ①~⑦) ----
+test('① 옛 저장(kind 없는 물건)은 여의주로 그대로 읽힌다 — 정규화와 실제 저장 파일 모두', () => {
+  const old = { treasure: { level: 7 }, inventory: [{ level: 3 }] };
+  const p = normalizeProgress(old);
+  assert.deepEqual(p.treasure, { kind: 'yeouiju', level: 7 });
+  assert.deepEqual(p.inventory, [{ kind: 'yeouiju', level: 3 }]);
+  const s = fakeStorage({ [slotKey(1)]: JSON.stringify({ version: 1, savedAt: 1, progress: { ...createProgress(), ...old } }) });
+  const loaded = loadProgressWithStatus(s);
+  assert.equal(loaded.status, 'ok', '버전을 올리지 않았으니 옛 저장이 손상으로 버려지지 않는다');
+  assert.deepEqual(loaded.progress.treasure, { kind: 'yeouiju', level: 7 });
+  assert.deepEqual(loaded.progress.inventory, [{ kind: 'yeouiju', level: 3 }]);
+});
+
+test('② 모르는 kind는 여의주로 바꾸고 레벨은 유지한다(물건을 잃지 않는다)', () => {
+  const p = normalizeProgress({ treasure: { kind: 'unknown', level: 9 }, inventory: [{ kind: 5, level: 2 }, { kind: 'toString', level: 1 }] });
+  assert.deepEqual(p.treasure, { kind: 'yeouiju', level: 9 });
+  assert.deepEqual(p.inventory, [{ kind: 'yeouiju', level: 2 }, { kind: 'yeouiju', level: 1 }]);
+});
+
+test('③ 올바른 paid는 보존하고 이상한 paid는 지운다(드롭품 취급)', () => {
+  const p = normalizeProgress({ treasure: { kind: 'fan', level: 3, paid: 120.5 }, inventory: [
+    { kind: 'seal', level: 0, paid: 0 }, { kind: 'bell', level: 1, paid: -1 }, { kind: 'gourd', level: 1, paid: 'x' }, { kind: 'beads', level: 1, paid: NaN }] });
+  assert.deepEqual(p.treasure, { kind: 'fan', level: 3, paid: 120.5 });
+  assert.deepEqual(p.inventory, [{ kind: 'seal', level: 0, paid: 0 }, { kind: 'bell', level: 1 }, { kind: 'gourd', level: 1 }, { kind: 'beads', level: 1 }]);
+});
+
+test('④ 레벨이 0~15 정수가 아니면 그 물건을 버린다(장착 칸은 비고, 보관함에서는 빠진다)', () => {
+  const p = normalizeProgress({ treasure: { kind: 'fan', level: 99 }, inventory: [
+    { level: -1 }, { level: 16 }, { level: '3' }, { level: 2.5 }, { level: null }, {}, 7, 'x', null, { kind: 'mirror', level: 15 }, { level: 0 }] });
+  assert.equal(p.treasure, null);
+  assert.deepEqual(p.inventory, [{ kind: 'mirror', level: 15 }, { kind: 'yeouiju', level: 0 }]);
+  assert.equal(normalizeProgress({ treasure: { level: -5 } }).treasure, null);
+  assert.equal(normalizeProgress({ treasure: 'x' }).treasure, null);
+  assert.equal(normalizeProgress({ treasure: [] }).treasure, null);
+});
+
+test('⑤ 보관함이 5칸을 넘으면 앞의 5개만 남긴다(버린 물건은 세지 않는다)', () => {
+  const seven = Array.from({ length: 7 }, (_, i) => ({ kind: 'fan', level: i }));
+  assert.deepEqual(normalizeProgress({ inventory: seven }).inventory.map((x) => x.level), [0, 1, 2, 3, 4]);
+  const mixed = [{ level: 99 }, ...seven];
+  assert.deepEqual(normalizeProgress({ inventory: mixed }).inventory.map((x) => x.level), [0, 1, 2, 3, 4], '잘못된 물건을 빼고 앞 5개');
+});
+
+test('⑥ 저장 → 읽기 왕복에서 kind·paid가 그대로 유지된다', () => {
+  const s = fakeStorage();
+  const p = createProgress();
+  p.treasure = { kind: 'mirror', level: 8, paid: 311 };
+  p.inventory = [{ kind: 'gourd', level: 5, paid: 750 }, { kind: 'yeouiju', level: 0 }, { kind: 'bell', level: 1, paid: 28 }, { kind: 'seal', level: 4 }, { kind: 'beads', level: 2, paid: 65 }];
+  assert.equal(saveProgress(p, s), true);
+  const loaded = loadProgress(s);
+  assert.deepEqual(loaded.treasure, p.treasure);
+  assert.deepEqual(loaded.inventory, p.inventory);
+  assert.equal(JSON.parse(s.m.get(slotKey(1))).version, 1);
+});
+
+test('⑦ 저장했다 읽은 상점품을 팔면 본전 상한, 드롭품은 표 판매가를 받는다', () => {
+  const s = fakeStorage();
+  const p = createProgress();
+  p.yoryeok = 5000;
+  assert.ok(buy(p, 'yeouiju', 2).ok);
+  p.inventory.push({ kind: 'yeouiju', level: 5 });
+  saveProgress(p, s);
+  const loaded = loadProgress(s);
+  const before = loaded.yoryeok;
+  assert.equal(sell(loaded, 0), 26, '산 값 65보다 표 판매가 26이 낮아 26');
+  assert.equal(sell(loaded, 0), 300, '드롭품(paid 없음)은 표 판매가 300');
+  assert.equal(loaded.yoryeok, before + 326);
+  const cheap = normalizeProgress({ inventory: [{ kind: 'fan', level: 5, paid: 55 }] });
+  assert.equal(sell(cheap, 0), 55, '표 판매가 300이어도 들인 요력 55까지만');
 });

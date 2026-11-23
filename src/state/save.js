@@ -1,16 +1,10 @@
 import { SAVE } from '../systems/tuning-evolution.js';
 import { createProgress } from '../systems/progress.js';
-import { ENHANCE } from '../systems/tuning-upgrade.js';
+import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { FORMS } from '../data/forms.js';
+import { normalizeItem } from '../systems/weapons.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
-
-// 상점에서 산 여의주의 paid(산 값 + 강화에 쓴 요력)는 0 이상의 수일 때만 남긴다. 나머지 필드는 그대로 둔다.
-function cleanOrb(orb) {
-  const copy = { ...orb };
-  if ('paid' in copy && !(isNum(copy.paid) && copy.paid >= 0)) delete copy.paid;
-  return copy;
-}
 
 // 앞으로 형태 id를 바꿔야 할 때 { 옛id: 새id }를 여기에 적는다(normalizeProgress가 형태 검사 전에 바꾼다). 지금은 비어 있다.
 export const FORM_ID_ALIASES = {};
@@ -34,8 +28,12 @@ export function normalizeProgress(raw, forms = FORMS) {
   const rawEnh = raw.enh && typeof raw.enh === 'object' ? { ...raw.enh } : {};
   if (!isNum(rawEnh.vitality) && isNum(rawEnh.signature)) rawEnh.vitality = rawEnh.signature;
   for (const k of Object.keys(base.enh)) if (isNum(rawEnh[k])) base.enh[k] = rawEnh[k];
-  if (raw.treasure && typeof raw.treasure === 'object') base.treasure = cleanOrb(raw.treasure);
-  if (Array.isArray(raw.inventory)) base.inventory = raw.inventory.filter((x) => x && typeof x === 'object').map(cleanOrb);
+  // 장착 칸·보관함의 물건은 { kind, level, paid? }로 읽는다(docs/design-weapons.md 7절): kind가 없으면 여의주, 레벨이 0~15 정수가 아니면 버리고,
+  // 보관함은 TREASURE.inventorySlots(5칸)을 넘으면 앞에서부터 남긴다. SAVE.version은 그대로다(필드 추가는 '없으면 기본값'으로 읽는다).
+  base.treasure = normalizeItem(raw.treasure);
+  if (Array.isArray(raw.inventory)) {
+    base.inventory = raw.inventory.map(normalizeItem).filter(Boolean).slice(0, TREASURE.inventorySlots);
+  }
   if (Array.isArray(raw.discovered)) {
     base.discovered = raw.discovered.filter((x) => typeof x === 'string').map((x) => (Object.hasOwn(FORM_ID_ALIASES, x) ? FORM_ID_ALIASES[x] : x));
   }
