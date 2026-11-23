@@ -40,7 +40,7 @@
       <section class="hud" aria-label="플레이 현황">
         <div class="identity" role="button" tabindex="0" aria-haspopup="dialog" aria-label="내 요괴 능력 안내 열기, 판이 멈춥니다">
           <span id="avatar-slot" class="portrait"></span>
-          <div><small>1단계</small><strong>미물</strong></div>
+          <div><small>1단계</small><strong>미물</strong><span id="lives-stat" hidden>목숨 <b id="lives"></b></span></div>
         </div>
         <div class="stat"><small>현재 크기</small><strong id="size"></strong></div>
         <div class="stat"><small>먹은 수</small><strong id="eaten">0</strong></div>
@@ -106,6 +106,7 @@
           </div>
           <p id="killer"></p>
           <p id="run-reward" class="run-reward" hidden></p>
+          <p id="run-lives" class="run-reward" hidden></p>
           <dl>
             <div>
               <dt>먹은 수</dt>

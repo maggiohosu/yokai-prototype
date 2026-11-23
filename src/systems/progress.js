@@ -17,6 +17,9 @@ export function createProgress() {
     inventory: [],
     pity: 0,
     discovered: [],
+    difficulty: 'normal', // 'easy' | 'normal' | 'hard' (새로 시작 때 정해지고 바뀌지 않는다)
+    lives: null, // 하드만 남은 목숨(처음 10). 다른 난이도는 null
+    runActive: false, // 하드: 판이 진행 중이면 true. 정상 종료 없이 저장이 남으면 다음에 열 때 목숨 1개를 쓴 것으로 센다
   };
 }
 

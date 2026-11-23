@@ -12,6 +12,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // 줄기 보정: form.stem → src/data/stems.js의 boostMult → 1.0(줄기 없는 mimul·모르는 줄기).
 // 형태 데이터에 숫자 boostMult를 직접 적어 두면 그 값이 줄기 보정보다 먼저다(지금 forms.js에는 없다).
 export function boosterMult(progress, form, cfg = CONFIG.booster) {
+  if (progress?.difficulty === 'easy' && !CONFIG.difficulty.easy.booster) return 1;
   const level = clamp(Number(progress?.enh?.speed) || 0, 0, CONFIG.pace.maxSpeedLevel);
   const stem = Number.isFinite(form?.boostMult) ? form.boostMult : stemBoostMult(form?.stem);
   return cfg.baseMult * stem + cfg.perSpeedLevel * level;

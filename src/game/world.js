@@ -1,6 +1,7 @@
 import { CONFIG, REGIONS } from '../config.js';
 import { canEat } from '../systems/rules.js';
 import { worldFor } from '../systems/worldScale.js';
+import { sizeWeightsFor, stageWeightsFor } from '../systems/difficulty.js';
 
 const { world } = CONFIG;
 const directions = Object.keys(REGIONS);
@@ -30,18 +31,25 @@ export function colorPicker() {
 
 // 초반(시작 크기~earlyUntilSize)엔 큰 적 비중을 높이고 커질수록 기존 분포로 선형 전환한다.
 // playerStage가 nearSpawn.fromStage 이상이면 큰 적의 비율이 높은 hardSizeWeights를 쓴다(3단계 이후 난이도).
-export function sizeWeights(playerSize, playerStage = 1) {
+// difficulty: 이지는 작은 적 구간, 하드는 큰 적 구간 가중치에 ×1.4(합은 그대로). 노말은 그대로.
+export function sizeWeights(playerSize, playerStage = 1, difficulty = 'normal', enemyStage = playerStage) {
   const { sizes, earlyWeights, earlyUntilSize, hardSizeWeights, nearSpawn } = CONFIG.enemy;
   const normal = playerStage >= nearSpawn.fromStage ? hardSizeWeights : sizes.map((band) => band.weight);
   const start = CONFIG.player.startSize;
   const t = clamp((playerSize - start) / Math.max(1e-6, earlyUntilSize - start), 0, 1);
-  return normal.map((weight, i) => earlyWeights[i] * (1 - t) + weight * t);
+  const base = normal.map((weight, i) => earlyWeights[i] * (1 - t) + weight * t);
+  return enemyStage === playerStage ? sizeWeightsFor(base, difficulty) : base;
 }
 
-export function spawnSize(playerSize, playerStage = 1) {
+// 노말의 추첨 순서(크기 구간 → 구간 안 크기 → 단계)를 보존하고, 위치 재시도 때도 같은 크기 난수를 쓴다.
+export function rollSpawnSize(rng = Math.random) {
+  return { band: rng(), within: rng() };
+}
+
+export function spawnSize(playerSize, playerStage = 1, difficulty = 'normal', enemyStage = playerStage, roll = rollSpawnSize()) {
   const bands = CONFIG.enemy.sizes;
-  const weights = sizeWeights(playerSize, playerStage);
-  let draw = Math.random() * weights.reduce((a, b) => a + b, 0);
+  const weights = sizeWeights(playerSize, playerStage, difficulty, enemyStage);
+  let draw = roll.band * weights.reduce((a, b) => a + b, 0);
   let band = bands.at(-1);
   for (let i = 0; i < bands.length; i++) {
     const entry = bands[i];
@@ -51,7 +59,7 @@ export function spawnSize(playerSize, playerStage = 1) {
       break;
     }
   }
-  const raw = playerSize * between([band.min, band.max]);
+  const raw = playerSize * (band.min + roll.within * (band.max - band.min));
   // 3단계 이후에는 상한을 플레이어 크기에 맞춰 올려, 커져도 '나보다 큰 적'이 계속 나온다(절대 상한은 growthCap.maxSize).
   const cap = playerStage >= CONFIG.enemy.nearSpawn.fromStage
     ? Math.min(Math.max(CONFIG.enemy.maxSpawnSize, playerSize * band.max), CONFIG.enemy.growthCap.maxSize)
@@ -60,23 +68,16 @@ export function spawnSize(playerSize, playerStage = 1) {
 }
 
 // 플레이어 단계(1~5)별 가중치(config.enemy.stageWeights)로 새 적의 단계(1~5)를 고른다.
-export function spawnStage(playerStage = 1, rng = Math.random) {
-  const table = CONFIG.enemy.stageWeights;
-  const weights = table[clamp(Math.round(playerStage) || 1, 1, CONFIG.pace.maxStage)] ?? table[1];
-  let draw = rng() * weights.reduce((a, b) => a + b, 0);
-  let last = 1;
-  for (let i = 0; i < weights.length; i++) {
-    if (weights[i] <= 0) continue;
-    last = i + 1;
-    draw -= weights[i];
-    if (draw < 0) return last;
-  }
-  return last;
+export function spawnStage(playerStage = 1, rng = Math.random, difficulty = 'normal') {
+  return drawStage(stageWeightsFor(playerStage, difficulty), rng);
 }
 
 // 판을 처음 시작할 때의 적 단계. 플레이어 1·2단계는 예전처럼 모두 1단계, 3단계부터는 config.enemy.startStageWeights로 높은 단계가 나온다.
-export function startStage(playerStage = 1, rng = Math.random) {
-  const weights = CONFIG.enemy.startStageWeights[clamp(Math.round(playerStage) || 1, 1, CONFIG.pace.maxStage)];
+export function startStage(playerStage = 1, rng = Math.random, difficulty = 'normal') {
+  return drawStage(stageWeightsFor(playerStage, difficulty, CONFIG.enemy.startStageWeights), rng);
+}
+
+function drawStage(weights, rng) {
   if (!weights) return 1;
   let draw = rng() * weights.reduce((a, b) => a + b, 0);
   let last = 1;

@@ -3,6 +3,7 @@ import { createProgress } from '../systems/progress.js';
 import { ENHANCE, TREASURE } from '../systems/tuning-upgrade.js';
 import { FORMS } from '../data/forms.js';
 import { normalizeItem } from '../systems/weapons.js';
+import { DIFFICULTY, hasLives, livesFor, normalizeDifficulty } from '../systems/difficulty.js';
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
 
@@ -40,6 +41,11 @@ export function normalizeProgress(raw, forms = FORMS) {
   const pending = raw.pendingDegrade === 'signature' ? 'vitality' : raw.pendingDegrade;
   if (ENHANCE.stats.includes(pending)) base.pendingDegrade = pending;
   if (raw.pendingDevolve === true && base.stage > 1) base.pendingDevolve = true;
+  // 기존 저장은 노말이고 하드의 목숨은 0~10 정수다.
+  base.difficulty = normalizeDifficulty(raw.difficulty);
+  if (hasLives(base.difficulty)) {
+    base.lives = Number.isInteger(raw.lives) ? Math.max(0, Math.min(DIFFICULTY.hardLives, raw.lives)) : DIFFICULTY.hardLives;
+  }
   return base;
 }
 
@@ -118,9 +124,13 @@ export function canSave(storage = defaultStorage()) {
 // 자동 저장은 slot을 안 주면 지금 슬롯에 쓴다.
 export function saveProgress(p, storage = defaultStorage(), slot = getCurrentSlot(storage)) {
   if (!storage || !isValidSlot(slot)) return false;
+  // 종료 이벤트와 다른 자동 저장도 같은 경로를 지난다. 소멸한 캐릭터를 다시 쓰지 않는다.
+  if (hasLives(p?.difficulty) && p.lives === 0) return clearSave(storage, slot);
   migrateLegacySave(storage);
   try {
-    storage.setItem(slotKey(slot), JSON.stringify({ version: SAVE.version, savedAt: Date.now(), progress: p }));
+    const difficulty = normalizeDifficulty(p.difficulty);
+    const progress = { ...p, difficulty, lives: hasLives(difficulty) ? p.lives : undefined };
+    storage.setItem(slotKey(slot), JSON.stringify({ version: SAVE.version, savedAt: Date.now(), progress }));
     return true;
   } catch {
     return false;
@@ -142,6 +152,10 @@ function readSlot(storage, slot) {
     const data = JSON.parse(text);
     if (!data || data.version !== SAVE.version || !data.progress || typeof data.progress !== 'object') {
       return { status: 'corrupt' };
+    }
+    if (hasLives(data.progress.difficulty) && Number.isInteger(data.progress.lives) && data.progress.lives <= 0) {
+      clearSave(storage, slot);
+      return { status: 'empty' };
     }
     return { status: 'ok', data };
   } catch {
@@ -171,11 +185,11 @@ export function clearSave(storage = defaultStorage(), slot = getCurrentSlot(stor
   }
 }
 
-// 시작 화면용 요약: { slot, status: 'empty'|'ok'|'corrupt', formId, formName, stage, grade, yoryeok, savedAt }
-// 'ok'가 아니면 나머지 값은 null이다. 형태가 사라졌으면 미물 1단계로 보정된 값(normalizeProgress)을 보여 준다.
+// 시작 화면용 요약: { slot, status: 'empty'|'ok'|'corrupt', formId, formName, stage, grade, yoryeok, savedAt, difficulty, lives }
+// 'ok'가 아니면 나머지 값은 null이다. 형태가 사라졌으면 미물 1단계로 보정된 값(normalizeProgress)을 보여 준다. lives는 하드만 숫자, 아니면 null.
 export function summarizeSlot(slot, storage = defaultStorage(), forms = FORMS) {
   const read = readSlot(storage, slot);
-  const blank = { slot, status: read.status, formId: null, formName: null, stage: null, grade: null, yoryeok: null, savedAt: null };
+  const blank = { slot, status: read.status, formId: null, formName: null, stage: null, grade: null, yoryeok: null, savedAt: null, difficulty: null, lives: null };
   if (read.status !== 'ok') return blank;
   const progress = normalizeProgress(read.data.progress, forms);
   const form = forms.find((f) => f.id === progress.formId);
@@ -187,6 +201,8 @@ export function summarizeSlot(slot, storage = defaultStorage(), forms = FORMS) {
     grade: progress.grade,
     yoryeok: progress.yoryeok,
     savedAt: isNum(read.data.savedAt) ? read.data.savedAt : null,
+    difficulty: progress.difficulty,
+    lives: progress.lives,
   };
 }
 
@@ -195,9 +211,17 @@ export function listSlots(storage = defaultStorage(), forms = FORMS) {
 }
 
 // 슬롯을 처음 상태로 만들어 저장하고 지금 슬롯으로 기억한다([새로 시작]). 저장에 실패하면 false.
-export function startNewSlot(slot, storage = defaultStorage()) {
+// difficulty를 안 주면 노말. 하드는 목숨 10개로 시작한다.
+export function newSlotProgress(difficulty = DIFFICULTY.default) {
+  const progress = createProgress();
+  progress.difficulty = normalizeDifficulty(difficulty);
+  progress.lives = livesFor(progress.difficulty);
+  return progress;
+}
+
+export function startNewSlot(slot, storage = defaultStorage(), difficulty = DIFFICULTY.default) {
   if (!isValidSlot(slot)) return false;
-  if (!saveProgress(createProgress(), storage, slot)) return false;
+  if (!saveProgress(newSlotProgress(difficulty), storage, slot)) return false;
   setCurrentSlot(slot, storage);
   return true;
 }

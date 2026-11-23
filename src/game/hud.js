@@ -151,9 +151,23 @@ export class Hud {
       this.eaten.textContent = player.eaten;
     }
   }
-  // victory = { title, reward }: 승천처럼 이긴 판의 결과(제목과 보상 요력). 없으면 평소 종료 결과다.
-  // 꾸미기는 디자인 담당 몫이라 기능만 둔다: 제목 글자, 보상 줄, 결과 창의 data-outcome('ascension' | 'defeat').
-  end(player, killer, { onRestart, onHub } = {}, run = null, victory = null) {
+  // 하드 전용 목숨 표시. lives가 null이면 숨긴다.
+  setLives(lives) {
+    const stat = byId('lives-stat');
+    if (!stat) return;
+    stat.hidden = lives == null;
+    if (lives != null) byId('lives').textContent = lives;
+  }
+  // 마지막 패배에서는 확인 후 시작 화면으로 돌아간다.
+  end(player, killer, { onRestart, onHub } = {}, run = null, victory = null, life = null) {
+    const livesLine = byId('run-lives');
+    if (livesLine) {
+      livesLine.hidden = life?.livesLeft == null;
+      livesLine.textContent = livesLine.hidden ? '' : '남은 목숨 ' + life.livesLeft + (life.erased ? ' · 캐릭터가 사라졌습니다.' : '');
+    }
+    byId('restart').textContent = life?.erased ? '시작 화면으로' : '다음 판 시작';
+    byId('hub').hidden = !!life?.erased;
+    this.result.querySelector('.result-actions a').hidden = !!life?.erased;
     byId('end-title').textContent = victory ? victory.title : '판 종료';
     this.result.dataset.outcome = victory ? 'ascension' : 'defeat';
     byId('final-eaten').textContent = player.eaten;

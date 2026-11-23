@@ -1,7 +1,7 @@
 import { CONFIG } from '../config.js';
 
 export class FireButton {
-  constructor(surface, onFire) {
+  constructor(surface, onFire, { autoFire = false } = {}) {
     this.button = document.createElement('button');
     this.button.className = 'fire-button';
     this.button.type = 'button';
@@ -17,6 +17,10 @@ export class FireButton {
     surface.append(this.notice, this.button);
 
     this.events = new AbortController();
+    if (autoFire) {
+      this.button.hidden = true;
+      return;
+    }
     const options = { signal: this.events.signal };
     this.button.addEventListener('pointerdown', (event) => {
       if (event.button !== 0) return;

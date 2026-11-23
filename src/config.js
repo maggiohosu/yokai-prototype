@@ -1,5 +1,16 @@
 // 크기와 거리는 월드 단위, 속도는 초당 월드 단위다. size는 충돌 원의 반지름이다.
 export const CONFIG = {
+  difficulty: {
+    default: 'normal', ids: ['easy', 'normal', 'hard'],
+    names: { easy: '이지', normal: '노말', hard: '하드' },
+    notes: {
+      easy: '작거나 낮은 단계의 적이 자주 나와요. 이동 속도 2배, 자동 발사로 플레이해요. 부스터는 없어요.',
+      normal: '기본 출현 확률로 플레이해요.',
+      hard: '높은 단계의 적이 자주 나와요. 같은 단계에서는 큰 적이 많아요.',
+    },
+    mult: 1.4, hardLives: 10,
+    easy: { playerSpeedMult: 2, booster: false, autoFire: true },
+  },
   // 글꼴(사용자 지시 2026-11-23): 모든 글자를 프리텐다드로. 눈누 694번(SIL OFL 1.1, 상업적 사용·수정·재배포 가능) 가변 웹폰트를 src/style.css의 @font-face로 불러온다.
   // 프리텐다드에는 한자가 없어서 北東南西·終 같은 한자는 뒤의 시스템 글꼴로 나온다. Phaser 글자는 이 목록을 쓴다(CSS는 style.css의 --font).
   font: { family: "'PretendardVariable', 'Pretendard', 'Malgun Gothic', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif", load: "600 16px 'PretendardVariable'", loadText: '요괴 키우기 0123456789 北東南西終', timeoutMs: 3000 },

@@ -4,13 +4,22 @@
 // 화면 규칙(어떤 칸에 어떤 버튼이 있고 무엇이 확인을 요구하는가)은 createTitleModel에 있어 DOM 없이 시험한다.
 
 import {
-  canSave, clearSave, getCurrentSlot, listSlots, loadProgress, setCurrentSlot, startNewSlot,
+  canSave, clearSave, getCurrentSlot, listSlots, loadProgress, newSlotProgress, setCurrentSlot, startNewSlot,
 } from '../state/save.js';
+import { DIFFICULTY } from '../systems/difficulty.js';
 import { button, el, number } from './OddsTable.js';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
+// 첫 장면은 타이틀을 닫은 뒤에 만들어진다. 저장소를 쓸 수 없는 브라우저도 고른 캐릭터로 시작한다.
+let selection;
+export function takeTitleSelection() {
+  const result = selection;
+  selection = null;
+  return result;
+}
 
 // 마지막으로 저장한 시각을 사람이 읽는 말로. 모르면 null.
 export function formatLastPlayed(savedAt, now = Date.now()) {
@@ -37,13 +46,15 @@ export function slotCard(summary, { now = Date.now(), isLast = false } = {}) {
     heading: summary.slot + '번',
     state: summary.status,
     isLast: false,
-    name: null, detail: null, wallet: null, played: null, note: null,
+    name: null, detail: null, wallet: null, played: null, note: null, mode: null,
   };
   if (summary.status === 'ok') {
     return {
       ...base,
       isLast,
       name: summary.formName,
+      // 난이도와 (하드는) 남은 목숨
+      mode: DIFFICULTY.names[summary.difficulty] + (summary.lives != null ? ' · 목숨 ' + summary.lives : ''),
       detail: summary.stage + '단계 ' + summary.grade + '등급',
       wallet: '요력 ' + number(summary.yoryeok),
       played: formatLastPlayed(summary.savedAt, now),
@@ -65,6 +76,7 @@ export function confirmText(slot, action) {
 
 export function createTitleModel({ storage, now = () => Date.now(), onStart } = {}) {
   let confirming = null; // { slot, action: 'new' | 'clear' }
+  let picking = null; // { slot }: [새로 시작]의 난이도 고르기 단계
   const summaries = () => listSlots(storage);
   const summaryOf = (slot) => summaries().find((s) => s.slot === slot);
 
@@ -74,21 +86,31 @@ export function createTitleModel({ storage, now = () => Date.now(), onStart } = 
     return {
       cards: summaries().map((s) => slotCard(s, { now: t, isLast: s.slot === last })),
       confirming: confirming && { ...confirming, text: confirmText(confirming.slot, confirming.action) },
+      picking: picking && {
+        slot: picking.slot,
+        options: DIFFICULTY.ids.map((id) => ({ id, label: DIFFICULTY.names[id], note: DIFFICULTY.notes[id] })),
+      },
       canSave: canSave(storage),
     };
   }
 
-  function begin(slot, mode) {
-    if (mode === 'new') startNewSlot(slot, storage);
-    else setCurrentSlot(slot, storage);
+  function begin(slot, mode, difficulty) {
+    let progress;
+    if (mode === 'new') {
+      progress = startNewSlot(slot, storage, difficulty) ? loadProgress(storage, slot) : newSlotProgress(difficulty);
+    } else {
+      setCurrentSlot(slot, storage);
+      progress = loadProgress(storage, slot);
+    }
     confirming = null;
+    picking = null;
     // 저장소가 막혀 있어도 판은 시작한다(진행이 남지 않을 뿐이다).
-    onStart?.({ slot, mode, progress: loadProgress(storage, slot) });
+    onStart?.({ slot, mode, progress });
   }
 
   return {
     view,
-    // 'start' | 'confirm' | 'cleared' | null(할 일 없음)
+    // 'start' | 'confirm' | 'difficulty' | 'cleared' | null(할 일 없음)
     choose(slot, action) {
       const status = summaryOf(slot)?.status;
       if (!status) return null;
@@ -98,8 +120,8 @@ export function createTitleModel({ storage, now = () => Date.now(), onStart } = 
         return 'start';
       }
       if (action === 'new' && status === 'empty') {
-        begin(slot, 'new');
-        return 'start';
+        picking = { slot };
+        return 'difficulty';
       }
       if ((action === 'new' || action === 'clear') && status !== 'empty') {
         confirming = { slot, action };
@@ -107,21 +129,29 @@ export function createTitleModel({ storage, now = () => Date.now(), onStart } = 
       }
       return null;
     },
-    // 확인을 누르면 대기 중이던 동작을 실행한다.
+    // 확인을 누르면 대기 중이던 동작을 실행한다. 새로 시작은 난이도 고르기로 넘어간다(고르기 전에는 기존 저장이 그대로다).
     confirm() {
       if (!confirming) return null;
       const { slot, action } = confirming;
       if (action === 'new') {
-        begin(slot, 'new');
-        return 'start';
+        confirming = null;
+        picking = { slot };
+        return 'difficulty';
       }
       confirming = null;
       clearSave(storage, slot);
       return 'cleared';
     },
+    // 난이도를 고르면 칸을 새로 만들고 시작한다.
+    pickDifficulty(id) {
+      if (!picking || !DIFFICULTY.ids.includes(id)) return null;
+      begin(picking.slot, 'new', id);
+      return 'start';
+    },
     cancel() {
-      const was = confirming;
+      const was = confirming ?? picking;
       confirming = null;
+      picking = null;
       return was;
     },
   };
@@ -136,6 +166,7 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   const model = createTitleModel({
     storage, now,
     onStart(result) {
+      selection = result;
       close();
       onStart?.(result);
     },
@@ -155,6 +186,27 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   const hint = el('p', 'ts-hint');
   root.append(head, grid, hint);
 
+  function difficultyNode(picked) {
+    const group = el('section', 'ts-difficulties');
+    group.dataset.slot = picked.slot;
+    const bar = el('div', 'ts-difficulty-head');
+    bar.append(el('h2', 'ts-slot', picked.slot + '번 칸 난이도 선택'), button('취소', () => {
+      model.cancel();
+      render({ slot: picked.slot, action: 'new' });
+    }));
+    group.append(bar);
+    for (const option of picked.options) {
+      const card = button('', () => model.pickDifficulty(option.id), 'ts-difficulty');
+      card.dataset.action = 'difficulty-' + option.id;
+      card.append(el('strong', '', option.label), el('span', '', option.note));
+      if (option.id === 'hard') {
+        card.append(el('span', 'ts-life-note', '목숨 ' + DIFFICULTY.hardLives + '개, 다 쓰면 캐릭터가 사라짐'));
+      }
+      group.append(card);
+    }
+    return group;
+  }
+
   function cardNode(card, confirming) {
     const article = el('article', 'ts-card');
     article.dataset.slot = card.slot;
@@ -172,7 +224,9 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
       const row = el('div', 'ts-actions');
       const yes = button(mine.action === 'clear' ? '지우기' : '새로 시작', () => {
         // 지운 뒤에는 같은 칸의 [새로 시작]으로 초점을 옮긴다. 새로 시작하면 화면이 닫힌다.
-        if (model.confirm() === 'cleared') render({ slot: card.slot, action: 'new' });
+        const result = model.confirm();
+        if (result === 'cleared') render({ slot: card.slot, action: 'new' });
+        else if (result === 'difficulty') render({ slot: card.slot, action: 'difficulty-normal' });
       }, 'ts-danger');
       yes.dataset.action = 'confirm';
       yes.setAttribute('aria-label', card.slot + '번 칸 ' + (mine.action === 'clear' ? '지우기 확인' : '새로 시작 확인'));
@@ -191,7 +245,7 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
       const portrait = el('span', 'ts-portrait', card.name.slice(0, 1));
       portrait.setAttribute('aria-hidden', 'true');
       const info = el('div', 'ts-info');
-      info.append(el('strong', 'ts-form', card.name), el('span', '', card.detail), el('span', '', card.wallet));
+      info.append(el('strong', 'ts-form', card.name), el('span', 'ts-mode', card.mode), el('span', '', card.detail), el('span', '', card.wallet));
       if (card.played) info.append(el('span', 'ts-played', '마지막 플레이 ' + card.played));
       body.append(portrait, info);
     } else {
@@ -203,6 +257,7 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
       const b = button(action.label, () => {
         const result = model.choose(card.slot, action.id);
         if (result === 'confirm') render({ slot: card.slot, action: 'cancel' });
+        else if (result === 'difficulty') render({ slot: card.slot, action: 'difficulty-normal' });
       }, action.primary ? 'yk-primary' : '');
       b.dataset.action = action.id;
       b.setAttribute('aria-label', card.slot + '번 칸 ' + action.label);
@@ -216,9 +271,10 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   function render(focus) {
     if (closed) return;
     const v = model.view();
-    grid.replaceChildren(...v.cards.map((card) => cardNode(card, v.confirming)));
+    if (v.picking) grid.replaceChildren(difficultyNode(v.picking));
+    else grid.replaceChildren(...v.cards.map((card) => cardNode(card, v.confirming)));
     hint.textContent = v.canSave
-      ? '칸을 골라 시작해요. 진행은 자동으로 저장돼요.'
+      ? (v.picking ? '캐릭터를 만든 뒤에는 난이도를 바꿀 수 없어요.' : '칸을 골라 시작해요. 진행은 자동으로 저장돼요.')
       : '이 브라우저에서는 저장할 수 없어요. 판을 마쳐도 진행이 남지 않아요.';
     hint.dataset.tone = v.canSave ? '' : 'warn';
     const target = focus
@@ -228,9 +284,11 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   }
 
   root.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !model.cancel()) return;
+    if (event.key !== 'Escape') return;
+    const canceled = model.cancel();
+    if (!canceled) return;
     event.preventDefault();
-    render();
+    render({ slot: canceled.slot, action: canceled.action ?? 'new' });
   });
 
   function close() {

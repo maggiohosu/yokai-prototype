@@ -51,6 +51,21 @@
 .ts-info { min-width: 0; display: grid; gap: 2px; font-size: 13px; color: var(--ink-soft); }
 .ts-form { color: var(--ink); font: 600 18px/1.25 var(--serif); }
 .ts-played { color: var(--muted); font-size: 12px; }
+.ts-mode { font-weight: 600; }
+.ts-difficulties {
+  grid-column: 1 / -1; align-self: center; margin: auto; width: min(100%, 880px);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px;
+}
+.ts-difficulty-head { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ts-difficulties .ts-difficulty {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 10px;
+  min-height: 148px; padding: 18px; border: 2px solid var(--line-dark); border-top: 5px solid var(--jade);
+  text-align: left; white-space: normal; font-size: 14px; font-weight: 400; line-height: 1.4;
+}
+.ts-difficulty[data-action='difficulty-normal'] { border-top-color: var(--gold); }
+.ts-difficulty[data-action='difficulty-hard'] { border-top-color: var(--stamp); }
+.ts-difficulty strong { font: 600 22px/1.2 var(--serif); }
+.ts-life-note { color: var(--stamp); font-weight: 600; }
 .ts-note { color: var(--muted); font-size: 14px; }
 .ts-card[data-state='corrupt'] .ts-note { color: var(--stamp); }
 
@@ -75,6 +90,8 @@
 
 /* 좁은 화면(세로로 돌린 PC 창 등)에서는 칸을 한 줄씩 쌓는다. */
 @media (max-width: 620px) {
+  .ts-difficulties { grid-template-columns: minmax(0, 1fr); }
+  .ts-difficulties .ts-difficulty { min-height: auto; padding: 10px 14px; gap: 4px; }
   .ts-slots { grid-template-columns: minmax(0, 1fr); align-content: start; }
   .ts-body { flex: none; }
 }

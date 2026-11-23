@@ -111,11 +111,15 @@ test('이어하기는 빈 칸·손상된 칸에서는 아무 일도 하지 않�
   assert.equal(getCurrentSlot(s), 1);
 });
 
-test('빈 칸의 새로 시작: 확인 없이 처음 상태로 저장하고 시작한다', () => {
+test('빈 칸의 새로 시작: 확인 없이 난이도를 고르면 처음 상태로 저장하고 시작한다', () => {
   const s = fakeStorage();
   const started = [];
   const model = createTitleModel({ storage: s, onStart: (r) => started.push(r) });
-  assert.equal(model.choose(2, 'new'), 'start');
+  assert.equal(model.choose(2, 'new'), 'difficulty');
+  assert.equal(started.length, 0, '난이도를 고르기 전에는 시작하지 않는다');
+  assert.deepEqual(model.view().picking.options.map((o) => o.id), ['easy', 'normal', 'hard']);
+  assert.equal(model.pickDifficulty('nope'), null);
+  assert.equal(model.pickDifficulty('normal'), 'start');
   assert.equal(started[0].mode, 'new');
   assert.equal(started[0].slot, 2);
   assert.deepEqual(started[0].progress, createProgress());
@@ -132,10 +136,36 @@ test('저장이 있는 칸의 새로 시작은 한 번 확인한 뒤에만 덮�
   assert.equal(started.length, 0);
   assert.equal(summarizeSlot(1, s).yoryeok, 9999, '확인 전에는 지워지지 않는다');
   assert.deepEqual(model.view().confirming, { slot: 1, action: 'new', text: confirmText(1, 'new') });
-  assert.equal(model.confirm(), 'start');
+  assert.equal(model.confirm(), 'difficulty');
+  assert.equal(summarizeSlot(1, s).yoryeok, 9999, '난이도를 고르기 전에는 아직 덮어쓰지 않는다');
+  assert.equal(model.pickDifficulty('normal'), 'start');
   assert.equal(started.length, 1);
   assert.deepEqual(started[0].progress, createProgress());
   assert.equal(model.view().confirming, null);
+});
+
+test('난이도 고르기 취소: 기존 저장은 그대로, 하드를 고르면 목숨 10으로 시작한다', () => {
+  const s = fakeStorage();
+  saveProgress(filled({ yoryeok: 77 }), s, 1);
+  const started = [];
+  const model = createTitleModel({ storage: s, onStart: (r) => started.push(r) });
+  model.choose(1, 'new');
+  model.confirm();
+  assert.ok(model.cancel());
+  assert.equal(model.view().picking, null);
+  assert.equal(summarizeSlot(1, s).yoryeok, 77);
+  model.choose(2, 'new');
+  assert.equal(model.pickDifficulty('hard'), 'start');
+  assert.equal(started[0].progress.difficulty, 'hard');
+  assert.equal(started[0].progress.lives, 10);
+  const card = model.view().cards[1];
+  assert.equal(card.mode, '하드 · 목숨 10');
+});
+
+test('슬롯 카드는 난이도를 보여 주고, 기존 저장은 노말이다', () => {
+  const s = fakeStorage();
+  saveProgress(filled(), s, 1);
+  assert.equal(slotCard(summarizeSlot(1, s), { now: NOW }).mode, '노말');
 });
 
 test('손상된 칸의 새로 시작도 확인을 거친다', () => {
@@ -196,8 +226,9 @@ test('저장소가 막혀도 새로 시작은 판을 열고, 시작 화면은 �
   const started = [];
   const model = createTitleModel({ storage: thrower, onStart: (r) => started.push(r) });
   assert.equal(model.view().canSave, false);
-  assert.equal(model.choose(1, 'new'), 'start');
-  assert.deepEqual(started[0].progress, createProgress());
+  assert.equal(model.choose(1, 'new'), 'difficulty');
+  assert.equal(model.pickDifficulty('hard'), 'start');
+  assert.deepEqual(started[0].progress, { ...createProgress(), difficulty: 'hard', lives: 10 });
 });
 
 test('canSave는 시험 쓰기 키를 남기지 않는다', () => {

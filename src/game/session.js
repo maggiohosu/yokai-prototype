@@ -15,7 +15,7 @@ export function playerStats(progress) {
   const enh = progress.enh ?? {};
   return {
     pace: tempoMultiplier(progress),
-    speed: CONFIG.player.speed * playerSpeedMultiplier(progress),
+    speed: CONFIG.player.speed * playerSpeedMultiplier(progress) * (progress.difficulty === 'easy' ? CONFIG.difficulty.easy.playerSpeedMult : 1),
     areaGain: CONFIG.eating.areaGain * (1 + p.growthPerLevel * (enh.growth ?? 0)),
     // 생명력 최대치(초). 여의주 위력은 보물 강화 레벨과 등급 배율로만 정해진다(combat.js).
     vitalityMax: vitalityMax(enh.vitality ?? 0),

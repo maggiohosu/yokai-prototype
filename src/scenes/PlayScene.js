@@ -4,7 +4,7 @@ import { STEMS } from '../data/stems.js';
 import { abilityLabel } from '../systems/abilities.js';
 import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
-import { between, clamp, colorPicker, drawWorld, nearSpawnPlan, refillRingFor, regionAt, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage, startStage } from '../game/world.js';
+import { between, clamp, colorPicker, drawWorld, nearSpawnPlan, refillRingFor, regionAt, rollSpawnSize, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage, startStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
 import { drawStageMark } from '../art/marks.js';
@@ -20,7 +20,9 @@ import { FireButton } from '../game/fireButton.js';
 import { BoosterButton, boosterMult, createBooster, stepBoosterSim } from '../game/booster.js';
 import { MaintButton } from '../game/maintButton.js';
 import { finishMaintenance, snapshotForMaintenance } from '../systems/maintenance.js';
-import { loadProgress, saveProgress } from '../state/save.js';
+import { getCurrentSlot, loadProgress, saveProgress } from '../state/save.js';
+import { hasLives, normalizeDifficulty, onRunEnd } from '../systems/difficulty.js';
+import { takeTitleSelection } from '../ui/TitleView.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
 import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, startPace, upkeep } from '../systems/balance.js';
 import { applyWorldScale, growthTarget } from '../systems/worldScale.js';
@@ -56,10 +58,15 @@ export class PlayScene extends Phaser.Scene {
     // ?stress=abilities: 저장하지 않는 시험 판. 능력 16종을 차례로 한 번씩 발동시키고 프레임 시간을 잰다(setupStress).
     const stressMode = new URLSearchParams(location.search).get('stress');
     const sandbox = preview || debug === 'lv' || stressMode === 'abilities' || stressMode === 'weapons';
-    const progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
+    const selected = takeTitleSelection();
+    this.slot = selected?.slot ?? this.slot ?? getCurrentSlot();
+    const progress = data.progress ?? selected?.progress ?? this.registry.get('progress') ?? loadProgress(undefined, this.slot);
     this.progress = sandbox ? structuredClone(progress) : progress;
-    this.saveProgress = sandbox ? () => true : saveProgress;
+    this.saveProgress = sandbox ? () => true : (p) => saveProgress(p, undefined, this.slot);
     if (!sandbox) this.registry.set('progress', this.progress);
+    this.difficulty = normalizeDifficulty(this.progress.difficulty);
+    const easy = this.difficulty === 'easy' ? CONFIG.difficulty.easy : null;
+    this.autoFire = easy?.autoFire ?? false;
     this.simTime = 0; // 시뮬레이션 시계(초). 상태이상 타이머가 이 시계로 돈다 — 판 안 카드로 멈춘 동안에는 서 있다.
     this.stress = stressMode === 'abilities' || stressMode === 'weapons' ? this.setupStress(new URLSearchParams(location.search)) : null;
     // 단계마다 맵이 커진다(balance.map): 판을 그 단계의 월드 크기·적 수로 열고 바닥을 그린다. 시험 판(?stress)은 1단계 월드로 고정한다.
@@ -149,8 +156,8 @@ export class PlayScene extends Phaser.Scene {
     this.events.once('shutdown', () => this.enemyFire?.destroy());
     this.fireRequested = false;
     this.fireButton = new FireButton(arena, () => {
-      if (this.scene.isActive() && !this.ended) this.fireRequested = true;
-    });
+      if (this.scene.isActive() && !this.ended && !this.paused) this.fireRequested = true;
+    }, { autoFire: this.autoFire });
     // 부스터: 게이지는 판마다 가득 시작한다(scene.restart마다 create가 다시 돈다).
     this.booster = createBooster();
     this.boostMult = boosterMult(this.progress, FORM_BY_ID[this.progress.formId]);
@@ -158,13 +165,17 @@ export class PlayScene extends Phaser.Scene {
     this.boostSec = 0; // 이번 프레임에 실제로 가속한 시뮬레이션 시간
     this.boostFx = { active: false, clock: 0 };
     this.reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.boosterButton = new BoosterButton(arena);
+    this.boosterButton = easy?.booster === false ? null : new BoosterButton(arena);
+    const keyHints = arena.querySelectorAll('.keys > span');
+    keyHints[1].hidden = this.autoFire;
+    keyHints[2].hidden = !this.boosterButton;
     this.maintenance = null; // 정비 화면이 열려 있는 동안 { before }
     this.maintButton = new MaintButton(arena, () => this.openMaintenance());
     this.follow = followPlayer(this, this.player);
     this.scale.on('resize', this.follow.recenter);
     this.events.once('shutdown', () => this.scale.off('resize', this.follow.recenter));
     this.hud = new Hud(() => this.openAbilityInfo());
+    this.hud.setLives(hasLives(this.difficulty) ? this.progress.lives : null);
     this.refreshIdentity();
     document.getElementById('result').hidden = true;
     this.makePlayerMarker();
@@ -407,7 +418,7 @@ export class PlayScene extends Phaser.Scene {
       .setDepth(3);
   }
   spawn(size, options = {}) {
-    const stage = options.stage ?? spawnStage(this.player.stage ?? 1);
+    const stage = options.stage ?? spawnStage(this.player.stage ?? 1, Math.random, this.difficulty);
     const pos = spawnPoint(this.player, this.enemies, size, { ...options, stage });
     if (!pos) return false;
     const dir = this.nextColor(regionAt(pos.x, pos.y));
@@ -534,9 +545,10 @@ export class PlayScene extends Phaser.Scene {
     // 3단계 이후에는 적을 시작 장소 근처에 모으고(nearSpawn) 처음부터 높은 단계가 나온다(startStageWeights). 1·2단계는 예전처럼 모두 1단계에서 시작한다.
     const plan = nearSpawnPlan(playerStage, world.population);
     for (let i = 0; i < world.population; i++) {
-      let size = spawnSize(this.player.size, playerStage),
-        near,
-        stage = startStage(playerStage);
+      const roll = rollSpawnSize();
+      let stage = startStage(playerStage, Math.random, this.difficulty);
+      let size = spawnSize(this.player.size, playerStage, this.difficulty, stage, roll);
+      let near;
       if (i < world.initialNeighbors) {
         near = canEat({ size, stage }, this.player) ? world.outerRing : world.innerRing;
         if (i === 0) {
@@ -553,16 +565,21 @@ export class PlayScene extends Phaser.Scene {
     }
   }
   // victory = { title, reward }: 승천처럼 이긴 판(결과 창에 승리 제목과 보상 요력). 없으면 평소 종료.
+  // 하드: 판이 먹히거나 쓰러져 끝나면 목숨 1개를 쓴다(승천은 쓰지 않는다). 0이 되면 이 캐릭터(저장 슬롯)를 지운다.
   endRun(killer, victory = null) {
+    if (this.ended || this.paused) return;
     this.ended = true;
     this.releaseControls();
     this.combat.clearEffects();
     this.enemyFire.clear();
     this.fireGfx.clear();
-    this.hud.end(this.player, killer, {
-      onRestart: () => this.scene.restart({ progress: this.progress }),
-      onHub: () => this.openHub(),
-    }, this.run, victory);
+    const life = onRunEnd(this.progress, victory ? 'ascension' : 'defeat');
+    if (life.livesLeft !== null) this.progress.lives = life.livesLeft;
+    const actions = life.erased
+      ? { onRestart: () => location.replace('./index.html') }
+      : { onRestart: () => this.scene.restart({ progress: this.progress }), onHub: () => this.openHub() };
+    this.hud.end(this.player, killer, actions, this.run, victory, life);
+    this.hud.setLives(life.livesLeft);
     // 매혹한 요괴가 번 요력은 획득한 요력에 이미 들어 있다. 결과 창에 따로 적는다(설계 4-4).
     const reward = document.getElementById('run-reward');
     if (reward && this.run.allyYoryeok > 0) reward.textContent += ' (매혹한 요괴가 번 요력 ' + Math.round(this.run.allyYoryeok) + ' 포함)';
@@ -575,7 +592,6 @@ export class PlayScene extends Phaser.Scene {
   ascend({ reward }) {
     const title = CONFIG.balance.ascension.title;
     this.progress.yoryeok += reward;
-    this.saveProgress(this.progress);
     this.fx.burst(this.player.x, this.player.y, 0xffe27a, 40, 2);
     this.endRun({ name: title, message: '크기 ' + Number(this.player.size.toFixed(1)) + '에 닿아 ' + title + '했습니다.' }, { title, reward });
   }
@@ -837,7 +853,7 @@ export class PlayScene extends Phaser.Scene {
       const boost = stepBoosterSim(this.booster, { pressed: this.boostHeld, h, scale: CONFIG.tempo * this.pace, max: CONFIG.booster.maxSec });
       this.boostSec += boost.boostSec;
       this.player.step(direction, h, boost.boostSec, this.boostMult);
-      this.combat.step(direction, h, i === 0 && this.fireRequested, grid);
+      this.combat.step(direction, h, this.autoFire || (i === 0 && this.fireRequested), grid);
       for (const enemy of this.enemies) {
         enemy.step(this.player, h, grid);
         if (enemy.special && enemy.sprite.active) this.enemyFire.tryFire(enemy, this.player, h, this.simTime);
@@ -941,9 +957,15 @@ export class PlayScene extends Phaser.Scene {
       const refill = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
       const refillRing = refill ? refillRingFor(view, refill.refillRing) : null; // 고리 안쪽 반지름을 화면 크기에 맞춘다
       for (let i = 0; i < count; i++) {
-        const s = spawnSize(size, this.player.stage ?? 1);
+        const playerStage = this.player.stage ?? 1;
+        const roll = rollSpawnSize();
+        const trySpawn = (near) => {
+          const stage = spawnStage(playerStage, Math.random, this.difficulty);
+          const enemySize = spawnSize(size, playerStage, this.difficulty, stage, roll);
+          return this.spawn(enemySize, { view, near, stage });
+        };
         // 그래도 자리를 못 찾으면 월드 전체에서 한 번 더 찾는다(보충이 멈추지 않게).
-        if (!(refillRing && this.spawn(s, { view, near: refillRing }))) this.spawn(s, { view });
+        if (!refillRing || !trySpawn(refillRing)) trySpawn();
       }
     }
     // 맞수 대요괴(balance.rivalPlan): 4·5단계에서 실제 25초마다, 동시 최대 2마리. 시험 판(?stress)은 적 구성을 직접 정하므로 건너뛴다.

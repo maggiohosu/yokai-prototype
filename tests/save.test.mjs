@@ -283,6 +283,7 @@ test('슬롯 요약: 형태 id·이름·단계·등급·요력·마지막 저장
   const form = FORMS.find((f) => f.id === 'littleSnake');
   assert.deepEqual(sum, {
     slot: 1, status: 'ok', formId: 'littleSnake', formName: form.name, stage: 2, grade: 'A', yoryeok: 123, savedAt: 1700000000000,
+    difficulty: 'normal', lives: null,
   });
   const empty = summarizeSlot(2, s);
   assert.equal(empty.status, 'empty');
