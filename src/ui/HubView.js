@@ -3,6 +3,7 @@
 // 다음 판은 onPlay(), 진화는 onEvolve(), 퇴화 B는 onEvolve({ devolve: true })로 화면을 넘긴다.
 // B에서도 같은 progress로 EvolveView를 열면 된다. 각 콜백은 이 화면을 닫은 뒤 호출된다.
 
+import { drawWeaponIcon } from '../art/weapons.js';
 import { saveProgress } from '../state/save.js';
 import { applyDegradeChoice, autoEnhance, enhanceCost, getEnhanceOdds, tryEnhance } from '../systems/enhance.js';
 import { canEvolve, evolutionCost } from '../systems/evolution.js';
@@ -289,14 +290,32 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     return stats;
   }
 
+  function weaponIcon(kind, locked = false) {
+    const canvas = el('canvas', 'yk-weapon-icon');
+    canvas.setAttribute('aria-hidden', 'true');
+    canvas.width = canvas.height = Math.round(64 * Math.min(window.devicePixelRatio || 1, 3));
+    drawWeaponIcon(canvas.getContext('2d'), kind, form?.stem, canvas.width, { locked });
+    return canvas;
+  }
+  function itemHeading(item, tag) {
+    const head = el('div', 'yk-weapon-heading');
+    const weapon = weaponOf(item);
+    const info = el('div');
+    info.append(el(tag, 'yk-weapon-name', itemTitle(item)));
+    if (hasPaid(item)) info.append(el('span', 'yk-source', '상점 · 본전 한도 요력 ' + number(item.paid)));
+    head.append(weaponIcon(weapon.id), info);
+    return head;
+  }
   function treasurePanel() {
     preloadEnhanceSounds();
     const equipped = el('section', 'yk-card');
     const item = progress.treasure;
     equipped.append(el('p', 'yk-label', '장착한 보물'));
     if (item) {
-      const title = el('h3', 'yk-orb-title', itemTitle(item));
-      equipped.append(title, el('p', 'yk-hint', weaponOf(item).line));
+      equipped.append(itemHeading(item, 'h3'), el('p', 'yk-hint', weaponOf(item).line));
+      if (item.level < TREASURE.success.length) {
+        equipped.append(el('p', 'yk-preview-label', '강화 미리보기　+' + item.level + ' → +' + (item.level + 1)));
+      }
       equipped.append(statLine(item));
       const cost = upgradeCost(item);
       const controls = el('div', 'yk-actions');
@@ -321,7 +340,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       const stored = progress.inventory[i];
       const slot = el('li');
       slot.append(el('span', 'yk-slot-no', String(i + 1)),
-        el('strong', '', stored ? itemTitle(stored) + (hasPaid(stored) ? ' (상점)' : '') : '빈 칸'));
+        stored ? itemHeading(stored, 'strong') : el('strong', '', '빈 칸'));
       if (stored) {
         const controls = el('div', 'yk-actions');
         controls.append(button(item ? '장착 바꾸기' : '장착', () => {
@@ -363,24 +382,30 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const row = el('li', 'yk-shop-item');
     row.dataset.kind = card.kind;
     row.dataset.locked = String(card.locked);
+    const head = el('div', 'yk-weapon-heading');
     const info = el('div', 'yk-shop-info');
-    info.append(el('strong', '', card.name + ' (' + card.hanja + ')'), el('span', 'yk-hint', card.line),
-      el('span', 'yk-hint', '강점 ' + card.strong + ' · 약점 ' + card.weak));
+    info.append(el('h4', 'yk-weapon-name', card.name), el('span', 'yk-weapon-hanja', card.hanja));
+    head.append(weaponIcon(card.kind, card.locked), info);
+    row.append(head);
     if (card.locked) {
-      info.append(el('span', 'yk-notice', lockedText(card.kind)));
-      row.append(info);
+      row.append(el('p', 'yk-unlock', lockedText(card.kind)));
       return row;
     }
+    const traits = el('dl', 'yk-weapon-traits');
+    traits.append(el('dt', '', '강점'), el('dd', '', card.strong), el('dt', '', '약점'), el('dd', '', card.weak));
+    row.append(el('p', 'yk-weapon-line', card.line), traits);
+    const controls = el('div', 'yk-buy-controls');
     const picker = el('select', 'yk-select');
     picker.setAttribute('aria-label', card.name + ' 레벨');
-    for (const { level, price } of card.levels) {
-      const option = el('option', '', '+' + level + ' (요력 ' + number(price) + ')');
+    for (const { level } of card.levels) {
+      const option = el('option', '', '+' + level);
       option.value = level;
       picker.append(option);
     }
     picker.value = String(shopPick[card.kind] ?? card.levels[0].level);
-    const buyButton = button('', () => purchase(card.kind, Number(picker.value)));
-    const need = el('span', 'yk-hint');
+    const buyButton = button('', () => purchase(card.kind, Number(picker.value)), 'yk-primary');
+    const need = el('span', 'yk-buy-reason');
+    need.id = 'yk-buy-reason-' + card.kind;
     function refreshBuy() {
       const level = Number(picker.value);
       shopPick[card.kind] = level;
@@ -389,30 +414,31 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
       buyButton.textContent = '구매 (요력 ' + number(price) + ')';
       buyButton.setAttribute('aria-label', itemTitle({ kind: card.kind, level }) + ' 구매, 요력 ' + number(price));
       buyButton.disabled = !!blocker;
-      need.textContent = blocker === 'funds' ? '요력 ' + number(price - progress.yoryeok) + ' 모자라요' : '';
+      need.textContent = blocker === 'funds' ? '요력 ' + number(price - progress.yoryeok) + ' 모자라요' : blockerText[blocker] ?? '';
+      if (blocker) buyButton.setAttribute('aria-describedby', need.id);
+      else buyButton.removeAttribute('aria-describedby');
     }
     picker.addEventListener('change', refreshBuy);
     refreshBuy();
-    // 오른쪽 칸(132px)은 구매 버튼 하나만 들어가므로 레벨 고르기는 설명 아래 왼쪽 칸에 둔다.
-    info.append(picker, need);
-    row.append(info, buyButton);
+    controls.append(picker, buyButton);
+    row.append(controls, need);
     return row;
   }
   function shopPanel() {
-    const intro = el('section', 'yk-card');
+    const intro = el('div', 'yk-shop-head');
     const used = progress.inventory.length;
-    intro.append(el('h3', 'yk-stat-name', '상점'),
-      el('p', 'yk-cost', '산 보물은 보관함에 들어가요. 보관함 ' + used + '/' + TREASURE.inventorySlots),
-      el('p', 'yk-cost', '모든 보물의 강화 확률은 같아요.'),
-      el('p', 'yk-cost', '상점에서 산 보물은 산 값과 강화에 쓴 요력까지만 돌려받아요.'));
+    intro.append(el('h3', 'yk-stat-name', '보물 상점'),
+      el('span', 'yk-storage-count', '보관함 ' + used + ' / ' + TREASURE.inventorySlots));
     if (used >= TREASURE.inventorySlots) {
-      intro.append(el('p', 'yk-notice', blockerText.full + '. 보물을 팔거나 장착해서 칸을 비워 주세요.'));
+      intro.append(el('p', 'yk-notice', '보물 탭에서 보관함 한 칸을 비워 주세요.'));
     }
     const list = el('ol', 'yk-shop');
+    list.setAttribute('aria-label', '보물 진열대');
     for (const card of shopCatalog(progress)) list.append(shopCard(card));
-    const shelf = el('section', 'yk-card');
-    shelf.append(list);
-    body.append(intro, shelf);
+    const terms = el('div', 'yk-shop-terms');
+    terms.append(el('p', '', '모든 보물의 강화 확률은 같아요.'),
+      el('p', '', '상점에서 산 보물은 본전까지만 돌려받아요.'));
+    body.append(intro, list, terms);
   }
 
   function render() {

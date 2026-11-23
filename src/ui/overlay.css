@@ -190,15 +190,46 @@
 @media (prefers-reduced-motion: reduce) {
   .yk-reveal .yk-portrait, .yk-flash { animation: none; }
 }
-/* 상점: 한 줄에 여의주 하나(이름과 구성, 오른쪽에 구매 버튼) */
-.yk-shop { list-style: none; padding: 0; margin-top: 8px; }
-.yk-shop-item {
-  display: grid; grid-template-columns: minmax(0, 1fr) 132px; align-items: center; gap: 8px;
-  padding-block: 8px; border-bottom: 1px solid var(--line);
+/* 보물 진열대 */
+.yk-shop-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 12px; }
+.yk-storage-count { font-size: 13px; font-weight: 600; color: var(--ink-soft); }
+.yk-shop-head .yk-notice { flex-basis: 100%; color: var(--stamp); font-size: 13px; }
+.yk-shop {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px;
+  list-style: none; padding: 0; margin-top: 10px;
 }
-.yk-shop-info { display: grid; gap: 2px; min-width: 0; font-size: 14px; }
-.yk-shop-item .yk-button { white-space: nowrap; }
-.yk-card > .yk-notice { margin-top: 8px; color: var(--stamp); }
+.yk-shop-item {
+  display: flex; flex-direction: column; gap: 7px; min-width: 0; padding: 10px 12px;
+  border: 1px solid var(--line-dark); border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 65%, white);
+}
+.yk-weapon-heading { display: flex; align-items: center; gap: 12px; }
+.yk-weapon-heading > div { min-width: 0; }
+.yk-weapon-icon {
+  display: block; flex: 0 0 auto; width: 64px; height: 64px;
+  background: radial-gradient(ellipse at center, var(--sheet) 44%, transparent 70%);
+}
+.yk-weapon-name { display: block; margin: 0; font: 650 21px/1.2 var(--serif); }
+.yk-weapon-hanja { color: var(--ochre); font: 500 13px/1.5 var(--serif); letter-spacing: .13em; }
+.yk-weapon-line { font-size: 14px; line-height: 1.35; }
+.yk-weapon-traits { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 2px 8px; font-size: 12px; color: var(--ink-soft); }
+.yk-weapon-traits dt { color: var(--jade); font-weight: 700; }
+.yk-weapon-traits dt:nth-of-type(2) { color: var(--stamp); }
+.yk-buy-controls { display: grid; grid-template-columns: minmax(48px, .48fr) minmax(0, 1fr); gap: 6px; margin-top: auto; padding-top: 3px; }
+.yk-shop-item .yk-button, .yk-shop-item .yk-select { min-width: 44px; min-height: 44px; }
+.yk-buy-reason, .yk-unlock { font-size: 13px; color: var(--stamp); }
+.yk-buy-reason:empty { display: none; }
+.yk-shop-item[data-locked='true'] { border-color: var(--line); background: var(--sheet); }
+.yk-shop-item[data-locked='true'] .yk-weapon-hanja, .yk-unlock { color: var(--muted); }
+.yk-shop-terms { border-top: 1px solid var(--line); padding-top: 8px; color: var(--ink-soft); font-size: 13px; }
+.yk-source { color: var(--ochre); font-size: 12px; }
+.yk-preview-label { margin-top: 12px; color: var(--ink-soft); font-size: 13px; font-weight: 600; }
+.yk-slots .yk-weapon-icon { width: 44px; height: 44px; }
+.yk-slots .yk-weapon-name { font-size: 16px; }
+.yk-dialog:has(.yk-shop, .yk-slots) .yk-tabs .yk-button { min-width: 44px; }
+@media (orientation: landscape) and (min-width: 560px) {
+  .yk-shop { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 /* 판 중 [정비] 버튼(src/game/maintButton.js): 화면 위쪽, 오른쪽 위 도감 버튼 바로 왼쪽. 엄지 영역(아래쪽 스틱·발사·부스터)과 겹치지 않는다. */
 .field-maint {
   position: absolute; top: var(--top); right: calc(var(--right) + 88px); z-index: 3;
