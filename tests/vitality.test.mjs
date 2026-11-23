@@ -18,11 +18,13 @@ function run(state, max, touching, seconds, dt = H) {
   return null;
 }
 
-test('vitalityMax: 0.6초 + 0.25초 × 레벨(+10이면 3.1초)', () => {
-  near(vitalityMax(0), 0.6);
-  near(vitalityMax(1), 0.85);
-  near(vitalityMax(10), 3.1);
-  near(vitalityMax(-4), 0.6);
+test('vitalityMax: baseSec(약 10ms) + 0.25초 × 레벨', () => {
+  const b = CONFIG.vitality.baseSec;
+  assert.ok(b > 0 && b < 0.02, '기본 생명력은 약 10ms(사용자 지시 2026-11-23)');
+  near(vitalityMax(0), b);
+  near(vitalityMax(1), b + 0.25);
+  near(vitalityMax(10), b + 2.5);
+  near(vitalityMax(-4), b);
 });
 
 test('버티는 시간: 닿아 있는 동안 게이지만큼 버티고, 0이 되는 순간에도 닿아 있으면 먹힌다', () => {
