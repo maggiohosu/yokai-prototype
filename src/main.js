@@ -34,7 +34,7 @@ async function enterLandscape() {
 
 if (gallery) {
   document.body.classList.add('gallery-mode');
-  document.title = '요괴 도감 · 요괴 키우기';
+  document.title = '요괴 도감 · 용이 되자';
   document.getElementById('gallery').hidden = false;
   document.getElementById('arena').setAttribute('aria-hidden', 'true');
   document.getElementById('nav-text').textContent = '들판으로';

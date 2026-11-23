@@ -146,7 +146,7 @@ export function TitleView({ storage, now = () => Date.now(), onStart } = {}) {
   crest.setAttribute('aria-hidden', 'true');
   crest.append(el('i'), el('i'), el('i'), el('i'));
   const name = el('div', 'ts-name');
-  name.append(el('h1', 'ts-title', '요괴 키우기'), el('p', 'ts-subtitle', '미물에서 용까지'));
+  name.append(el('h1', 'ts-title', '용이 되자'), el('p', 'ts-subtitle', '미물에서 용까지'));
   const book = el('a', 'ts-book', '요괴 도감');
   book.href = './index.html?gallery=1';
   head.append(crest, name, book);

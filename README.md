@@ -1,4 +1,4 @@
-# 요괴 키우기
+# 용이 되자
 
 저장소 루트에서 `python -m http.server 8000`을 실행한 뒤 [들판](http://localhost:8000/index.html) 또는 [17종 요괴 도감](http://localhost:8000/index.html?gallery=1)을 연다. 빌드는 필요 없으며 Phaser 3.90.0은 jsDelivr에서 불러온다.
 
