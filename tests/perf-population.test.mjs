@@ -10,9 +10,7 @@ test.afterEach(() => applyWorldScale(1));
 test('적 수 3배: 단계별 인구가 예전(72·115·160·216·284)의 3배다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.equal(CONFIG.world.populationMult, 3);
-  [72, 115, 160, 216, 284].forEach((old, i) => assert.ok(Math.abs(pops[i] - old * 3) <= 2, `${i + 1}단계 ${pops[i]} ≈ ${old * 3}`));
-  assert.equal(pops[0], 216);
-  assert.equal(pops[4], 853);
+  assert.deepEqual(pops, [72, 115, 160, 216, 284].map(base => base * 3));
 });
 
 // 전체 프레임 예산은 Chrome 시험에서 검증한다. 이 보조 시험은 단일 AI·충돌 단계의 큰 회귀를 잡는다.

@@ -140,7 +140,7 @@ export class Fx {
     if (!REDUCED) this.scene.cameras.main.shake(this.m.shakeMs, this.m.shakeIntensity);
   }
 
-  update(dt, player, grade) {
+  update(dt, player, grade, view = this.scene.cameras.main.worldView) {
     this.t += dt;
     const g = this.g.clear();
     if (this.t < this.muzzleUntil) {
@@ -154,7 +154,6 @@ export class Fx {
       const line = announceWeaponUnlocks(this.scene.progress, this.unlockRun.highest);
       if (line) this.floatText(player.x, player.y - player.size * 2.1 - 88 / this.scene.cameras.main.zoom, line, '#ffe693');
     }
-    const view = this.scene.cameras.main.worldView;
     for (let i = this.parts.length - 1; i >= 0; i--) {
       const p = this.parts[i];
       p.life -= dt;

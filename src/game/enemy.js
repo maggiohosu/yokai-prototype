@@ -34,6 +34,9 @@ export class Enemy extends Actor {
     this.diet = newDiet();
     this.bodyLevel = 0;
     this.wanderTime = 0;
+    this.travelSteps = 0;
+    this.travelX = 0;
+    this.travelY = 0;
     this.steer = {};
     this.direction = null;
     this.aiIntent = null;
@@ -151,6 +154,22 @@ export class Enemy extends Actor {
     this.special = rollSpecial(this.size, this.stage, rng);
   }
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
+  stepDistant(player, h, grid, stepsLeft) {
+    if (this.travelSteps > 0) {
+      this.sprite.x += this.travelX;
+      this.sprite.y += this.travelY;
+      this.travelSteps--;
+      return;
+    }
+    const count = Math.min(5, stepsLeft);
+    const x = this.x, y = this.y;
+    this.step(player, h * count, grid, true);
+    this.travelX = (this.x - x) / count;
+    this.travelY = (this.y - y) / count;
+    this.travelSteps = count - 1;
+    this.sprite.x = x + this.travelX;
+    this.sprite.y = y + this.travelY;
+  }
   step(player, dt, grid, think = true, blend = 1 - Math.exp(-CONFIG.enemy.turnRate * dt)) {
     const ai = CONFIG.enemy;
     const now = nowOf(this.scene);

@@ -19,7 +19,7 @@ export const CONFIG = {
   world: {
     size: 4000,
     population: 72,
-    populationMult: 3, // 사용자 지시(2026-11-23): 적 출몰 3배. worldFor의 적 수(단계별 인구)에 곱한다.
+    populationMult: 3, // 단계별 기본 인구를 반올림한 뒤 곱한다. 72·115·160·216·284 → 216·345·480·648·852.
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
     grid: 64,
     patternTile: 512,
@@ -179,10 +179,10 @@ export const CONFIG = {
     // (나는 실제로 빨라지고 적도 빨라지지만 서로 같이 빨라져서 화면에서는 느려 보인다). 진화한 뒤의 화면과 크기는 처음 시작 화면과 같다(view.stageZoom 모두 1).
     // carry/tauSec은 '나만' 진화 직전 크기 기준으로 느리게 시작하는 옛 규칙이다. 적이 같이 느려지지 않아 지금은 끈다(carry 0).
     evolveSlow: { carry: 0, tauSec: 45, paceTauSec: 40 },
-    // 단계마다 맵이 커진다(사용자 지시 2026-11-23, src/systems/worldScale.js). 월드 크기 = world.size × stageScale[단계], 적 수 = world.population × 배율^populationExp.
+    // 월드 한 변은 기본 크기 × 단계 배율, 적 수는 round(기본 인구 × 단계 배율^populationExp) × populationMult.
     // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고 새 땅을 보충으로 채운다.
     // 4000 → 6000 → 8000 → 10400 → 13200. 적 수는 위 populationExp로 정한다(면적이 아니라 배율에 가깝게 늘려 CPU 부담을 줄인다).
-    map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 }, populationExp: 1.15 }, // 적 수 72 → 115 → 160 → 216 → 284(예전 지수 1: 72·108·144·187·238)
+    map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 }, populationExp: 1.15 }, // 기본 인구 72·115·160·216·284, 배율 3에서 216·345·480·648·852.
     // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
     // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.
     // 맞수의 몸집 상한은 플레이어 × capVsPlayer(절대 상한은 enemy.growthCap.maxSize). 이름표는 label.
@@ -232,7 +232,10 @@ export const CONFIG = {
     targetFps: 60,
     maxDelta: 0.05,
     maxStep: 1 / 60, // 템포를 곱한 뒤 한 계산 단계의 최대 시간(초)
-    maxSteps: 8,
+    get maxSteps() {
+      const pace = CONFIG.balance.pace;
+      return Math.ceil(this.maxDelta * CONFIG.tempo * pace.stageMult[pace.maxStage] / this.maxStep);
+    },
     enemyCell: 128,
     farThinkSteps: 4, // 화면 밖·감지 거리 두 배 밖에서 조향을 나눠 갱신하는 주기
     refillPerFrame: 3,

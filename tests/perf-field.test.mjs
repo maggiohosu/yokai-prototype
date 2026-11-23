@@ -1,14 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { pathToFileURL } from 'node:url';
 import { CONFIG } from '../src/config.js';
 import { createBooster } from '../src/game/booster.js';
 import { Enemy } from '../src/game/enemy.js';
-import { buildGrid, findMeals, insertGrid, queryGrid } from '../src/game/enemyAI.js';
+import { buildGrid, findMeals, insertGrid, MealBounds, queryGrid } from '../src/game/enemyAI.js';
+import { cameraView } from '../src/game/camera.js';
+import { createVitality } from '../src/systems/vitality.js';
+import { fakeEnemy, makeWorld } from './fixtures-abilities.mjs';
 import { eatPair } from '../src/systems/rules.js';
 import { eatBlocked } from '../src/game/status.js';
 import { drawStageMark, StageMarks } from '../src/art/marks.js';
-import { populationScenario, withSeed } from '../src/game/populationStress.js';
+import { PopulationStress, populationScenario, withSeed } from '../src/game/populationStress.js';
 
 test('느린 프레임도 이동·충돌 단계의 길이를 지키고 남은 시간을 다음 프레임에 소화한다', async () => {
   globalThis.Phaser ??= { Scene: class {} };
@@ -38,6 +42,64 @@ test('보충 묶음은 인구 배율과 함께 바뀐다', () => {
       assert.equal(world.refillBatch, 4 * mult);
     }
   } finally { world.populationMult = current; }
+});
+
+test('5단계는 20fps에서 허용하는 50ms를 한 프레임 안에 시뮬레이션한다', () => {
+  const elapsed = CONFIG.render.maxDelta * CONFIG.tempo * CONFIG.balance.pace.stageMult[5];
+  assert.equal(CONFIG.render.maxSteps, Math.ceil(elapsed / CONFIG.render.maxStep));
+});
+
+test('첫 렌더 전과 크기 변경 직후에 현재 스크롤·줌·화면 크기로 시야를 정한다', () => {
+  const camera = { scrollX: 200, scrollY: 300, width: 800, height: 400, zoom: 2, worldView: {} };
+  const view = cameraView(camera);
+  assert.deepEqual([view.left, view.right, view.top, view.bottom], [400, 800, 400, 600]);
+  Object.assign(camera, { scrollX: 500, width: 400, zoom: 1 });
+  assert.equal(cameraView(camera, view), view);
+  assert.deepEqual([view.left, view.right, view.top, view.bottom], [500, 900, 300, 700]);
+});
+
+test('인구 시험의 생성 실패는 그 프레임만 중단하고 같은 배치의 격자로 다시 채운다', () => {
+  const stress = new PopulationStress(new URLSearchParams('stage=1'));
+  let attempts = 0, ticks = 0, firstGrid;
+  const scene = {
+    enemies: Array.from({ length: 213 }, (_, i) => ({ x: i, y: 100, size: 5 })),
+    cameras: { main: { worldView: {} } }, player: { size: 12 },
+    spawn(_size, { grid }) {
+      firstGrid ??= grid;
+      assert.equal(grid, firstGrid);
+      if (++attempts === 1) return false;
+      const enemy = { x: 300 + attempts, y: 100, size: 6 };
+      this.enemies.push(enemy);
+      insertGrid(grid, enemy);
+      return true;
+    },
+    tick() { ticks++; },
+  };
+  stress.update(scene, 16);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [1, 1, 213]);
+  stress.update(scene, 16);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [4, 2, 216]);
+  assert.equal(queryGrid(firstGrid, 302, 100, 5).length, 3);
+});
+
+test('PERF는 업데이트와 렌더가 짝을 이룬 120프레임마다 한 줄을 쓰고 종료 시 리스너를 뗀다', async t => {
+  globalThis.Phaser ??= { Scene: class {} };
+  const { PlayScene } = await import('../src/scenes/PlayScene.js');
+  const game = new EventEmitter();
+  const scene = { events: new EventEmitter(), game: { events: game }, enemies: [1, 2], tick() {} };
+  const log = t.mock.method(console, 'log', () => {});
+  PlayScene.prototype.attachFramePerf.call(scene);
+  for (let i = 0; i < 240; i++) {
+    game.emit('prerender');
+    game.emit('postrender');
+    PlayScene.prototype.update.call(scene, i, 16);
+    game.emit('prerender');
+    game.emit('postrender');
+    assert.equal(log.mock.callCount(), Math.floor((i + 1) / 120));
+  }
+  assert.match(log.mock.calls[0].arguments[0], /^PERF update avg [\d.]+ms max [\d.]+ms render avg [\d.]+ms max [\d.]+ms enemies 2$/);
+  scene.events.emit('shutdown');
+  assert.equal(game.listenerCount('prerender') + game.listenerCount('postrender'), 0);
 });
 
 test('먼 적도 조향을 쉬는 단계에 밀림·빙결·매혹 유예를 즉시 적용한다', () => {
@@ -112,6 +174,83 @@ test('직접 순회한 먹기 쌍은 같은 격자·순서의 기존 조회와 �
   });
 });
 
+test('프레임 중 이동·성장·생성에도 생략한 먹기 후보와 전체 격자의 먹기 순서가 같다', () => {
+  withSeed(713, () => {
+    const actors = Array.from({ length: 160 }, (_, i) => ({
+      x: Math.random() * 1200 - 60, y: Math.random() * 600, size: 4 + Math.random() * 17,
+      stage: i % 5 + 1, fearUntil: i % 8 ? 0 : 10,
+    }));
+    const bounds = new MealBounds();
+    bounds.capture(actors);
+    assert.ok(actors.some(a => !a.mealPossible));
+    assert.ok(actors.some(a => a.mealPossible));
+    let grid;
+    function compare(verified) {
+      grid = buildGrid(actors, 128, grid);
+      assert.equal(bounds.valid && actors.every(actor => bounds.contains(actor)), verified);
+      assert.deepEqual(findMeals(grid, undefined, 2, [], new Set(), verified), findMeals(grid, undefined, 2));
+    }
+    for (let i = 0; i < 5; i++) {
+      for (const a of actors) { a.x += 0.9; a.y -= 0.8; }
+      compare(true);
+    }
+    actors[7].size += 20;
+    compare(false);
+    bounds.capture(actors);
+    actors.splice(8, 1);
+    compare(true);
+    actors.push({ x: actors[0].x + 1, y: actors[0].y, size: 9 });
+    compare(false);
+    actors[0].size = 1200;
+    bounds.capture(actors);
+    compare(false);
+  });
+});
+
+test('원거리 이동을 묶어도 근거리의 이동·먹기 순서와 여의주·팔괘경 명중 대상·피해가 같다', async () => {
+  globalThis.Phaser ??= { Scene: class {} };
+  const { PlayScene } = await import('../src/scenes/PlayScene.js');
+  function run(kind, useBounds) {
+    return withSeed(731, () => {
+      const hits = [], meals = [], calls = [0, 0, 0, 0, 0];
+      const actors = [[1110, 1000, 43], [1180, 1000, 39], [920, 1010, 26], [916, 1010, 8], [2900, 1000, 12]]
+        .map(([x, y, size], id) => {
+          const a = fakeEnemy(x, y, size, {
+            id, thinkSlot: id % 4, travelSteps: 0,
+            step(_player, h) { this.x += 10 * h; calls[id]++; },
+            stepDistant: Enemy.prototype.stepDistant,
+            eat(prey) { meals.push([this.id, prey.id]); this.size = Math.hypot(this.size, prey.size); },
+          });
+          a.sprite.visible = false;
+          for (const axis of ['x', 'y']) Object.defineProperty(a.sprite, axis, { get: () => a[axis], set: v => { a[axis] = v; } });
+          return a;
+        });
+      const w = makeWorld({ enemies: actors, level: 15 });
+      w.progress.treasure.kind = kind;
+      w.combat.applyTreasureDamage = (enemy, damage) => { hits.push([enemy.id, damage]); return damage; };
+      const scene = Object.assign(w.scene, {
+        stress: true, combat: w.combat, meals: [], eatenThisStep: new Set(), booster: createBooster(),
+        vitality: createVitality(5), playerStats: { vitalityMax: 5 }, fireRequested: true,
+        enemyFire: { step: () => [] }, applyEnemyHits() {}, resolveMeals: PlayScene.prototype.resolveMeals,
+        mealBounds: useBounds ? new MealBounds() : null,
+      });
+      scene.fx.eatPop = () => {};
+      scene.player.step = () => {};
+      for (let i = 0; i < 12; i++) PlayScene.prototype.simulate.call(scene, 5 / 60, { x: 1, y: 0 });
+      return { hits, meals, calls, positions: scene.enemies.filter(e => e.id !== 4).map(e => [e.id, e.x, e.y]) };
+    });
+  }
+  for (const weapon of ['yeouiju', 'mirror']) {
+    const full = run(weapon, false), lod = run(weapon, true);
+    assert.ok(full.hits.length && full.meals.length, weapon);
+    assert.deepEqual(lod.hits, full.hits);
+    assert.deepEqual(lod.meals, full.meals);
+    assert.deepEqual(lod.positions, full.positions);
+    assert.deepEqual(lod.calls.slice(0, 4), full.calls.slice(0, 4));
+    assert.equal(lod.calls[4] * 5, full.calls[4]);
+  }
+});
+
 test('같은 단계 점은 한 번 굽고 카메라를 벗어났다가 돌아오면 같은 이미지를 쓴다', () => {
   const previous = globalThis.window;
   globalThis.window = { devicePixelRatio: 2 };
@@ -165,6 +304,7 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
   });
   const rounds = 5;
   const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
+  const overBudget = [];
   try {
     for (const [stage, population] of [[1, 216], [3, 480], [5, 852]]) {
       for (const w of ['yeouiju', 'mirror']) {
@@ -184,7 +324,12 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
             const url = new URL(process.env.YOKAI_PERF_URL);
             url.search = new URLSearchParams({ stress: 'population', stage, w, seed: 731 });
             await page.goto(url.href);
-            await page.waitForFunction(() => window.__stressReport?.done, null, { timeout: 120000 });
+            try {
+              await page.waitForFunction(() => window.__stressReport?.done, null, { timeout: 120000 });
+            } catch (cause) {
+              const loading = await page.locator('#loading').textContent();
+              throw new Error(`${stage}단계 ${w} ${trial + 1}회차, ${loading}, ${errors.join(' / ')}`, { cause });
+            }
             const { report, canvas } = await page.evaluate(() => ({
               report: window.__stressReport,
               canvas: [document.querySelector('#phaser-host canvas').width, document.querySelector('#phaser-host canvas').height],
@@ -201,9 +346,14 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
         }
         const ms = (key, stat = 'avg') => median(results.map(r => r[key][stat]));
         const measures = { avg: ms('intervalMs'), p95: ms('intervalMs', 'p95'), sim: ms('simMs'), draw: ms('drawMs') };
-        t.diagnostic(JSON.stringify({ stage, w, rounds, ...measures }));
-        assert.ok(measures.avg <= 18 && measures.p95 <= 25 && measures.sim <= 6 && measures.draw <= 6, JSON.stringify(measures));
+        t.diagnostic(JSON.stringify({
+          stage, w, rounds, ...measures, simP95: ms('simMs', 'p95'), drawP95: ms('drawMs', 'p95'),
+          trials: results.map(r => ({ interval: r.intervalMs.avg, p95: r.intervalMs.p95, sim: r.simMs.avg, draw: r.drawMs.avg })),
+          initialStages: results[0].initialStages, fires: results[0].fires, hits: results[0].hits, steps: results[0].steps,
+        }));
+        if (measures.avg > 18 || measures.p95 > 25 || measures.sim > 6 || measures.draw > 6) overBudget.push({ stage, w, ...measures });
       }
     }
+    assert.deepEqual(overBudget, [], '장면별 프레임 예산 초과');
   } finally { await browser.close(); }
 });

@@ -38,7 +38,7 @@ export class StageMarks {
   }
 }
 
-export function drawStageMark(g, actor, playerStage, _t, cache) {
+export function drawStageMark(g, actor, playerStage, _t, cache, view = g.scene.cameras.main.worldView) {
   const camera = g.scene.cameras.main;
   const unit = pixelRatio() / camera.zoom; // 화면 1 CSS px에 해당하는 월드 거리
   const radius = Math.max(2.5 * unit, Math.min(4 * unit, actor.size * 0.12));
@@ -46,7 +46,6 @@ export function drawStageMark(g, actor, playerStage, _t, cache) {
   const spacing = 2 * radius + 2.5 * unit;
   const halfSpan = ((stage - 1) * spacing) / 2;
   const y = actor.y - actor.size * CONFIG.render.stageMarkLift[stage] * (actor.punch || 1) - radius - 2 * unit;
-  const view = camera.worldView;
   if (y + radius < view.top || y - radius > view.bottom ||
       actor.x + halfSpan + radius < view.left || actor.x - halfSpan - radius > view.right) return;
 

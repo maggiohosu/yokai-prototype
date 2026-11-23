@@ -11,7 +11,7 @@ import { drawStageMark, StageMarks } from '../art/marks.js';
 import { Player } from '../game/player.js';
 import { Enemy } from '../game/enemy.js';
 import { Joystick } from '../game/joystick.js';
-import { followPlayer } from '../game/camera.js';
+import { cameraView, followPlayer } from '../game/camera.js';
 import { Hud } from '../game/hud.js';
 import { Combat } from '../game/combat.js';
 import { WEAPON_IDS } from '../data/weapons.js';
@@ -26,7 +26,7 @@ import { takeTitleSelection } from '../ui/TitleView.js';
 import { attachSession, mealYoryeok, playerStats } from '../game/session.js';
 import { ascension, createRivalState, easePace, rivalPlan, rivalRetry, startPace, upkeep } from '../systems/balance.js';
 import { applyWorldScale, growthTarget } from '../systems/worldScale.js';
-import { buildGrid, findMeals, insertGrid } from '../game/enemyAI.js';
+import { buildGrid, findMeals, insertGrid, MealBounds } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
 import { absorbHit, createVitality, stepVitality, vitalityVisible } from '../systems/vitality.js';
@@ -45,8 +45,6 @@ import { PopulationStress, withSeed } from '../game/populationStress.js';
 const DIR_NAME = Object.fromEntries(Object.entries(REGIONS).map(([dir, region]) => [dir, region.color]));
 const DIR_FX = { east: 0x58c8a4, west: 0xf3ead2, south: 0xff8a6b, north: 0x6f87a8 };
 
-const PERF_LOG = typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf');
-
 export class PlayScene extends Phaser.Scene {
   constructor() {
     super('Play');
@@ -58,6 +56,8 @@ export class PlayScene extends Phaser.Scene {
       withSeed(this.populationStress.seed, () => this.createField({ progress: this.populationStress.progress }));
       this.populationStress.attach(this);
     } else this.createField(data);
+    this.framePerf = null;
+    if (params.get('perf') === '1') this.attachFramePerf();
   }
   createField(data) {
     // 형태 171종을 부팅 때 모두 굽지 않는다(휴대폰 메모리). 필요할 때 drawCreature가 한 번 굽는다.
@@ -82,8 +82,7 @@ export class PlayScene extends Phaser.Scene {
     this.stress = this.populationStress ?? (stressMode === 'abilities' || stressMode === 'weapons' ? this.setupStress(new URLSearchParams(location.search)) : null);
     // 단계마다 맵이 커진다(balance.map): 판을 그 단계의 월드 크기·적 수로 열고 바닥을 그린다. 시험 판(?stress)은 1단계 월드로 고정한다.
     applyWorldScale(this.stress && !this.populationStress ? 1 : this.progress.stage);
-    // 측정 부하는 반올림된 종전 인구의 정확히 3배(216·480·852)로 양쪽 빌드에서 동일하게 유지한다.
-    if (this.populationStress) CONFIG.world.population = this.populationStress.population;
+    // 기존 능력·무기 단독 시험은 원래 측정 조건인 72마리를 쓴다.
     if (this.stress && !this.populationStress) CONFIG.world.population /= CONFIG.world.populationMult;
     this.worldView = drawWorld(this);
     this.playerStats = playerStats(this.progress);
@@ -152,9 +151,11 @@ export class PlayScene extends Phaser.Scene {
     this.enemies = [];
     this.grid = undefined;
     this.placementGrid = undefined;
+    this.cameraBounds = {};
     this.thinkStep = 0;
     this.nextThinkSlot = 0;
     this.meals = [];
+    this.mealBounds = new MealBounds();
     this.eatenThisStep = new Set();
     this.refillPending = 0;
     this.simDebt = 0;
@@ -195,8 +196,10 @@ export class PlayScene extends Phaser.Scene {
     this.maintenance = null; // 정비 화면이 열려 있는 동안 { before }
     this.maintButton = new MaintButton(arena, () => this.openMaintenance());
     this.follow = followPlayer(this, this.player);
-    this.scale.on('resize', this.follow.recenter);
-    this.events.once('shutdown', () => this.scale.off('resize', this.follow.recenter));
+    this.viewChanged = true;
+    const resize = size => { this.follow.recenter(size); this.viewChanged = true; };
+    this.scale.on('resize', resize);
+    this.events.once('shutdown', () => this.scale.off('resize', resize));
     this.hud = new Hud(() => this.openAbilityInfo());
     this.hud.setLives(hasLives(this.difficulty) ? this.progress.lives : null);
     this.refreshIdentity();
@@ -534,10 +537,9 @@ export class PlayScene extends Phaser.Scene {
     this.hud.flashResonance('공명! +' + hit.bonus, CONFIG.resonance.flashSec);
   }
   // 대요괴 표식: 몸 둘레의 겹 고리(숨쉬듯 깜박임). 화면 밖에 있으면 화면 가장자리에 방향 화살표를 그린다. 두께·크기는 화면 픽셀이라 줌으로 나눈다.
-  drawHeraldMark(g, enemy, now) {
+  drawHeraldMark(g, enemy, now, view = this.cameras.main.worldView) {
     const cam = this.cameras.main;
     const zoom = cam.zoom;
-    const view = cam.worldView;
     const pulse = 0.5 + 0.5 * Math.sin(now * 5);
     const r = enemy.size * 1.3;
     const inside = enemy.x + r > view.left && enemy.x - r < view.right && enemy.y + r > view.top && enemy.y - r < view.bottom;
@@ -641,7 +643,7 @@ export class PlayScene extends Phaser.Scene {
       }
     }
   }
-  resolveMeals(grid, dt) {
+  resolveMeals(grid, dt, boundsVerified = false, cleanUp = true) {
     // 원의 좌우 경계가 겹치지 않으면 상태·단계 판정까지 갈 필요가 없다.
     const now = this.simTime;
     let threat = null; // 이번 단계에 나를 먹을 수 있는 적과 겹친 첫 적
@@ -664,6 +666,9 @@ export class PlayScene extends Phaser.Scene {
       hunter.eat(prey);
       prey.destroy();
       this.events.emit('eat', meal);
+      // 보상·능력 리스너가 다른 적도 옮길 수 있다. 이 단계는 전체 후보를 다시 본다.
+      boundsVerified = false;
+      cleanUp = true;
     }
     // 겹쳐 있는 동안은 생명력 게이지가 줄고, 게이지가 바닥나야 먹힌다.
     const { eaten } = stepVitality(this.vitality, { touching: !!threat, dt, max: this.playerStats.vitalityMax });
@@ -675,8 +680,9 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
     // 적끼리: 공간 격자로 닿은 쌍만 찾아 큰 쪽이 작은 쪽을 먹는다. 빙결·위협 중인 사냥꾼은 먹지 못한다.
-    for (const [big, small] of findMeals(grid, undefined, now, this.meals, this.eatenThisStep)) {
+    for (const [big, small] of findMeals(grid, undefined, now, this.meals, this.eatenThisStep, boundsVerified)) {
       if (!big.sprite.active || !small.sprite.active) continue;
+      cleanUp = true;
       if (isAlly(big, now)) {
         // 매혹한 요괴가 먹으면 그 요력은 내 요력이다(요력만, 식성·성향·드롭 없음).
         const meal = this.combat.allyMeal(small, big);
@@ -690,8 +696,10 @@ export class PlayScene extends Phaser.Scene {
       small.destroy();
       if (grew === 'evolve') this.fx.burst(big.x, big.y, 0xfff1b8, 16, Math.max(0.8, big.size / 25));
     }
-    for (let i = this.enemies.length - 1; i >= 0; i--) {
-      if (!this.enemies[i].sprite.active) this.enemies.splice(i, 1);
+    if (cleanUp) {
+      let live = 0;
+      for (const enemy of this.enemies) if (enemy.sprite.active) this.enemies[live++] = enemy;
+      this.enemies.length = live;
     }
   }
   // 생명력 원호: 가득 차 있으면 숨기고, 닿아 있는 동안은 경고색으로 깜박인다. 두께·간격은 화면 픽셀이라 줌으로 나눈다.
@@ -881,6 +889,7 @@ export class PlayScene extends Phaser.Scene {
     this.boostSec = 0;
     for (let i = 0; i < steps && !this.ended; i++) {
       this.simTime += h;
+      if (i === 0) this.mealBounds?.capture(this.enemies);
       const grid = this.grid = buildGrid(this.enemies, CONFIG.render.enemyCell, this.grid);
       // 부스터는 플레이어 이동에만 배율을 곱한다(적 AI·발사체·쿨타임은 그대로). 게이지는 화면 시간(h ÷ 템포 ÷ 속도 곡선)으로 닳는다.
       const boost = stepBoosterSim(this.booster, { pressed: this.boostHeld, h, scale: CONFIG.tempo * this.pace, max: CONFIG.booster.maxSec });
@@ -888,13 +897,23 @@ export class PlayScene extends Phaser.Scene {
       this.player.step(direction, h, boost.boostSec, this.boostMult);
       this.combat.step(direction, h, this.autoFire || (i === 0 && this.fireRequested), grid);
       const slot = this.thinkStep = ((this.thinkStep ?? 0) + 1) % CONFIG.render.farThinkSteps;
+      let boundsVerified = this.mealBounds?.valid ?? false, cleanUp = false;
       for (const enemy of this.enemies) {
         const dx = enemy.x - this.player.x, dy = enemy.y - this.player.y;
-        const near = dx * dx + dy * dy <= near2 || enemy.sprite.visible !== false;
-        enemy.step(this.player, h, grid, near || slot === enemy.thinkSlot, blend);
+        const near = dx * dx + dy * dy <= near2 || enemy.sprite.visible !== false || this.viewChanged;
+        const detailed = near || !this.mealBounds?.valid || enemy.mealPossible || enemy.reversed || enemy.rival ||
+          enemy.knockUntil > this.simTime || enemy.frozenUntil > this.simTime || enemy.stunUntil > this.simTime ||
+          enemy.charmGraceUntil > this.simTime || enemy.charmUntil > this.simTime || enemy.fearUntil > this.simTime ||
+          enemy.slowUntil > this.simTime || enemy.burnUntil > this.simTime;
+        if (detailed) {
+          enemy.travelSteps = 0;
+          enemy.step(this.player, h, grid, near || slot === enemy.thinkSlot, blend);
+        } else enemy.stepDistant(this.player, h, grid, steps - i);
+        if (boundsVerified && !this.mealBounds.contains(enemy)) boundsVerified = false;
+        if (!enemy.sprite.active) cleanUp = true;
         if (enemy.special && enemy.sprite.active) this.enemyFire.tryFire(enemy, this.player, h, this.simTime);
       }
-      this.resolveMeals(grid, h);
+      this.resolveMeals(grid, h, boundsVerified, cleanUp);
       if (this.ended) break;
       if (!this.stress) {
         // 승천은 먹은 직후에 판정한다(유지비가 목표 직전의 크기를 깎지 못하게). 그다음 크기 유지비: start 위에서는 초당 조금씩 준다.
@@ -911,34 +930,39 @@ export class PlayScene extends Phaser.Scene {
     this.fireRequested = false;
     return sim;
   }
+  attachFramePerf() {
+    const events = this.game.events;
+    const perf = this.framePerf = { updateMs: null };
+    let frames = 0, updateSum = 0, updateMax = 0, renderSum = 0, renderMax = 0, renderStart = 0;
+    const pre = () => { renderStart = performance.now(); };
+    const post = () => {
+      if (perf.updateMs === null) return;
+      const renderMs = performance.now() - renderStart;
+      updateSum += perf.updateMs;
+      updateMax = Math.max(updateMax, perf.updateMs);
+      renderSum += renderMs;
+      renderMax = Math.max(renderMax, renderMs);
+      perf.updateMs = null;
+      if (++frames < 120) return;
+      console.log(`PERF update avg ${(updateSum / frames).toFixed(2)}ms max ${updateMax.toFixed(2)}ms render avg ${(renderSum / frames).toFixed(2)}ms max ${renderMax.toFixed(2)}ms enemies ${this.enemies.length}`);
+      frames = updateSum = updateMax = renderSum = renderMax = 0;
+    };
+    events.on('prerender', pre);
+    events.on('postrender', post);
+    this.events.once('shutdown', () => {
+      events.off('prerender', pre);
+      events.off('postrender', post);
+    });
+  }
   update(_time, delta) {
-    if (this.populationStress) {
-      this.populationStress.update(this, delta);
-      return;
-    }
-    if (!this.stress) {
-      if (!PERF_LOG) {
-        this.tick(delta);
-        return;
-      }
-      // 개발용 측정(?perf=1): 120프레임마다 update(시뮬레이션+그리기 준비) 평균·최대 시간과 적 수를 콘솔에 남긴다.
-      const t0 = performance.now();
+    const start = this.framePerf || (this.stress && !this.populationStress) ? performance.now() : 0;
+    if (this.populationStress) this.populationStress.update(this, delta);
+    else if (this.stress) {
+      this.stepStress(start);
       this.tick(delta);
-      const ms = performance.now() - t0;
-      const p = (this.perfStat ??= { n: 0, sum: 0, max: 0 });
-      p.n++;
-      p.sum += ms;
-      p.max = Math.max(p.max, ms);
-      if (p.n >= 120) {
-        console.log(`PERF update avg ${(p.sum / p.n).toFixed(2)}ms max ${p.max.toFixed(2)}ms enemies ${this.enemies.length}`);
-        this.perfStat = null;
-      }
-      return;
-    }
-    const t0 = performance.now();
-    this.stepStress(t0);
-    this.tick(delta);
-    this.recordStress(t0, performance.now());
+      this.recordStress(start, performance.now());
+    } else this.tick(delta);
+    if (this.framePerf) this.framePerf.updateMs = performance.now() - start;
   }
   tick(delta) {
     const stress = this.stress;
@@ -980,7 +1004,8 @@ export class PlayScene extends Phaser.Scene {
     }
     this.boosterButton?.update(this.booster, CONFIG.booster.maxSec, boosting);
     this.boostTrail(dt, direction, boosting);
-    const animView = this.cameras.main.worldView;
+    this.follow(dt);
+    const animView = cameraView(this.cameras.main, this.cameraBounds);
     for (const enemy of this.enemies) {
       // 화면 밖(여유 범위 밖) 적은 모양 갱신을 건너뛴다: 보이지 않는 적 수백 마리의 setScale·angle 비용을 줄인다.
       const pad = 90 + 48 / this.cameras.main.zoom + enemy.size * 4;
@@ -999,7 +1024,8 @@ export class PlayScene extends Phaser.Scene {
     }
     const sp = this.playerStats.speed * (boosting ? this.boostMult : 1);
     this.fx.animateActor(this.player, dt, direction.x * sp, direction.y * sp);
-    this.fx.update(dt, this.player, this.progress.grade);
+    this.viewChanged = false;
+    this.fx.update(dt, this.player, this.progress.grade, animView);
     this.combat.draw();
     const fg = this.fireGfx.clear();
     this.enemyFire.draw(fg);
@@ -1008,20 +1034,19 @@ export class PlayScene extends Phaser.Scene {
     const myStage = this.player.stage ?? 1;
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
-      if (enemy.special) drawSpecialMark(fg, enemy, now);
-      if (enemy.herald) this.drawHeraldMark(fg, enemy, now);
-      if (enemy.sprite.visible) drawStageMark(fg, enemy, myStage, now, this.stageMarks);
+      if (enemy.special) drawSpecialMark(fg, enemy, now, animView);
+      if (enemy.herald) this.drawHeraldMark(fg, enemy, now, animView);
+      if (enemy.sprite.visible) drawStageMark(fg, enemy, myStage, now, this.stageMarks, animView);
     }
     this.stageMarks.finish();
     this.fireButton.update(1 - Math.min(1, this.combat.cooldown / this.combat.cooldownMax)); // 무기마다 쿨타임이 다르다(cooldownMax)
-    this.follow(dt);
     const { x, y, size } = this.player;
     this.marker.setPosition(x, y + size * 0.64).setScale(size / 46);
     this.nameTag.setPosition(x, y + size * 1.18);
     if (this.populationStress) this.populationStress.prepareMs = performance.now() - drawStart;
     const refillStart = this.populationStress ? performance.now() : 0;
     this.refillTime -= sim;
-    const view = this.cameras.main.worldView;
+    const view = animView;
     if (this.refillTime <= 0) {
       this.refillTime = CONFIG.world.refillInterval;
       const missing = Math.max(0, CONFIG.world.population - this.enemies.length);

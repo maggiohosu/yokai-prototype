@@ -1,5 +1,9 @@
 import { FORMS } from '../data/forms.js';
 import { createProgress } from '../systems/progress.js';
+import { worldFor } from '../systems/worldScale.js';
+import { CONFIG } from '../config.js';
+import { buildGrid } from './enemyAI.js';
+import { cameraView } from './camera.js';
 import { spawnSize, spawnStage } from './world.js';
 
 const WARMUP = 60;
@@ -33,7 +37,7 @@ function summary(values) {
 export class PopulationStress {
   constructor(params) {
     Object.assign(this, populationScenario(params));
-    this.population = { 1: 216, 3: 480, 5: 852 }[this.stage];
+    this.population = worldFor(this.stage).population;
     const form = this.stage === 1 ? null : FORMS.find(f => f.stage === this.stage && f.entry);
     this.progress = Object.assign(createProgress(), {
       stage: this.stage, formId: form?.id ?? 'mimul', treasure: { kind: this.weapon, level: 15 },
@@ -67,7 +71,8 @@ export class PopulationStress {
       const report = {
         done: true, stage: this.stage, weapon: this.weapon, seed: this.seed, population: this.population,
         initialCount: this.initialCount, initialStages: this.initialStages, minSimStartCount: this.popMin,
-        frames: FRAMES, warmup: WARMUP, fires: scene.combat.wc.fires - this.startFires, steps: scene.simSteps,
+        frames: FRAMES, warmup: WARMUP, fires: scene.combat.wc.fires - this.startFires,
+        hits: scene.combat.wc.hits - this.startHits, steps: scene.simSteps,
         intervalMs: summary(this.intervals), simMs: summary(this.sim), spawnMs: summary(this.spawns),
         drawMs: summary(this.draw), submitMs: summary(this.submissions),
       };
@@ -88,15 +93,20 @@ export class PopulationStress {
     this.frame++;
     if (this.frame > WARMUP) this.intervals.push(start - this.last);
     this.last = start;
-    if (this.frame === WARMUP + 1) this.startFires = scene.combat.wc.fires;
+    if (this.frame === WARMUP + 1) {
+      this.startFires = scene.combat.wc.fires;
+      this.startHits = scene.combat.wc.hits;
+    }
     withSeed((this.seed + Math.imul(this.frame, 2654435761)) >>> 0, () => {
       // 매 프레임 같은 수로 시뮬레이션을 시작한다. 먹힌 적은 일반 생성의 간격·크기·단계 규칙을 거쳐 다시 놓는다.
       const fillStart = performance.now();
       const missing = this.population - scene.enemies.length;
+      const grid = missing > 0 ? (scene.placementGrid = buildGrid(scene.enemies, CONFIG.render.enemyCell, scene.placementGrid)) : null;
+      const view = cameraView(scene.cameras.main, scene.cameraBounds);
       for (let i = 0; i < missing; i++) {
         const stage = spawnStage(this.stage);
         const size = spawnSize(scene.player.size, this.stage, 'normal', stage);
-        scene.spawn(size, { stage, view: scene.cameras.main.worldView });
+        if (!scene.spawn(size, { stage, view, grid })) break;
       }
       this.fillMs = performance.now() - fillStart;
       if (this.frame > WARMUP) this.popMin = Math.min(this.popMin, scene.enemies.length);

@@ -18,7 +18,7 @@ export function isAlive(actor) {
 
 function createGrid() {
   return {
-    columns: [], pool: [], used: 0, maxSize: 0,
+    columns: [], pool: [], mealBuckets: [], used: 0, maxSize: 0,
     // 기존 디버그·검사 호출자가 요청할 때만 좌표 키 Map을 만든다.
     get buckets() {
       const result = new Map();
@@ -33,15 +33,23 @@ function createGrid() {
 
 export function buildGrid(actors, cell, grid = createGrid()) {
   const { pool, columns } = grid;
-  for (let i = 0; i < grid.used; i++) {
+  const previousUsed = grid.used;
+  for (let i = 0; i < previousUsed; i++) {
     const bucket = pool[i];
     columns[bucket.cx][bucket.cy] = undefined;
-    bucket.length = 0;
   }
   grid.used = 0;
   grid.maxSize = 0;
   grid.cell = cell;
   for (const actor of actors) if (isAlive(actor)) insertGrid(grid, actor);
+  let mealCount = 0;
+  for (let i = 0; i < grid.used; i++) {
+    const bucket = pool[i];
+    if (bucket.length !== bucket.count) bucket.length = bucket.count;
+    if (bucket.hasMeal) grid.mealBuckets[mealCount++] = bucket;
+  }
+  grid.mealBuckets.length = mealCount;
+  for (let i = grid.used; i < previousUsed; i++) pool[i].length = 0;
   return grid;
 }
 
@@ -54,9 +62,12 @@ export function insertGrid(grid, actor) {
     bucket = grid.pool[i] ?? (grid.pool[i] = []);
     bucket.cx = cx;
     bucket.cy = cy;
+    bucket.count = 0;
+    bucket.hasMeal = false;
     column[cy] = bucket;
   }
-  bucket.push(actor);
+  bucket[bucket.count++] = actor;
+  if (actor.mealPossible) bucket.hasMeal = true;
   if (actor.size > grid.maxSize) grid.maxSize = actor.size;
 }
 
@@ -205,15 +216,62 @@ export function intentDirection(enemy, intent, out = {}) {
   return out;
 }
 
-// 적끼리 닿아서 먹히는 쌍 [먹는 쪽, 먹히는 쪽] 목록(rules.eatPair 규칙). 한 마리는 한 번만 먹힌다.
-// now를 주면 빙결·경직·위협(겁먹음) 중인 사냥꾼은 아무것도 먹지 못한다(다른 적에게 먹히는 것은 그대로).
-export function findMeals(grid, opts, now = null, meals = [], eaten = new Set()) {
+// 프레임 처음에 각 적의 몸을 8단위 넓힌 사각형을 64단위 칸에 등록한다. 다른 적과
+// 한 칸도 공유하지 않는 적은 두 몸이 이 경계 안에서 움직이는 동안 충돌할 수 없다.
+export class MealBounds {
+  constructor() {
+    this.columns = [];
+    this.usedColumns = [];
+    this.usedRows = [];
+    this.frame = 0;
+    this.valid = false;
+  }
+  capture(actors) {
+    for (let i = 0; i < this.usedRows.length; i++) this.usedColumns[i][this.usedRows[i]] = undefined;
+    this.usedRows.length = this.usedColumns.length = 0;
+    this.frame++;
+    this.valid = false;
+    for (const a of actors) {
+      a.mealFrame = this.frame;
+      a.mealX = a.x;
+      a.mealY = a.y;
+      a.mealRadius = a.size + 8;
+      a.mealPossible = false;
+      const x0 = Math.floor((a.x - a.mealRadius) / 64), x1 = Math.floor((a.x + a.mealRadius) / 64);
+      const y0 = Math.floor((a.y - a.mealRadius) / 64), y1 = Math.floor((a.y + a.mealRadius) / 64);
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 256) return;
+      for (let x = x0; x <= x1; x++) {
+        const column = this.columns[x] ?? (this.columns[x] = []);
+        for (let y = y0; y <= y1; y++) {
+          const first = column[y];
+          if (first) first.mealPossible = a.mealPossible = true;
+          else {
+            column[y] = a;
+            this.usedColumns.push(column);
+            this.usedRows.push(y);
+          }
+        }
+      }
+    }
+    this.valid = true;
+  }
+  contains(a) {
+    const free = a.mealRadius - a.size;
+    return a.mealFrame === this.frame && Math.abs(a.x - a.mealX) <= free && Math.abs(a.y - a.mealY) <= free;
+  }
+}
+
+// 겹친 적의 먹기 쌍을 원래 격자 순서로 반환한다. 빙결·경직·위협 중인 사냥꾼은 먹지 못한다.
+export function findMeals(grid, opts, now = null, meals = [], eaten = new Set(), boundsVerified = false) {
   meals.length = 0;
   eaten.clear();
   const { columns, cell, maxSize } = grid;
-  for (let index = 0; index < grid.used; index++) {
-    const bucket = grid.pool[index];
+  const buckets = boundsVerified ? grid.mealBuckets : grid.pool;
+  const count = boundsVerified ? buckets.length : grid.used;
+  for (let index = 0; index < count; index++) {
+    const bucket = buckets[index];
     for (const a of bucket) {
+      if (boundsVerified && !a.mealPossible) continue;
       if (eaten.has(a)) continue;
       const x = a.x, y = a.y, reach = a.size + maxSize;
       const x0 = Math.floor((x - reach) / cell), x1 = Math.floor((x + reach) / cell);

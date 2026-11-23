@@ -26,7 +26,7 @@ export function worldFor(stage) {
   return {
     scale,
     size: Math.round(size * scale),
-    population: Math.round(population * (CONFIG.world.populationMult ?? 1) * scale ** CONFIG.balance.map.populationExp),
+    population: Math.round(population * scale ** CONFIG.balance.map.populationExp) * CONFIG.world.populationMult,
   };
 }
 

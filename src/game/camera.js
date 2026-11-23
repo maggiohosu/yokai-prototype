@@ -3,6 +3,22 @@ import { stageZoomMultiplier } from '../systems/balance.js';
 
 export const pixelRatio = () => Math.min(window.devicePixelRatio || 1, CONFIG.render.maxPixelRatio);
 
+// 이 게임의 회전 없는 주 카메라. Phaser의 worldView는 렌더 직전에 갱신되므로
+// 첫 update와 resize 직후에는 현재 스크롤·화면 크기·줌으로 시야를 구한다.
+export function cameraView(camera, out = {}) {
+  const { width, height, scrollX, scrollY, zoom } = camera;
+  if (!Number.isFinite(scrollX) || !Number.isFinite(scrollY)) return camera.worldView;
+  out.width = width / zoom;
+  out.height = height / zoom;
+  out.centerX = scrollX + width * 0.5;
+  out.centerY = scrollY + height * 0.5;
+  out.left = out.centerX - out.width * 0.5;
+  out.right = out.left + out.width;
+  out.top = out.centerY - out.height * 0.5;
+  out.bottom = out.top + out.height;
+  return out;
+}
+
 // 화면의 짧은 변을 기준으로 배율을 잡는다. 세로 화면은 짧은 변이 너비라 예전과 같고,
 // 가로 화면은 높이가 기준이라 시야가 너무 좁아지지 않는다. cssHeight를 안 주면 너비만 본다(예전 호출).
 // stage를 주면 balance.view.stageZoom[단계]를 곱한다. 지금은 모두 1이라 어느 단계든 시작 크기의 화면은 같다(진화한 뒤의 화면은 처음 시작 화면과 같다).

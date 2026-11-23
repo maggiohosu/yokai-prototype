@@ -156,9 +156,9 @@
 - [변경] 이지 모드(사용자 지시 2026-11-23, 바로 위 '이지 부스터 1.5배'를 대체): 부스터를 없앤다(버튼 숨김, Shift 무시). 내 기본 이동 속도는 노말의 2배에서 시작하고 적 속도는 그대로. 발사체는 쿨타임이 찰 때마다 자동으로 계속 나간다(방향은 수동 발사와 같은 규칙: 이동 방향·무기 조준 규칙), 발사 버튼은 숨긴다. 노말·하드는 그대로(수동 발사·부스터).
 
 ## 변경 이력 10 — 적 3배·성능 최적화 (사용자 지시, 2026-11-23)
+
 - 적 출몰 수 3배: 단계별 월드 인구(balance.map의 적 수)와 보충량을 3배로(config world.populationMult 3). 난이도별 비중은 그대로.
 - 많은 적에서도 부드럽게: awesome-gamedev-agent-skills(Apache-2.0)의 performance-optimization·game-ai·phaser-core 스킬 방법(예산 설정 → 측정 → 가장 큰 병목 하나 → 다시 측정)으로 최적화한다. 목표 예산: 60fps(16.67ms) 기준 시뮬레이션 ≤ 6ms, 그리기 ≤ 6ms. 스킬은 ~/.claude/skills와 ~/.codex/skills에 설치했다.
-- 구현 상태: populationMult 3 적용(적 216 → 약 345 → 약 480 → 648 → 853마리, refillBatch 4 → 12). 측정 장치 두 가지를 넣었다: 게임 주소에 `?perf=1`을 붙이면 120프레임마다 update 평균·최대 ms와 적 수를 콘솔(`PERF ...`)에 남기고, `tests/perf-population.test.mjs`가 853마리로 격자 만들기·표적 고르기·적끼리 먹기 한 단계의 시간을 잰다(예산 6ms).
-- **미완**: 이 작업 환경에서는 명령 실행이 막혀 있어 실측값이 없고, 병목 개선은 하지 않았다. 적 충돌·탐색은 이미 공간 격자(`buildGrid`/`queryGrid`)를 쓰고 있어 O(n²)는 아니다. 사용자 PC에서 `node --test tests/perf-population.test.mjs`와 `?perf=1`로 재 본 뒤, 가장 큰 병목(후보: 화면 밖 적의 AI 갱신 빈도 낮추기, 화면 밖 그리기 생략)을 고치고 측정값을 여기에 적는다.
+- 일반 판과 측정 판 모두 기존 단계 인구를 먼저 반올림한 뒤 `world.populationMult` 3을 곱한다. 단계별 목표는 216·345·480·648·852마리다. 보충 간격을 유지하고 한 주기 최대 12마리를 빈자리만큼 프레임당 3마리씩 넣는다. 기존 4마리 묶음과 목표 인구 대비 보충 비율이 같다.
+- 공용 표식의 화면 밖 그리기를 생략하고, 단계 점 텍스처와 공간 격자를 재사용한다. 먼 적은 충돌 가능성과 상태이상에 따라 이동 갱신을 나눈다. `?perf=1`은 120프레임마다 업데이트·렌더 제출의 평균·최대 시간과 적 수를 출력한다. Chrome에서 1·3·5단계 두 무기의 평균 프레임 간격은 모두 16.67ms였다. 5단계 시뮬레이션 평균은 여의주 4.69ms, 팔괘경 4.53ms였다(각 5회의 중앙값). 실기기 발열·화면 회전 검증이 남아 있다. [데스크톱 전후 측정과 휴대폰 확인 항목](perf-v1.md)
 - 설치한 외부 스킬 기록: gamedev-skills/awesome-gamedev-agent-skills(Apache-2.0) 커밋 c6ca6c41c839에서 performance-optimization·game-ai·game-feel·camera-systems·input-systems·audio-design·game-ui-ux·phaser-core·phaser-arcade-physics·pixijs-rendering·router(gamedev-router 이름으로)를 ~/.claude/skills와 ~/.codex/skills에 복사. 조정자가 SKILL.md 앞부분을 읽고 일반 개발 지침(측정·최적화·엔진 사용법)임을 확인, 실행 스크립트는 쓰지 않음.
-- 적 수 3배는 목표 인구만 3배(1단계 216 → 5단계 853)로 하고, 보충 간격(refillInterval)은 그대로다. 변경 이력 6의 '적 72 → 284마리'는 이 변경으로 3배가 됐다.

@@ -143,10 +143,9 @@ function ringShape(count) {
   return dashShape;
 }
 
-export function drawSpecialMark(g, enemy, t) {
+export function drawSpecialMark(g, enemy, t, view = g.scene?.cameras?.main?.worldView) {
   const cfg = CONFIG.special;
   const r = enemy.size * cfg.ringPad + 4;
-  const view = g.scene?.cameras?.main?.worldView; // 화면 밖 고리는 그리지 않는다(drawStageMark와 같은 판정)
   if (view && (enemy.x + r < view.left || enemy.x - r > view.right || enemy.y + r < view.top || enemy.y - r > view.bottom)) return;
   const shape = ringShape(cfg.ringDashes);
   const spin = t * cfg.ringSpin;
