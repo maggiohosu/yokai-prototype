@@ -234,7 +234,8 @@ test('upgradeOdds: 세 확률의 합은 100이고 성공은 TREASURE.success, �
     assert.ok(odds.fail >= 0 && odds.break >= 0);
   }
   assert.deepEqual(upgradeOdds(0), { success: 90, fail: 10, break: 0 });
-  assert.deepEqual(upgradeOdds(5), { success: 60, fail: 36, break: 4 });
+  assert.deepEqual(upgradeOdds(5), { success: 60, fail: 32, break: 8 });
+  assert.deepEqual(upgradeOdds(14), { success: 10, fail: 0, break: 90 });
   assert.throws(() => upgradeOdds(MAX), RangeError);
   assert.throws(() => upgradeOdds(-1), RangeError);
 });
@@ -243,10 +244,10 @@ test('chanceText: 이 결과가 나올 확률 한 줄(소수 첫째 자리까지
   assert.equal(chanceText('success', upgradeOdds(0)), '성공 확률 90%');
   assert.equal(chanceText('success', upgradeOdds(4)), '성공 확률 70%');
   assert.equal(chanceText('fail', upgradeOdds(0)), '실패 확률 10%');
-  assert.equal(chanceText('break', upgradeOdds(5)), '깨질 확률 4%');
-  assert.equal(chanceText('break', upgradeOdds(6)), '깨질 확률 5.6%');
-  assert.equal(chanceText('fail', upgradeOdds(6)), '실패 확률 39.4%');
-  assert.equal(chanceText('break', upgradeOdds(14)), '깨질 확률 45%');
+  assert.equal(chanceText('break', upgradeOdds(5)), '깨질 확률 8%');
+  assert.equal(chanceText('break', upgradeOdds(6)), '깨질 확률 11.3%');
+  assert.equal(chanceText('fail', upgradeOdds(6)), '실패 확률 33.8%');
+  assert.equal(chanceText('break', upgradeOdds(14)), '깨질 확률 90%');
   assert.throws(() => chanceText('great', upgradeOdds(0)), RangeError);
   assert.throws(() => chanceText('success', null), RangeError);
 });
@@ -257,12 +258,12 @@ test('가격표 4-2: 모든 무기 +0~+5의 판매가·구매가·강화비가 �
     assert.deepEqual(levels.map((level) => tablePrice(level, kind)), [5, 11, 26, 58, 132, 300], kind);
     assert.deepEqual(levels.map((level) => sellPrice({ kind, level })), [5, 11, 26, 58, 132, 300], kind);
     assert.deepEqual(levels.map((level) => buyPrice(kind, level)), [13, 28, 65, 145, 330, 750], kind);
-    assert.deepEqual(levels.map((level) => upgradeCost({ kind, level })), [2, 3, 6, 11, 20, 32], kind);
+    assert.deepEqual(levels.map((level) => upgradeCost({ kind, level })), [2, 4, 7, 14, 29, 58], kind);
   }
   assert.equal(upgradeCost({ kind: 'fan', level: MAX }), Infinity);
   assert.deepEqual([0, 5, 10, 15].map((l) => sellPrice({ level: l })), [5, 300, 5000, 100000], 'kind가 없으면 여의주');
   assert.equal(sellPrice(5), 300, '옛 호출(레벨 숫자)도 그대로');
-  assert.equal(upgradeCost(4), 20);
+  assert.equal(upgradeCost(4), 29);
   for (const bad of [-1, 16, 1.5, '1', null, undefined, NaN]) {
     assert.throws(() => sellPrice(bad), RangeError, `sellPrice(${String(bad)})`);
     assert.throws(() => upgradeCost(bad), RangeError, `upgradeCost(${String(bad)})`);
@@ -356,7 +357,7 @@ test('가격 배율이 1이 아니면 판매가·강화비·구매가가 함께 
     fan.priceMult = 2;
     assert.equal(tablePrice(5, 'fan'), 600);
     assert.equal(sellPrice({ kind: 'fan', level: 5 }), 600);
-    assert.equal(upgradeCost({ kind: 'fan', level: 5 }), 63, '강화비는 곡선값(158.5) × 0.2 × 배율을 한 번만 반올림');
+    assert.equal(upgradeCost({ kind: 'fan', level: 5 }), 115, '강화비는 첫 레벨 비용(1.8) × 배율 × 2^레벨을 한 번만 반올림');
     assert.equal(buyPrice('fan', 5), 1500);
     assert.equal(tablePrice(5, 'yeouiju'), 300, '다른 무기는 그대로');
   } finally {

@@ -14,10 +14,9 @@ import { buildChoices, evolutionCost, evolve } from './evolution.js';
 //   rerollsLeft 카드 [다시 뽑기]를 쓸 수 있는 남은 횟수. 처음 쓸 때 채워진다(없으면 CONFIG.reroll.perRun이고, 판마다 새 run이라 판마다 다시 생긴다)
 const LU = () => CONFIG.levelUp;
 
-// 몸집 강화 n번째(0부터)의 요력 비용.
+// 몸집 강화 n번째(0부터)의 요력 비용: bodyBaseCost × enhanceCostGrowth^n(모든 강화가 레벨마다 2배, 변경 이력 18).
 export function bodyCost(n) {
-  const { bodyBaseCost, bodyCostGrowth } = CONFIG.levelUp;
-  return Math.round(bodyBaseCost * bodyCostGrowth ** n);
+  return Math.round(CONFIG.levelUp.bodyBaseCost * CONFIG.enhanceCostGrowth ** n);
 }
 
 // progress를 넘기면 판 시작 잔액을 기록하고 첫 멈춤 기준도 바로 정한다(번 요력 0에서 시작).

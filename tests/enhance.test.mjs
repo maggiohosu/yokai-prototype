@@ -62,15 +62,15 @@ test('보호권은 퇴화가 추첨된 경우에만 하나 소모하고 표시 �
   const p = atLevel(4);
   p.protect = 1;
   assert.deepEqual(getEnhanceOdds(p, 'vitality'), { success: 57, great: 3, fail: 40, degrade: 0 });
-  assert.equal(tryEnhance(p, 'vitality', { rng: rolls(0.8, 0.30) }).result, 'fail');
+  assert.equal(tryEnhance(p, 'vitality', { rng: rolls(0.8, 0.60) }).result, 'fail');
   assert.equal(p.protect, 1);
-  assert.deepEqual(tryEnhance(p, 'vitality', { rng: rolls(0.8, 0.29) }), {
+  assert.deepEqual(tryEnhance(p, 'vitality', { rng: rolls(0.8, 0.59) }), {
     result: 'fail', from: 4, to: 4, chanceUsed: 65, pityBonusAfter: 10,
     needsChoice: false, protectedUsed: true,
   });
   assert.equal(p.protect, 0);
   assert.deepEqual(applyDegradeChoice(p, 'A', 'vitality'), { ok: false });
-  assert.deepEqual(getEnhanceOdds(p, 'vitality'), { success: 66.5, great: 3.5, fail: 21, degrade: 9 });
+  assert.deepEqual(getEnhanceOdds(p, 'vitality'), { success: 66.5, great: 3.5, fail: 12, degrade: 18 });
 });
 
 test('대성공도 +10이 상한이며 최고 레벨에서는 비용 차감과 추첨이 없다', () => {
@@ -89,14 +89,14 @@ test('대성공도 +10이 상한이며 최고 레벨에서는 비용 차감과 �
 
 test('자동 강화는 매 시도 현재 레벨의 비용을 지불하고 목표 또는 요력 부족에서 멈춘다', () => {
   const p = createProgress();
-  p.yoryeok = 72;
+  p.yoryeok = 80; // 20(실패) + 20(성공) + 40(성공): 레벨마다 2배
   const { attempts, reason } = autoEnhance(p, 'growth', 2, { rng: rolls(0.96, 0.99, 0.05, 0, 0.5) });
   assert.deepEqual(attempts.map(({ result }) => result), ['fail', 'success', 'success']);
   assert.equal(reason, 'target');
   assert.equal(p.yoryeok, 0);
   assert.deepEqual(autoEnhance(p, 'growth', 2, { rng: rolls() }), { attempts: [], reason: 'target' });
   assert.deepEqual(autoEnhance(p, 'growth', 3, { rng: rolls() }), { attempts: [], reason: 'gold' });
-  assert.deepEqual([0, 1, 2, 5, 9].map(enhanceCost), [20, 32, 51, 210, 1374]);
+  assert.deepEqual([0, 1, 2, 5, 9].map(enhanceCost), [20, 40, 80, 640, 10240]);
 });
 
 test('자동 강화는 퇴화와 대성공이면 즉시 멈추고, S·S+는 일반 결과도 한 번만 시도한다', () => {
@@ -104,7 +104,7 @@ test('자동 강화는 퇴화와 대성공이면 즉시 멈추고, S·S+는 일�
     ['A', [0.9, 0.1], 'degrade'],
     ['C', [0.1, 0.01], 'great'],
     ['S', [0.1, 0.5], 'max'],
-    ['S+', [0.9, 0.5], 'max'],
+    ['S+', [0.9, 0.9], 'max'],
   ]) {
     const p = atLevel(5);
     p.grade = grade;
@@ -116,8 +116,8 @@ test('자동 강화는 퇴화와 대성공이면 즉시 멈추고, S·S+는 일�
     });
     assert.equal(batch.reason, reason);
     assert.equal(batch.attempts.length, 1);
-    assert.deepEqual(checked, [210]);
-    assert.deepEqual(paid, [210]);
+    assert.deepEqual(checked, [640]);
+    assert.deepEqual(paid, [640]);
   }
   const p = atLevel(5);
   const rejected = autoEnhance(p, 'vitality', 6, {
@@ -129,17 +129,20 @@ test('자동 강화는 퇴화와 대성공이면 즉시 멈추고, S·S+는 일�
 
 test('실패에 치우친 고정 RNG와 도달 불가능한 목표도 천장과 최고 레벨에서 끝난다', () => {
   const p = createProgress();
+  // +9·+10 시도의 퇴화 확률이 100%(2026-11-23)라 보호권이 없으면 첫 실패에서 멈춘다. +9 시도 16번·+10 시도 18번의 실패를 보호권이 받는다.
+  p.protect = 40;
   const batch = autoEnhance(p, 'growth', 11, {
     rng: () => 0.999999, canAfford: () => true, pay: () => {},
   });
   assert.equal(batch.reason, 'max');
   assert.equal(p.enh.growth, 10);
   assert.equal(batch.attempts.length, 101);
+  assert.equal(p.protect, 6);
 });
 
 test('각 목표 10만 회: 본체 강화 표시 및 실측 네 결과가 기획 확률의 ±1%p 이내', () => {
   const success = [95, 90, 80, 70, 60, 50, 40, 30, 20, 10];
-  const conditionalDegrade = [0, 0, 0, 0, 30, 30, 40, 40, 50, 50];
+  const conditionalDegrade = [0, 0, 0, 0, 60, 60, 80, 80, 100, 100]; // 파괴(퇴화) 확률 2배(2026-11-23)
   const trials = 100_000;
   let seed = 0x315dc6;
   const rng = () => {

@@ -7,10 +7,11 @@ import { fakeEnemy, fakePlayer } from './fixtures-abilities.mjs';
 
 test.afterEach(() => applyWorldScale(1));
 
-test('적 수 고정: 모든 단계의 목표 인구가 480이고 보충 묶음은 4 × 3이다', () => {
+test('적 수 고정: 모든 단계의 목표 인구가 480이고 보충 묶음은 4 × 6, 한 프레임 최대 6마리다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
-  assert.equal(CONFIG.world.populationMult, 3);
-  assert.equal(CONFIG.world.refillBatch, 12);
+  assert.equal(CONFIG.world.populationMult, 6);
+  assert.equal(CONFIG.world.refillBatch, 24);
+  assert.equal(CONFIG.render.refillPerFrame, 6);
   assert.deepEqual(pops, [480, 480, 480, 480, 480]);
 });
 

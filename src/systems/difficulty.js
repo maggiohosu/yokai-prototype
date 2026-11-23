@@ -20,10 +20,11 @@ export function stageWeightsFor(playerStage, difficulty, table = CONFIG.enemy.st
   return scaleWeights(weights, i => i + 1 > stage, strong);
 }
 
-// 기존 이지·하드 크기 보정은 같은 단계에만 붙는다. 추가 큰 적 보정은 노말·하드의 모든 단계에 붙는다.
+// 기존 이지·하드 크기 보정은 같은 단계에만 붙는다. 큰 적(마지막 칸) 보정 strongMult × bigMult는 노말·하드의 모든 단계에 붙는다.
+// 이지의 크기 가중치는 bigMult에 영향받지 않는다(변경 이력 17).
 export function sizeWeightsFor(weights, difficulty, sameStage = true) {
   if (difficulty === 'easy') return sameStage ? scaleWeights(weights, i => i === 0, DIFFICULTY.mult) : weights;
-  const strong = DIFFICULTY.strongMult * (difficulty === 'hard' && sameStage ? DIFFICULTY.mult : 1);
+  const strong = DIFFICULTY.strongMult * DIFFICULTY.bigMult * (difficulty === 'hard' && sameStage ? DIFFICULTY.mult : 1);
   return scaleWeights(weights, i => i === weights.length - 1, strong);
 }
 

@@ -2,9 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { createRivalState, rivalPlan } from '../src/systems/balance.js';
-import { dropChance } from '../src/systems/treasure.js';
 import {
-  createHeraldState, heraldBonusYoryeok, heraldEnabled, heraldExtraDropChance, heraldRetry, heraldSizeCap, heraldView, stepHerald,
+  createHeraldState, heraldBonusYoryeok, heraldEnabled, heraldRetry, heraldSizeCap, heraldView, stepHerald,
 } from '../src/systems/herald.js';
 
 const H = CONFIG.herald;
@@ -34,14 +33,14 @@ function run(state, sec, input = {}, step = 0.1) {
   return { spawn: null, at: elapsed, cues };
 }
 
-test('기본 설정: 45초 간격, 크기 1.1~1.4배, 이름표 대요괴, 드롭은 확정이 아니다', () => {
+test('기본 설정: 45초 간격, 크기 1.1~1.4배, 이름표 대요괴, 보상은 보패 1개', () => {
   assert.equal(H.enabled, true);
   assert.equal(H.intervalSec, 45);
   assert.equal(H.sizeMin, 1.1);
   assert.equal(H.sizeMax, 1.4);
   assert.equal(H.label, '대요괴');
-  assert.ok(H.dropChance > 0 && H.dropChance < 1, '확정 드롭이 아니라 확률만 올린다');
-  assert.ok(H.dropChance > dropChance({ killedByTreasure: true }), '여의주로 쓰러뜨릴 때의 기본 확률보다 크게 높다');
+  assert.equal(H.dropChance, undefined, '여의주 드롭 확률 추가 굴림은 보패 보상(heraldReward.js)으로 바뀌었다');
+  assert.equal(H.reward.yoryeokMult, 2, '보패를 줄 수 없을 때의 요력 배수');
   assert.ok(H.bonusMult > 0);
   assert.ok(H.warnSec > 0 && H.warnSec < H.intervalSec);
 });
@@ -201,40 +200,4 @@ test('heraldBonusYoryeok: 기본 요력 × bonusMult를 더한다(정수, 음수
   withHerald({ bonusMult: 5 }, () => assert.equal(heraldBonusYoryeok(10), 50));
   withHerald({ bonusMult: 0 }, () => assert.equal(heraldBonusYoryeok(10), 0));
   assert.ok(Number.isInteger(heraldBonusYoryeok(7.77)));
-});
-
-test('heraldExtraDropChance: 기본 굴림이 실패했을 때 한 번 더 굴려 총 확률이 dropChance가 된다(확정 아님)', () => {
-  for (const killedByTreasure of [false, true]) {
-    const base = dropChance({ killedByTreasure });
-    const extra = heraldExtraDropChance(base);
-    assert.ok(extra > 0 && extra < 1, '확정이 아니다');
-    near(base + (1 - base) * extra, H.dropChance, 1e-12);
-    assert.ok(base + (1 - base) * extra > base, '확률이 올랐다');
-  }
-  // 기본 확률이 이미 목표 이상이면 올리지 않는다(깎지도 않는다)
-  assert.equal(heraldExtraDropChance(0.5), 0);
-  assert.equal(heraldExtraDropChance(0.9), 0);
-  assert.equal(heraldExtraDropChance(1), 0);
-  assert.equal(heraldExtraDropChance(NaN), H.dropChance);
-  // 설정을 바꾸면 따라간다
-  withHerald({ dropChance: 0.8 }, () => near(0.08 + 0.92 * heraldExtraDropChance(0.08), 0.8, 1e-12));
-  withHerald({ dropChance: 0 }, () => assert.equal(heraldExtraDropChance(0.08), 0));
-});
-
-test('드롭 모의: 기본 굴림 + 추가 굴림의 실제 비율이 목표(dropChance) 근처다', () => {
-  let s = 12345;
-  const rng = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 2 ** 32;
-  };
-  for (const killedByTreasure of [false, true]) {
-    const base = dropChance({ killedByTreasure });
-    const extra = heraldExtraDropChance(base);
-    let drops = 0;
-    const N = 40000;
-    for (let i = 0; i < N; i++) {
-      if (rng() < base || rng() < extra) drops++;
-    }
-    near(drops / N, H.dropChance, 0.012);
-  }
 });

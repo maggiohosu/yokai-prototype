@@ -5,7 +5,7 @@
 //   hit        한 번 피해 계수(× P, 개수에 K를 곱하는 무기는 × K P).  abilityBase  능력 기준 피해 B = abilityBase × P(3-1).
 //   cdMult     쿨타임 배율(× CONFIG.combat.cooldown).  reach 사거리(월드 단위).  speed 날아가는 것의 속도(× S).
 //   homingMult 유도 배율(× H). 0이면 그 무기는 날아가며 휘지 않는다(팔괘경 조준 보정은 H를 따로 읽는다).  priceMult 판매가·강화비 배율(지금 모두 1.0, 결정 D4).  unlockStage 해금에 필요한 '지금까지 닿은 최고 단계'.
-//   order      상점 진열 순서(해금 단계 순, 같은 단계는 설계 5-1 표 순서).  droppable 요괴가 떨어뜨리는가(여의주만, 결정 D2).
+//   order      상점 진열 순서(해금 단계 순, 같은 단계는 설계 5-1 표 순서).  droppable 보통 요괴가 떨어뜨리는가(여의주만, 결정 D2; 대요괴 처치 보상만 예외로 보패를 준다: systems/heraldReward.js).
 //   [base, perLevel, max] 꼴 값은 min(max, base + perLevel × L).
 // 시간 값은 모두 시뮬레이션 초다(결정 D8).
 

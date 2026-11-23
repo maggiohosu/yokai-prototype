@@ -121,7 +121,8 @@ export function seedField({ player, spawn, difficulty = 'normal', rng = Math.ran
       }
     }
     const options = { initial: true, stage, keepOut: startView };
-    if (!spawn(size, { ...options, near })) spawn(size, options);
+    // 시작 화면 밖 자리가 없으면(큰 화면이 맵의 44%를 덮는 1단계에서 큰 적이 많은 경우 드물게) 적 수를 지키려고 마지막에는 화면 안 제외를 푼다.
+    if (!spawn(size, { ...options, near }) && !spawn(size, options)) spawn(size, { initial: true, stage });
   }
 }
 
@@ -171,18 +172,20 @@ export function offscreenPad(size, stage) {
 // 새 적의 자리를 찾는다. 후보를 무작위로 뽑아(near가 있으면 플레이어 둘레 고리, 없으면 맵 전체) 다음을 모두 지키는 첫 자리를 돌려준다:
 // 벽에서 edge 이상, region(있으면) 안, view(있으면) 밖, 플레이어에게서 안전 거리 이상(시작 때 위협은 keepOut 사각형 밖도), 다른 적과 간격(spawnGap) 이상.
 // 자리가 모자라면 규칙을 이 순서로 줄인다(앞 단계에서 후보가 하나라도 있으면 뒤 단계로 가지 않는다):
-//  ① 몸 전체가 화면 밖(pad)인 후보 중 간격을 지킨 첫 자리, 없으면 가장 덜 붐비는 후보(crowdedSpawn: 좁은 맵에 적 480마리라 간격을 못 지켜도 놓는다),
-//  ② 화면 밖 여유를 절반으로 줄인 후보, ③ 중심만 화면 밖인 후보(화면이 맵의 큰 비율을 덮는 좁은 맵에서 큰 적이 화면 가장자리 바로 밖이라도 자리를 얻게).
+//  ① 몸 전체가 화면 밖(pad)인 후보 중 간격을 지킨 첫 자리, 없으면 가장 덜 붐비는 후보(crowdedSpawn: 좁은 맵에 적 480마리라 간격을 못 지켜도 놓는다. 겹쳐 놓인 적은 spawnGraceSec 동안 먹히지 않는다),
+//  ② 화면 밖 여유를 절반으로 줄인 후보, ③ 중심만 화면 밖인 후보. ②·③은 relax를 줄 때만 쓴다: 대요괴·맞수처럼 못 놓아도 다음 프레임에 다시 시도하는 호출이 아니면
+//  화면 가장자리에 스프라이트가 걸쳐 나타나지 않게 ①에서 끝낸다(일반 보충의 화면 밖 규칙은 그대로다).
 // 벽·region·화면 안(중심)·플레이어 안전 거리는 끝까지 지킨다. 후보가 하나도 없으면 null이다(다음 보충 때 다시 시도한다).
 const PAD_TIERS = [[1, 0.6], [0.5, 0.2], [0, 0.2]]; // [화면 밖 여유 배율, 후보 시도 비율]
+const PAD_STRICT = [[1, 1]];
 
-export function spawnPoint(player, enemies, size, { view, near, initial, stage, grid, region, keepOut } = {}) {
+export function spawnPoint(player, enemies, size, { view, near, initial, stage, grid, region, keepOut, relax } = {}) {
   const gap = world.spawnGap;
   const edge = size + gap;
   const dangerous = stage == null ? size >= player.size * CONFIG.eating.ratio : canEat({ size, stage }, player);
   const padFull = view ? offscreenPad(size, stage) : 0;
   const safe = initial && dangerous ? safeStartFor() : edge + player.size;
-  for (const [padScale, share] of PAD_TIERS) {
+  for (const [padScale, share] of relax ? PAD_TIERS : PAD_STRICT) {
     const pad = padFull * padScale;
     let best = null, bestClear = -Infinity;
     for (let attempt = 0, n = Math.ceil(world.spawnAttempts * share); attempt < n; attempt++) {

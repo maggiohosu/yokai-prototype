@@ -357,9 +357,10 @@ test('승천 보상: 기본 300000 + 크기 비례, 클수록 많고 5단계 큰
   assert.ok(ascension(at(5), targetSize + 30).reward > atTarget);
   assert.ok(Number.isInteger(ascension(at(5), 451.7).reward));
   assert.deepEqual(Object.keys(ascension(at(5), targetSize)), ['reward']);
-  // 5단계 크기 100(예전 300) 적(보통 등급) 한 마리의 요력의 3~5배. score.sizeRef도 1/3이라 같은 요력이다.
-  const bigPrey = preyValue({ size: 100, stage: 5 });
-  assert.ok(atTarget >= 3 * bigPrey && atTarget <= 5 * bigPrey, `보상 ${atTarget} / 큰 적 ${bigPrey}`);
+  // 승천 보상은 변경 이력 18에서 바꾸지 않았다(고정값). 예전에는 5단계 크기 100 적 3~5마리 수준(예전 식은 먹이의 절대 크기로 셌다)이었지만,
+  // 요력이 '내 크기 대비 먹이 크기'가 된 뒤에는 크기 150에서 크기 100 적을 먹어도 한 마리에 수백 요력이라 이 관계가 끊겼다. 값은 docs/balance-v4.md 18절이 비교한다.
+  const bigPrey = preyValue({ size: 100, stage: 5, mySize: targetSize });
+  assert.ok(bigPrey > 0 && atTarget > 100 * bigPrey, `보상 ${atTarget} / 큰 적 ${bigPrey}`);
 });
 
 test('설정: 초안 수치와 초안 구조', () => {

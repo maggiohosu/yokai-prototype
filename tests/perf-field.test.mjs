@@ -491,8 +491,89 @@ if (process.env.YOKAI_PERF_URL) test('일반 슬롯 이어하기와 화면 밖 �
       assert.equal(r.onScreen, 0);
       assert.equal(r.failed, 0);
       assert.equal(r.calls, 24);
-      assert.equal(r.frames, 20);
+      assert.equal(r.frames, Math.ceil(24 / CONFIG.render.refillPerFrame)); // 24마리를 프레임당 refillPerFrame마리씩(예전 3마리 → 20프레임, 지금 6마리 → 4프레임)
     }
     t.diagnostic('REFILL ' + JSON.stringify(rows));
+  } finally { await browser.close(); }
+});
+
+// 일반 판 60초(60fps, 플레이어가 2초마다 방향을 바꾸며 걷고 무기를 계속 쏜다)의 적 분포와 인구. 플레이어는 먹히지 않게 두었다.
+// 몰림 지표 R = Clark–Evans 최근접 이웃 비(경계 보정, Donnelly): 1이면 무작위, 1보다 작으면 몰림. 판 시작 직후와 60초 뒤 모두 0.9 이상이어야 한다.
+async function liveField({ stage, seed, seconds }) {
+  const [{ FORMS }, { createProgress }, { CONFIG }] = await Promise.all([
+    import('./src/data/forms.js'), import('./src/systems/progress.js'), import('./src/config.js'),
+  ]);
+  const game = window.__yokai;
+  game.loop.sleep();
+  let state = seed;
+  Math.random = () => ((state = (Math.imul(state, 1664525) + 1013904223) >>> 0) / 4294967296);
+  const progress = Object.assign(createProgress(), {
+    stage, difficulty: 'normal', grade: 'C', formId: stage === 1 ? 'mimul' : FORMS.find(f => f.stage === stage && f.entry).id,
+    treasure: { kind: 'yeouiju', level: 0 },
+  });
+  game.scene.stop('Play');
+  game.scene.start('Play', { progress });
+  const scene = game.scene.getScene('Play');
+  game.loop.sleep();
+  Object.assign(scene, { openQuickPick() {}, ascend() {}, applyEnemyHits() {}, endRun() {} });
+  const resolve = scene.resolveMeals.bind(scene);
+  scene.resolveMeals = (...args) => {
+    const before = scene.stress;
+    scene.stress = {};
+    try { return resolve(...args); } finally { scene.stress = before; }
+  };
+  const side = CONFIG.world.size;
+  const R = () => {
+    const pts = scene.enemies.filter(e => e.sprite.active), n = pts.length;
+    let sum = 0;
+    for (const a of pts) {
+      let best = Infinity;
+      for (const b of pts) if (a !== b) best = Math.min(best, Math.hypot(a.x - b.x, a.y - b.y));
+      sum += best;
+    }
+    return sum / n / (0.5 * Math.sqrt(side * side / n) + (0.0514 + 0.041 / Math.sqrt(n)) * 4 * side / n);
+  };
+  const camera = scene.cameras.main, dt = 1 / 60; // 실제 60fps 프레임: 보충은 프레임당 3마리까지라 프레임 길이가 보충 처리량을 정한다
+  let heading = seed * 0.43, rng = seed * 7 + 1;
+  scene.joystick.direction = () => ({ x: Math.cos(heading), y: Math.sin(heading) });
+  const r0 = R(), n0 = scene.enemies.length;
+  let sum = 0, min = Infinity;
+  const frames = Math.round(seconds / dt);
+  for (let frame = 0; frame < frames; frame++) {
+    if (frame % 60 === 0) heading += ((rng = (Math.imul(rng, 1103515245) + 12345) >>> 0) / 4294967296 - 0.5) * 2.4;
+    scene.fireRequested = true;
+    camera.centerOn(scene.player.x, scene.player.y);
+    camera.preRender();
+    scene.tick(dt * 1000, frame * dt * 1000);
+    const n = scene.enemies.filter(e => e.sprite.active).length;
+    sum += n;
+    min = Math.min(min, n);
+  }
+  return { stage, seed, size: side, target: CONFIG.world.population, r0, n0, r60: R(), n60: scene.enemies.length, meanCount: sum / frames, minCount: min };
+}
+
+if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시작 직후와 60초 뒤 모두 0.9 이상이고 1~5단계 모두 평균 인구가 목표의 95%, 최저가 400 이상이다', { timeout: 600000 }, async t => {
+  const browser = await launchFieldBrowser();
+  try {
+    for (const stage of [1, 2, 3, 4, 5]) {
+      const context = await fieldContext(browser);
+      try {
+        const page = await context.newPage();
+        const errors = [];
+        page.on('pageerror', error => errors.push(error.message));
+        await page.goto(new URL('?debug=', process.env.YOKAI_PERF_URL).href);
+        await page.waitForFunction(() => window.__yokai?.scene.getScene('Play')?.player);
+        const r = await page.evaluate(liveField, { stage, seed: 731, seconds: 60 });
+        t.diagnostic('LIVE ' + JSON.stringify(r));
+        assert.deepEqual(errors, []);
+        assert.equal(r.size, worldFor(stage).size);
+        assert.equal(r.n0, r.target);
+        assert.ok(r.r0 >= 0.9, `${stage}단계 시작 직후 R ${r.r0}`);
+        assert.ok(r.r60 >= 0.9, `${stage}단계 60초 뒤 R ${r.r60}`);
+        // 사용자 지시 '적 수 480 고정': 1~5단계 모두 60초 평균 95%(456) 이상, 최저 400 이상이어야 한다(보충 묶음·한 프레임 보충 상한·새로 놓인 적 유예, plan.md 변경 이력 16).
+        assert.ok(r.meanCount >= r.target * 0.95, `${stage}단계 60초 평균 인구 ${r.meanCount} < 목표 ${r.target}의 95%`);
+        assert.ok(r.minCount >= 400, `${stage}단계 60초 최저 인구 ${r.minCount} < 400`);
+      } finally { await context.close(); }
+    }
   } finally { await browser.close(); }
 });

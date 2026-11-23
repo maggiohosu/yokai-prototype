@@ -1,3 +1,4 @@
+import { CONFIG } from '../config.js';
 import { ENHANCE } from './tuning-upgrade.js';
 
 const maxLevel = ENHANCE.success.length;
@@ -21,7 +22,7 @@ function successChance(state, level) {
 
 export function enhanceCost(level) {
   checkLevel(level);
-  return level === maxLevel ? Infinity : Math.round(ENHANCE.baseCost * ENHANCE.costGrowth ** level);
+  return level === maxLevel ? Infinity : Math.round(ENHANCE.baseCost * CONFIG.enhanceCostGrowth ** level);
 }
 
 // 네 값은 서로 배타적인 최종 결과의 백분율이다. 보호권도 표시에 반영한다.

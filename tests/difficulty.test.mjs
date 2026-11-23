@@ -53,7 +53,8 @@ test('시작·보충의 모든 단계 칸은 난이도 배율을 적용한 뒤 �
   assert.ok(Math.abs(refill[5] - 0.225 / 1.225) < 0.0001);
 });
 
-test('초반·전환 중간·성장 뒤의 크기 가중치에 단계 조합별 난이도를 적용한다', () => {
+test('초반·전환 중간·성장 뒤의 크기 가중치에 단계 조합별 난이도를 적용한다(큰 적 칸은 종전 배율 × 3)', () => {
+  // 큰 적 3배(변경 이력 17): 노말 1.5 → 4.5, 하드 같은 단계 2.1 → 6.3, 하드 다른 단계 1.5 → 4.5. 이지는 그대로다.
   const start = CONFIG.player.startSize, end = CONFIG.enemy.earlyUntilSize;
   for (const stage of [1, 2, 3, 4, 5]) {
     const grown = stage < 3 ? [0.67, 0.13, 0.2] : [0.45, 0.15, 0.4];
@@ -64,13 +65,71 @@ test('초반·전환 중간·성장 뒤의 크기 가중치에 단계 조합별 
         for (const difficulty of ['easy', 'normal', 'hard']) {
           const scaled = [...base];
           if (difficulty === 'easy' && same) scaled[0] *= 1.4;
-          if (difficulty !== 'easy') scaled[2] *= difficulty === 'hard' && same ? 2.1 : 1.5;
+          if (difficulty !== 'easy') scaled[2] *= (difficulty === 'hard' && same ? 2.1 : 1.5) * 3;
           const out = sizeWeights(start + t * (end - start), stage, difficulty, enemyStage);
           out.forEach((w, i) => near(w, scaled[i] / sum(scaled)));
         }
       }
     }
   }
+});
+
+test('큰 적 3배: 노말·하드는 모든 단계·전환 크기에서 큰 적의 승산(odds)이 종전의 정확히 3배이고 이지는 그대로다', () => {
+  assert.equal(CONFIG.difficulty.bigMult, 3);
+  assert.equal(CONFIG.difficulty.strongMult, 1.5, '종전 1.5배는 그대로 두고 그 위에 곱한다');
+  const start = CONFIG.player.startSize, end = CONFIG.enemy.earlyUntilSize;
+  const odds = (w) => w[2] / (w[0] + w[1]);
+  for (const stage of [1, 2, 3, 4, 5]) {
+    const grown = stage < 3 ? [0.67, 0.13, 0.2] : [0.45, 0.15, 0.4];
+    for (const t of [0, 0.25, 0.5, 1]) {
+      const base = [0.35, 0.15, 0.5].map((w, i) => w * (1 - t) + grown[i] * t);
+      const size = start + t * (end - start);
+      for (const enemyStage of [1, 2, 3, 4, 5]) {
+        const same = stage === enemyStage;
+        // 종전(변경 이력 13) 값: 큰 칸에 1.5배, 하드 같은 단계는 2.1배만 곱한 가중치. 확률이 아니라 가중치를 3배로 한다.
+        const before = (m) => odds([base[0], base[1], base[2] * m]);
+        near(odds(sizeWeights(size, stage, 'normal', enemyStage)), 3 * before(1.5));
+        near(odds(sizeWeights(size, stage, 'hard', enemyStage)), 3 * before(same ? 2.1 : 1.5));
+        const easy = sizeWeights(size, stage, 'easy', enemyStage);
+        near(sum(easy), 1);
+        const easyBase = [...base];
+        if (same) easyBase[0] *= 1.4;
+        easy.forEach((w, i) => near(w, easyBase[i] / sum(easyBase)));
+      }
+    }
+  }
+  // 확률로 3배를 하면 하드는 100%를 넘으므로 승산을 3배로 한 결과는 항상 1 미만이다.
+  for (const difficulty of ['normal', 'hard']) {
+    const p = sizeWeights(start, 1, difficulty, 1)[2];
+    assert.ok(p < 1 && p > 0.8, `${difficulty}: ${p}`);
+  }
+});
+
+// 나보다 큰 적(마지막 크기 구간) 확률 = 적 단계 분포 × 그 단계에서 큰 구간을 뽑을 확률. docs/plan.md 변경 이력 17의 표.
+const bigChance = (stage, difficulty, size, table) => {
+  const weights = stageWeightsFor(stage, difficulty, table) ?? [1, 0, 0, 0, 0];
+  return weights.reduce((p, w, i) => p + w * sizeWeights(size, stage, difficulty, i + 1)[2], 0);
+};
+
+test('나보다 큰 적 확률 표(판 시작·성장 뒤 보충)가 plan.md 변경 이력 17과 같고 적 단계 가중치는 바뀌지 않는다', () => {
+  const start = CONFIG.player.startSize, grown = CONFIG.enemy.earlyUntilSize;
+  // [난이도, 플레이어 단계, 판 시작 %, 성장 뒤 보충 %]
+  const expected = [
+    ['easy', 1, 43.86, 15.77], ['easy', 2, 50.00, 18.33], ['easy', 3, 47.77, 38.02], ['easy', 4, 48.18, 37.86], ['easy', 5, 48.13, 37.75],
+    ['normal', 1, 81.82, 52.94], ['normal', 2, 81.82, 52.94], ['normal', 3, 81.82, 75.00], ['normal', 4, 81.82, 75.00], ['normal', 5, 81.82, 75.00],
+    ['hard', 1, 86.30, 61.17], ['hard', 2, 81.82, 55.97], ['hard', 3, 83.11, 76.35], ['hard', 4, 83.10, 76.81], ['hard', 5, 83.52, 77.60],
+  ];
+  for (const [difficulty, stage, atStart, afterGrowth] of expected) {
+    const s = bigChance(stage, difficulty, start, CONFIG.enemy.startStageWeights) * 100;
+    const g = bigChance(stage, difficulty, grown, CONFIG.enemy.stageWeights) * 100;
+    assert.ok(Math.abs(s - atStart) < 0.006, `${difficulty} ${stage}단계 시작 ${s.toFixed(3)} ≈ ${atStart}`);
+    assert.ok(Math.abs(g - afterGrowth) < 0.006, `${difficulty} ${stage}단계 보충 ${g.toFixed(3)} ≈ ${afterGrowth}`);
+  }
+  // 사용자 지시는 큰 적만 3배다. 높은 단계 적 비중(stageWeights)은 종전과 같은 값이다.
+  assert.deepEqual(CONFIG.enemy.stageWeights[3], [0.05, 0.15, 0.35, 0.3, 0.15]);
+  assert.deepEqual(CONFIG.enemy.stageWeights[4], [0.02, 0.08, 0.25, 0.4, 0.25]);
+  assert.deepEqual(CONFIG.enemy.stageWeights[5], [0, 0.04, 0.16, 0.35, 0.45]);
+  assert.deepEqual(CONFIG.enemy.startStageWeights[3], [0.05, 0.2, 0.4, 0.25, 0.1]);
 });
 
 test('목숨은 하드 패배에 한 번 쓰고 승천과 정비는 보존한다', () => {
@@ -91,7 +150,8 @@ test('판 시작 추첨은 크기 구간·구간 안 크기·단계 순서이고
   const roll = rollSpawnSize(rng);
   const stage = startStage(3, rng, 'normal');
   assert.equal(stage, 4);
-  near(spawnSize(size, 3, 'normal', stage, roll), size * 0.96);
+  // 큰 적 3배 뒤 노말의 큰 구간(1.15~1.75배)이 [0.35, 0.15, 2.25] 중 82%라 같은 난수 0.39·0.25가 이제는 큰 구간이다(종전엔 비슷한 구간 0.96배).
+  near(spawnSize(size, 3, 'normal', stage, roll), size * 1.3);
   near(spawnSize(size, 3, 'easy', 3, roll), size * 0.59);
   assert.equal(draws.length, 0);
 });

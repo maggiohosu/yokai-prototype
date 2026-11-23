@@ -38,9 +38,9 @@ import { AbilityInfoView } from '../ui/AbilityInfoView.js';
 import { EvolveView, gradeChanceText } from '../ui/EvolveView.js';
 import { QuickPick } from '../ui/QuickPick.js';
 import { QUICK_STAT_NAMES } from '../systems/levelup.js';
-import { createHeraldState, heraldBonusYoryeok, heraldExtraDropChance, heraldRetry, heraldSizeCap, heraldView, stepHerald } from '../systems/herald.js';
+import { createHeraldState, heraldBonusYoryeok, heraldRetry, heraldSizeCap, heraldView, stepHerald } from '../systems/herald.js';
+import { grantHeraldBopae, heraldRewardText } from '../systems/heraldReward.js';
 import { createResonanceState, recordMeal, resonanceView } from '../systems/resonance.js';
-import { addToInventory, dropChance } from '../systems/treasure.js';
 import { PopulationStress, withSeed } from '../game/populationStress.js';
 
 // 공명 표시용 방위 이름(청·백·적·흑)과 연출 색
@@ -164,7 +164,6 @@ export class PlayScene extends Phaser.Scene {
     this.resonance = createResonanceState();
     this.resonanceStats = { streak: 0, cycle: 0, bonus: 0 };
     this.playSec = 0;
-    this.dropMark = 0; // 마지막 먹기까지 센 여의주 드롭 수(this.run.drops). 이번 먹기에서 기본 드롭이 났는지 알아내는 기준
     // 리스너 등록 순서가 중요하다: session.attachSession의 먹기 처리(요력·기본 드롭 굴림)가 먼저, 아래 afterEat(대요괴 보상·공명)가 그다음에 돈다.
     const onAfterEat = (meal) => this.afterEat(meal);
     this.events.on('eat', onEatFx);
@@ -386,12 +385,21 @@ export class PlayScene extends Phaser.Scene {
     const p = this.player;
     // 카메라는 아직 옛 위치(플레이어·적만 shift 옮겨짐; follow·setBounds는 렌더 직전·뒤에 갱신): 시야를 shift만큼 보정한다.
     const raw = cameraView(this.cameras.main, this.cameraBounds);
-    const cam = { left: raw.left + shift, right: raw.right + shift, top: raw.top + shift, bottom: raw.bottom + shift };
-    const widen = 1 / CONFIG.balance.view.evolveZoom; // 진화 연출로 카메라가 물러선다
-    const wide = {
-      left: p.x - (p.x - cam.left) * widen, right: p.x + (cam.right - p.x) * widen,
-      top: p.y - (p.y - cam.top) * widen, bottom: p.y + (cam.bottom - p.y) * widen,
+    const old = { left: raw.left + shift, right: raw.right + shift, top: raw.top + shift, bottom: raw.bottom + shift };
+    // 진화 뒤 카메라는 새 맵 경계 [0, size] 안에서 플레이어를 가운데에 두도록 다시 잡힌다(옛 카메라가 옛 경계에 붙어 있었어도): 지금 배율과 물러선 배율의 두 시야를 직접 구한다.
+    const centered = (w, h) => {
+      const left = Math.min(Math.max(0, p.x - w / 2), Math.max(0, size - w));
+      const top = Math.min(Math.max(0, p.y - h / 2), Math.max(0, size - h));
+      return { left, right: left + w, top, bottom: top + h };
     };
+    const now = centered(raw.width, raw.height);
+    const back = centered(raw.width / CONFIG.balance.view.evolveZoom, raw.height / CONFIG.balance.view.evolveZoom);
+    const union = (...v) => ({
+      left: Math.min(...v.map((r) => r.left)), right: Math.max(...v.map((r) => r.right)),
+      top: Math.min(...v.map((r) => r.top)), bottom: Math.max(...v.map((r) => r.bottom)),
+    });
+    const wide = union(old, now, back);
+    const cam = union(old, now);
     const seen = (e) => {
       const pad = offscreenPad(e.size, e.stage);
       return e.x > cam.left - pad && e.x < cam.right + pad && e.y > cam.top - pad && e.y < cam.bottom + pad;
@@ -520,10 +528,12 @@ export class PlayScene extends Phaser.Scene {
   }
   spawn(size, options = {}) {
     const stage = options.stage ?? spawnStage(this.player.stage ?? 1, Math.random, this.difficulty);
-    const pos = spawnPoint(this.player, this.enemies, size, { ...options, stage });
+    // 대요괴·맞수는 자리가 없으면 다음 프레임에 다시 시도하므로 화면 밖 여유를 줄여서라도 찾는다(relax). 일반 보충은 몸 전체가 화면 밖인 자리만 쓴다.
+    const pos = spawnPoint(this.player, this.enemies, size, { ...options, stage, relax: !!options.rival });
     if (!pos) return false;
     const dir = this.nextColor(regionAt(pos.x, pos.y));
     const enemy = new Enemy(this, pos, size, dir, stage);
+    if (!options.initial && CONFIG.world.spawnGraceSec > 0) enemy.graceUntil = this.simTime + CONFIG.world.spawnGraceSec * CONFIG.tempo * this.pace; // 보충으로 놓인 적은 실제 spawnGraceSec초 동안 먹지도 먹히지도 않는다(시뮬레이션 시간으로 환산)
     if (options.rival) enemy.markRival(); // 맞수 대요괴: 이름표 '맞수', 진화 없음, 몸집 상한 플레이어 × 1.3
     if (options.herald) this.markHerald(enemy); // 예고된 대요괴: 맞수와 같은 규칙에 이름표 '대요괴', 몸집 상한 플레이어 × herald.sizeMax
     this.enemies.push(enemy);
@@ -555,46 +565,32 @@ export class PlayScene extends Phaser.Scene {
     }
     this.heraldStats.spawned++;
     const ratio = Number((spawn.size / this.player.size).toFixed(1));
-    this.hud.heraldNotice('대요괴 출현! 내 크기의 ' + ratio + '배, 잡으면 큰 보상', h.noticeSec, 'arrive');
+    this.hud.heraldNotice('대요괴 출현! 내 크기의 ' + ratio + '배, 잡으면 보패 1개와 큰 보상', h.noticeSec, 'arrive');
     if (!this.reducedMotion) this.cameras.main.shake(this.fx.m.shakeMs, this.fx.m.shakeIntensity);
   }
   // 먹기 직후 처리(session의 요력·기본 드롭 굴림이 먼저 돈 뒤): 대요괴 처치 보상과 공명 연쇄. 매혹한 요괴가 먹은 것은 내 처치·내 연쇄가 아니다.
   afterEat(meal) {
-    const droppedByBase = this.run.drops > this.dropMark; // 이번 먹기에서 session의 기본 굴림이 성공했는가
-    this.dropMark = this.run.drops;
     if (meal.byAlly || this.stress) return;
-    if (meal.herald) this.slayHerald(meal, droppedByBase);
+    if (meal.herald) this.slayHerald(meal);
     this.chainResonance(meal);
   }
-  // 대요괴 처치: 요력 보너스(기본 요력 × bonusMult) + 기본 드롭 굴림이 실패했을 때만 한 번 더 굴려 총 확률을 herald.dropChance로 올린다(확정 드롭 아님).
-  slayHerald(meal, droppedByBase) {
+  // 대요괴 처치: 요력 보너스(기본 요력 × bonusMult) + 보패 1개(heraldReward.js: 안 가진 보패 중 무작위, 없으면 강화, 그도 없으면 요력).
+  // 보패는 필드에 떨어뜨리지 않고 처치 순간 바로 progress에 넣고 곧바로 저장한다(판이 끝나기 전에 죽어도 유지). 판은 멈추지 않는다.
+  slayHerald(meal) {
     const p = this.player;
     const gain = mealYoryeok(meal);
     const bonus = heraldBonusYoryeok(gain);
     this.progress.yoryeok += bonus;
     this.run.yoryeok += bonus;
-    let dropped = droppedByBase;
-    if (!dropped && Math.random() < heraldExtraDropChance(dropChance({ killedByTreasure: meal.killedByTreasure }))) dropped = this.giveTreasure();
+    const reward = grantHeraldBopae(this.progress, { bonusYoryeok: bonus });
+    this.run.yoryeok += reward.yoryeok;
     this.saveProgress(this.progress);
     this.heraldStats.slain++;
+    this.heraldStats.last = reward;
+    if (reward.type !== 'yoryeok') sfx.play('weapon-unlock', { volume: 0.9 });
     this.fx.floatText(p.x, p.y - p.size * 2.6, '대요괴 처치! 요력 +' + bonus + ' 더', '#ffd45c');
     this.fx.burst(p.x, p.y, 0xffd45c, 36, 1.8);
-    this.hud.heraldNotice('대요괴를 잡았습니다! 요력 +' + (gain + bonus) + (dropped ? ' · 여의주 획득' : ''), CONFIG.herald.noticeSec, 'slain');
-  }
-  // 여의주 하나를 준다(session.onEat와 같은 방식: 장착 칸이 비었으면 장착, 아니면 보관함). 보관함이 가득 차면 못 받는다.
-  giveTreasure() {
-    const treasure = { level: 0 };
-    let got = false;
-    if (!this.progress.treasure) {
-      this.progress.treasure = treasure;
-      got = true;
-    } else got = addToInventory(this.progress, treasure);
-    if (got) {
-      this.run.drops++;
-      this.dropMark = this.run.drops;
-      this.events.emit('treasureDrop', this.run.drops);
-    }
-    return got;
+    this.hud.heraldNotice('대요괴를 잡았습니다! 요력 +' + (gain + bonus) + ' · ' + heraldRewardText(reward), CONFIG.herald.noticeSec + 1, 'slain');
   }
   // 공명 연쇄(resonance.js): 먹은 요괴의 방위가 이어지면 보너스 요력과 짧은 연출.
   chainResonance(meal) {
@@ -769,7 +765,7 @@ export class PlayScene extends Phaser.Scene {
       if (!this.reducedMotion) this.fx.burst(p.x, p.y, CONFIG.vitality.warnColor, 5, 0.5);
     }
   }
-  // 안쪽은 생명력, 바깥쪽 가는 선은 다음 식사까지 남은 5초다. 빈 게이지도 위험 신호가 보이게 한다.
+  // 안쪽은 생명력, 바깥쪽 가는 선은 다음 식사까지 남은 유예(hungerGraceSec, 3초)다. 빈 게이지도 위험 신호가 보이게 한다.
   drawVitality(g) {
     const v = CONFIG.vitality, hunger = this.hunger;
     const zoom = this.cameras.main.zoom;
@@ -1156,7 +1152,7 @@ export class PlayScene extends Phaser.Scene {
       const count = Math.min(this.refillPending, CONFIG.render.refillPerFrame, Math.max(0, CONFIG.world.population - this.enemies.length));
       this.refillPending = count ? this.refillPending - count : 0;
       const grid = this.placementGrid = buildGrid(this.enemies, CONFIG.render.enemyCell, this.placementGrid);
-      // 보충되는 적은 모든 단계에서 맵 전체의 화면 밖에 고르게 놓는다(몰리지 않게). 화면 밖 자리가 모자라면 spawnPoint가 화면 밖 여유를 줄이고 가장 덜 붐비는 곳을 쓴다.
+      // 보충되는 적은 모든 단계에서 맵 전체의 화면 밖에 고르게 놓는다(몰리지 않게). 화면 밖 자리가 모자라면 간격을 못 지켜도 가장 덜 붐비는 화면 밖 후보를 쓰고, 그것도 없으면 이번 보충은 건너뛴다(화면 밖 여유는 줄이지 않는다: relax는 대요괴·맞수만).
       for (let i = 0; i < count; i++) {
         const playerStage = this.player.stage ?? 1;
         const stage = spawnStage(playerStage, Math.random, this.difficulty);

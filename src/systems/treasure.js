@@ -1,3 +1,4 @@
+import { CONFIG } from '../config.js';
 import { TREASURE } from './tuning-upgrade.js';
 import { kindOf, weaponOf, weaponStats } from './weapons.js';
 
@@ -27,10 +28,13 @@ export function tablePrice(level, kind = 'yeouiju') {
   return Math.round(priceAt(TREASURE.prices, level) * weaponOf(kind).priceMult);
 }
 
-// 강화 비용은 판매가와 따로 정한다(costPrices × upgradeCostRatio × 무기 priceMult).
+// 강화 비용은 판매가와 따로 정한다. 첫 레벨(+0 → +1) 비용 = costPrices의 +1 값 × upgradeCostRatio × 무기 priceMult이고,
+// 레벨이 하나 오를 때마다 CONFIG.enhanceCostGrowth배(2배)다(사용자 결정 2026-11-23, 변경 이력 18). 반올림은 한 번만 한다.
 function costAt(level, kind) {
   checkLevel(level);
-  return level === maxLevel ? Infinity : Math.round(priceAt(TREASURE.costPrices ?? TREASURE.prices, level + 1) * TREASURE.upgradeCostRatio * weaponOf(kind).priceMult);
+  if (level === maxLevel) return Infinity;
+  const first = priceAt(TREASURE.costPrices ?? TREASURE.prices, 1) * TREASURE.upgradeCostRatio * weaponOf(kind).priceMult;
+  return Math.round(first * CONFIG.enhanceCostGrowth ** level);
 }
 
 // 인자는 물건({ kind?, level, paid? }) 또는 레벨(옛 호출, 여의주로 본다).

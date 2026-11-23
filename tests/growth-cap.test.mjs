@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
-import { bodyCostAt, preyValue } from '../src/systems/rules.js';
+import { bodyCostAt, enemyPreyValue } from '../src/systems/rules.js';
 import { canEnemyBodyUp, enemySizeCap } from '../src/systems/growthCap.js';
 
 const cfg = CONFIG.enemy.growthCap;
@@ -28,7 +28,7 @@ test('재현: 3단계 적이 40마리를 먹어도 플레이어 크기 기준 �
     const prey = size * (0.4 + rand() * 0.5);
     size = Math.sqrt(size ** 2 + CONFIG.eating.areaGain * prey ** 2);
     size = Math.min(size, enemySizeCap(playerSize));
-    yoryeok += preyValue({ size: prey, stage: rand() < 0.5 ? 2 : 3 });
+    yoryeok += enemyPreyValue({ size: prey, stage: rand() < 0.5 ? 2 : 3 }); // 적의 성장 요력(예전 식, 변경 이력 18)
     if (yoryeok >= bodyCostAt(bodyLevel) && canEnemyBodyUp(bodyLevel)) {
       yoryeok -= bodyCostAt(bodyLevel); bodyLevel++;
       size = Math.min(size * CONFIG.levelUp.bodyMult, enemySizeCap(playerSize));

@@ -372,7 +372,7 @@ export function HubView(progress, forms, { onPlay, onEvolve, save = saveProgress
     const dropOdds = el('div');
     dropOdds.append(OddsTable('요괴를 쓰러뜨렸을 때 여의주 획득 확률',
       [['직접 먹기', dropChance() * 100], ['보물로 처치', dropChance({ killedByTreasure: true }) * 100]]),
-    el('p', 'yk-hint', '요괴가 떨어뜨리는 보물은 여의주뿐이에요.'));
+    el('p', 'yk-hint', '보통 요괴가 떨어뜨리는 보물은 여의주뿐이에요. 대요괴를 쓰러뜨리면 아직 없는 보패 하나가 나와요.'));
     body.append(equipped, inventory, shards, disclosure('보물 획득 확률', dropOdds));
   }
 

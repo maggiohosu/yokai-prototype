@@ -8,7 +8,7 @@ import { Combat, aimTarget } from '../src/game/combat.js';
 import { reversalPair } from '../src/systems/rules.js';
 import { FORM_BY_ID } from '../src/data/forms.js';
 import { evolutionCost } from '../src/systems/evolution.js';
-import { bodyCostAt, preyValue, preyInfoOf, canEat } from '../src/systems/rules.js';
+import { bodyCostAt, enemyPreyValue, preyValue, preyInfoOf, canEat } from '../src/systems/rules.js';
 
 const A = (x, y, size, extra = {}) => ({ x, y, size, ...extra });
 const cfg = CONFIG.hunt;
@@ -198,7 +198,7 @@ test('먹으면 면적이 늘고 먹힌 쪽 점수만큼 요력, 크기만큼 �
   // 시작 크기 1/3(2026-11-23): 크기는 예전 값 / 3
   const e = makeEnemy(30 / 3, 'east', 2);
   const p = prey(10 / 3, 'west', { stage: 1 });
-  const expected = preyValue(preyInfoOf(p));
+  const expected = enemyPreyValue(preyInfoOf(p)); // 적의 성장 요력은 예전 절대 크기 식 그대로다(변경 이력 18)
   const before = e.size;
   const result = e.eat(p);
   assert.equal(result, null);

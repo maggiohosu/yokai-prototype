@@ -9,7 +9,7 @@ import { initStatus, isAlly, isDisabled, nowOf, slowFactor } from './status.js';
 import { canEnemyBodyUp, enemySizeCap } from '../systems/growthCap.js';
 import { rivalSizeCap, sizeSpeedMultiplier } from '../systems/balance.js';
 import { evolutionCost, rollGrade } from '../systems/evolution.js';
-import { bodyCostAt, newDiet, nextProgress, pickEvolution, preyInfoOf, preyValue } from '../systems/rules.js';
+import { bodyCostAt, enemyPreyValue, newDiet, nextProgress, pickEvolution, preyInfoOf } from '../systems/rules.js';
 
 // 방위·단계의 형태 중 무작위(방위에 형태가 없으면 단계만 맞춘다). 1단계도 그 방위의 1단계 형태 2종 중 하나다.
 export function formFor(dir, stage, rng = Math.random) {
@@ -123,7 +123,7 @@ export class Enemy extends Actor {
     this.reversed = false;
     // 매혹된 아군은 크기만 자란다. 요력은 PlayScene이 플레이어 요력으로 보내고, 식성·진화·몸집 강화는 하지 않는다(설계 4-4).
     if (isAlly(this, nowOf(this.scene))) return null;
-    this.yoryeok += preyValue(preyInfoOf(prey));
+    this.yoryeok += enemyPreyValue(preyInfoOf(prey)); // 적의 성장 요력은 예전 식 그대로(플레이어 요력 곡선과 따로, 변경 이력 18)
     if (prey.dir in this.diet) this.diet[prey.dir] += prey.size;
     return this.autoProgress(rng);
   }

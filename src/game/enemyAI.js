@@ -287,7 +287,7 @@ export function findMeals(grid, opts, now = null, meals = [], eaten = new Set(),
           for (const b of neighbors) {
             if (b === a || Math.abs(b.x - x) >= size + b.size) continue;
             const pair = eatPair(a, b, opts);
-            if (!pair || eaten.has(b) || (now !== null && eatBlocked(pair[0], now))) continue;
+            if (!pair || eaten.has(b) || (now !== null && (eatBlocked(pair[0], now) || a.graceUntil > now || b.graceUntil > now))) continue; // 새로 놓인 적(graceUntil)은 먹지도 먹히지도 않는다
             eaten.add(pair[1]);
             meals.push(pair);
             if (pair[1] === a) break search;

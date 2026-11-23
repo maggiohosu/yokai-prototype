@@ -19,7 +19,7 @@ test('강화 결과가 성공이면 기존 여의주가 올라가고 안전 구�
 });
 
 test('성공·파손 확률의 경계와 파손된 여의주의 중복 지급 방지', () => {
-  for (const [roll, result] of [[0.09999, 'break'], [0.10, 'fail']]) {
+  for (const [roll, result] of [[0.19999, 'break'], [0.20, 'fail']]) {
     const treasure = { level: 5 };
     const draws = [0.60, roll];
     const outcome = tryUpgrade(treasure, { rng: () => draws.shift() });
@@ -34,21 +34,25 @@ test('성공·파손 확률의 경계와 파손된 여의주의 중복 지급 �
     }
   }
   const treasure = { level: 14 };
+  // +15 시도의 깨짐은 100%다(2026-11-23): 성공 굴림을 놓치면 어떤 두 번째 굴림에서도 깨진다.
+  const lastDraws = [0.10, 0.99999];
+  assert.deepEqual(tryUpgrade({ level: 14 }, { rng: () => lastDraws.shift() }), { result: 'break', from: 14, to: null, shards: 14 });
   assert.equal(tryUpgrade(treasure, { rng: () => 0.09999 }).to, 15);
   assert.throws(() => tryUpgrade(treasure, { rng: () => assert.fail('최고 레벨에서 추첨') }), RangeError);
 });
 
 test('판매가 기준점, 다음 단계 판매가 기준 강화 비용, 레벨별 전투 수치와 칭호', () => {
   assert.deepEqual([0, 5, 10, 15].map(sellPrice), [5, 300, 5000, 100000]);
-  assert.equal(upgradeCost(4), 20);
-  assert.equal(upgradeCost(9), 200);
-  assert.equal(upgradeCost(14), 2000);
+  // 첫 레벨(+0 → +1) 비용 2는 그대로이고 레벨이 하나 오를 때마다 2배다(변경 이력 18): 1.8 × 2^레벨을 한 번만 반올림.
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map(upgradeCost), [2, 4, 7, 14, 29, 58]);
+  assert.equal(upgradeCost(9), 922);
+  assert.equal(upgradeCost(14), 29491);
   assert.equal(upgradeCost(15), Infinity);
   for (let level = 0; level < 15; level++) {
     const nextPrice = sellPrice(level + 1);
     assert.ok(nextPrice > sellPrice(level));
-    // 판매가를 올려도 강화 비용은 예전 곡선(costPrices) 기준 그대로다.
-    assert.ok(upgradeCost(level) < nextPrice * 0.2 || level < 1);
+    // 강화 비용은 레벨마다 2배(반올림 오차 1 이내), 판매가는 그대로다. 아래에서 다음 레벨 판매가가 한 번의 강화 비용보다 크다는 것도 확인한다.
+    if (level < 14) assert.ok(Math.abs(upgradeCost(level + 1) - 2 * upgradeCost(level)) <= 1, `레벨 ${level}`);
     assert.ok(sellPrice(level + 1) >= upgradeCost(level));
     const current = treasureStats(level);
     const next = treasureStats(level + 1);
@@ -133,7 +137,7 @@ function close(actual, expected, label) {
 
 test('각 목표 10만 회: 여의주 성공·실패·파손과 실패 중 파손 비율이 기획의 ±1%p 이내', () => {
   const success = [90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 30, 25, 20, 15, 10];
-  const breakOnFailure = [0, 0, 0, 0, 0, 10, 12.5, 15, 17.5, 20, 30, 35, 40, 45, 50];
+  const breakOnFailure = [0, 0, 0, 0, 0, 20, 25, 30, 35, 40, 60, 70, 80, 90, 100]; // 파괴 확률 2배(2026-11-23)
   const rng = seeded(0xf19e);
   const trials = 100_000;
   for (const [level, chance] of success.entries()) {

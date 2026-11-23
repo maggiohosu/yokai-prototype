@@ -43,17 +43,28 @@ export function reversalPair(player, enemy) {
   return dx * dx + dy * dy < reach * reach ? [player, enemy] : null;
 }
 
-// 먹이 점수 = 요력. 크고 높은 단계일수록 크게 오른다.
-export function preyValue({ size, stage = 1, grade = 'C', special = false, killedByTreasure = false }) {
+// 먹이 점수 = 요력. 먹이가 내 몸에 비해 클수록, 높은 단계일수록 크게 오른다(변경 이력 18).
+//   size    먹이 크기(보물에 깎이기 전 처음 크기, combat.rewardSizeOf)
+//   mySize  먹는 순간 먹는 쪽(플레이어·적)의 크기. 없거나 0 이하면 sizeRef(시작 크기)로 본다.
+export function preyValue({ size, stage = 1, grade = 'C', special = false, killedByTreasure = false, mySize }) {
   const s = CONFIG.score;
-  let v = s.base * Math.pow(size / s.sizeRef, s.sizeExp) * (s.stageMult[stage] ?? 1) * (gradeMultiplier(grade) ?? 1);
+  const mine = mySize > 0 ? mySize : s.sizeRef;
+  let v = s.base * Math.pow(size / mine, s.relExp) * (s.stageMult[stage] ?? 1) * (gradeMultiplier(grade) ?? 1);
   if (killedByTreasure) v *= s.treasureMult;
   if (special) v *= CONFIG.special.rewardMult;
   return Math.max(1, Math.round(v));
 }
 
-// preyValue에 그대로 넘길 수 있는 먹이 정보. 플레이어·적 모두 같은 모양으로 읽는다.
-export function preyInfoOf(actor, killedByTreasure = false) {
+// 적이 먹어서 쌓는 요력(적의 자가 진화·몸집 강화용). 변경 이력 18 이전의 절대 크기 식 그대로다: 플레이어 요력 곡선이 바뀌어도 적의 성장 속도는 같다(CONFIG.enemyScore).
+export function enemyPreyValue({ size, stage = 1, grade = 'C', special = false }) {
+  const s = CONFIG.enemyScore;
+  let v = s.base * Math.pow(size / s.sizeRef, s.sizeExp) * (s.stageMult[stage] ?? 1) * (gradeMultiplier(grade) ?? 1);
+  if (special) v *= CONFIG.special.rewardMult;
+  return Math.max(1, Math.round(v));
+}
+
+// preyValue에 그대로 넘길 수 있는 먹이 정보. 플레이어·적 모두 같은 모양으로 읽는다. mySize는 먹는 쪽의 먹기 직전 크기다.
+export function preyInfoOf(actor, killedByTreasure = false, mySize) {
   return {
     size: actor.size,
     stage: stageOf(actor),
@@ -61,6 +72,7 @@ export function preyInfoOf(actor, killedByTreasure = false) {
     special: !!actor.special,
     killedByTreasure,
     dir: actor.dir,
+    mySize,
   };
 }
 
@@ -69,10 +81,9 @@ export function newDiet() {
   return { east: 0, west: 0, south: 0, north: 0 };
 }
 
-// 몸집 강화 비용: bodyBaseCost × bodyCostGrowth^레벨
+// 몸집 강화 비용: bodyBaseCost × enhanceCostGrowth^레벨(모든 강화가 같은 배수로 비싸진다, 변경 이력 18)
 export function bodyCostAt(level) {
-  const l = CONFIG.levelUp;
-  return l.bodyBaseCost * Math.pow(l.bodyCostGrowth, level);
+  return CONFIG.levelUp.bodyBaseCost * Math.pow(CONFIG.enhanceCostGrowth, level);
 }
 
 // 다음 단계 형태 하나(적의 자가 진화, 3택을 쓰지 않는다). 식성 1위 방위가 지금 방위와 같으면 지금 줄기의 다음 단계 중 무작위,

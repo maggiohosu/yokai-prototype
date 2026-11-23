@@ -11,12 +11,12 @@ export function vitalityUpgradeText(level, maxed) {
 export const ENHANCE = {
   stats: ['growth', 'speed', 'vitality'],
   success: [95, 90, 80, 70, 60, 50, 40, 30, 20, 10],
-  degradeOnFailure: [0, 0, 0, 0, 30, 30, 40, 40, 50, 50],
+  // 사용자 지시(2026-11-23): 파괴 확률 2배. 본체는 파괴 대신 퇴화가 그 자리라 퇴화 확률을 2배(100 상한)로 해석한다. 옛 값 [0,0,0,0,30,30,40,40,50,50].
+  degradeOnFailure: [0, 0, 0, 0, 60, 60, 80, 80, 100, 100],
   greatOnSuccess: 5,
   greatLevels: 2,
   pityStep: 5,
-  baseCost: 20,
-  costGrowth: 1.6,
+  baseCost: 20, // 첫 레벨(+0 → +1) 비용. 레벨이 하나 오를 때마다 CONFIG.enhanceCostGrowth배(2배)로 비싸진다(enhance.enhanceCost)
   autoLimit: 200,
   singleAttemptGrades: ['S', 'S+'],
 };
@@ -27,10 +27,12 @@ export const ENHANCE = {
 // 그 값을 레벨 표와 합치는 계산은 systems/weapons.js의 weaponStats가 한다.
 export const TREASURE = {
   success: [90, 85, 80, 75, 70, 60, 55, 50, 45, 40, 30, 25, 20, 15, 10],
-  breakOnFailure: [0, 0, 0, 0, 0, 10, 12.5, 15, 17.5, 20, 30, 35, 40, 45, 50],
+  // 사용자 지시(2026-11-23): 파괴 확률 2배(100 상한). 옛 값 [0,0,0,0,0,10,12.5,15,17.5,20,30,35,40,45,50].
+  breakOnFailure: [0, 0, 0, 0, 0, 20, 25, 30, 35, 40, 60, 70, 80, 90, 100],
   // 인접한 기준점 사이의 판매가는 기하 보간한다. 사용자 결정(2026-11-23): 고레벨일수록 판매가를 크게(팔아서 버는 맛).
   prices: [[0, 5], [5, 300], [10, 5000], [15, 100000]],
-  // 강화 비용은 예전 가격 곡선 × upgradeCostRatio로 유지한다(판매가를 올려도 비용은 그대로).
+  // 강화 비용: 첫 레벨(+0 → +1) 비용만 예전 가격 곡선 × upgradeCostRatio에서 읽고(costPrices의 +1 값 × 0.2), 이후는 레벨이 하나 오를 때마다 CONFIG.enhanceCostGrowth배(2배)다
+  // (사용자 결정 2026-11-23, 변경 이력 18: 고강화일수록 요구 요력이 두 배씩). 판매가(prices)·상점 구매가는 그대로다.
   costPrices: [[0, 5], [5, 100], [10, 1000], [15, 10000]],
   upgradeCostRatio: 0.2,
   shardsPerLevel: 1,

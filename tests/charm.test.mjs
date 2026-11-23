@@ -248,7 +248,8 @@ test('아군이 먹은 먹이의 요력 100%가 플레이어에게 간다: 요�
   assert.equal(meal.byAlly, true);
   assert.equal(meal.x, 10);
   scene.events.emit('eat', meal);
-  const expected = preyValue({ size: 30, stage: 2, grade: 'C', special: false, killedByTreasure: false });
+  assert.equal(meal.mySize, w.player.size, '내 크기 = 먹는 순간의 플레이어 크기(아군이 먹어도 요력은 내 몸 기준)');
+  const expected = preyValue({ size: 30, stage: 2, grade: 'C', special: false, killedByTreasure: false, mySize: meal.mySize });
   assert.equal(mealYoryeok(meal), expected);
   assert.equal(progress.yoryeok, expected, '요력 100%');
   assert.equal(run.yoryeok, expected);
@@ -268,7 +269,7 @@ test('특수 적을 아군이 먹어도 요력 대박(×8)이 그대로 적용�
   const prey = fakeEnemy(0, 0, 30, { stage: 3, special: true });
   const meal = w.combat.allyMeal(prey, fakeEnemy(0, 0, 60));
   assert.equal(meal.special, true);
-  assert.equal(mealYoryeok(meal), preyValue({ size: 30, stage: 3, grade: 'C', special: true }));
+  assert.equal(mealYoryeok(meal), preyValue({ size: 30, stage: 3, grade: 'C', special: true, mySize: meal.mySize }));
   assert.equal(preyInfoOf(prey).special, true);
 });
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import {
-  stageOf, canEat, eatPair, reversalPair, preyValue, preyInfoOf, newDiet, bodyCostAt, topDietDir, pickEvolution, nextProgress,
+  stageOf, canEat, eatPair, reversalPair, preyValue, enemyPreyValue, preyInfoOf, newDiet, bodyCostAt, topDietDir, pickEvolution, nextProgress,
   stageOverrideMult,
 } from '../src/systems/rules.js';
 import { FORMS } from '../src/data/forms.js';
@@ -110,20 +110,47 @@ test('eatingPair(기존 호출)도 같은 규칙을 따르고 ratio 1이면 역�
   assertPair(eatingPair(weak, peer, 1), weak, peer);
 });
 
-test('preyValue: 4·5단계 배율은 ×48 / ×128(3단계 ×16)이고 같은 단계 먹이 몇 마리로 진화할 수 있다', () => {
-  assert.deepEqual(CONFIG.score.stageMult, { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 });
-  const c40 = (stage) => preyValue({ size: 40 / 3, stage, grade: 'C' }); // 시작 크기 1/3: 예전 크기 40
-  assert.equal(c40(1), 30);
-  assert.equal(c40(2), 121);
-  assert.equal(c40(3), 485);
-  assert.equal(c40(4), 1455);
-  assert.equal(c40(5), 3880);
-  // 한 단계 아래 먹이(크기 40, C등급) 1마리로 모으는 마리 수: 3.3 / 3.3 / 4.1 / 5.5
-  assert.ok(Math.abs(evolutionCost(2) / c40(1) - 3.3) < 0.05);
-  assert.ok(Math.abs(evolutionCost(3) / c40(2) - 3.3) < 0.05);
-  assert.ok(Math.abs(evolutionCost(4) / c40(3) - 4.1) < 0.05);
-  assert.ok(Math.abs(evolutionCost(5) / c40(4) - 5.5) < 0.05);
+test('preyValue: base × (먹이 크기 / 내 크기)^2 × 단계 배율, 4·5단계 배율은 ×24 / ×176(3단계 ×16)', () => {
+  const s = CONFIG.score;
+  assert.deepEqual(s.stageMult, { 1: 1, 2: 4, 3: 16, 4: 24, 5: 176 });
+  assert.equal(s.base, 28);
+  assert.equal(s.relExp, 2);
+  // 내 크기와 같은 크기의 C등급 먹이 = base × 단계 배율
+  const same = (stage) => preyValue({ size: 10, stage, grade: 'C', mySize: 10 });
+  assert.deepEqual([1, 2, 3, 4, 5].map(same), [28, 112, 448, 672, 4928]);
+  // 먹이 크기가 두 배면 4배, 내 크기가 두 배면 1/4배(같은 먹이도 내가 커질수록 요력이 준다)
+  assert.equal(preyValue({ size: 20, stage: 1, grade: 'C', mySize: 20 }), 28);
+  assert.equal(preyValue({ size: 20, stage: 1, grade: 'C', mySize: 10 }), 112);
+  assert.equal(preyValue({ size: 10, stage: 1, grade: 'C', mySize: 20 }), 7);
+  // 내 크기를 모르면 sizeRef(시작 크기 28/3)를 쓴다
+  assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C' }), 112);
+  assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C', mySize: 0 }), 112);
+  assert.equal(preyValue({ size: 28 / 3, stage: 2, grade: 'C', mySize: NaN }), 112);
+  // 같은 단계 먹이(내 크기)로 다음 진화비를 모으는 마리 수: 3.6 / 3.6 / 4.5 / 11.9
+  assert.ok(Math.abs(evolutionCost(2) / same(1) - 3.6) < 0.05);
+  assert.ok(Math.abs(evolutionCost(3) / same(2) - 3.6) < 0.05);
+  assert.ok(Math.abs(evolutionCost(4) / same(3) - 4.5) < 0.05);
+  assert.ok(Math.abs(evolutionCost(5) / same(4) - 11.9) < 0.05);
   assert.deepEqual([evolutionCost(2), evolutionCost(3), evolutionCost(4), evolutionCost(5)], [100, 400, 2000, 8000]);
+});
+
+test('preyValue: 먹이 크기는 처음 크기라 보물에 깎여도 같다 — 내 크기만 달라지면 값이 바뀐다', () => {
+  const full = { size: 60, stage: 4, grade: 'C', killedByTreasure: true };
+  assert.equal(preyValue({ ...full, mySize: 30 }), Math.round(28 * 2 ** 2 * 24 * 1.5));
+  assert.ok(preyValue({ ...full, mySize: 60 }) < preyValue({ ...full, mySize: 30 }));
+  assert.ok(preyValue({ ...full, mySize: 15 }) > preyValue({ ...full, mySize: 30 }));
+});
+
+test('enemyPreyValue: 적이 먹어서 쌓는 요력은 예전 절대 크기 식 그대로다(플레이어 요력 곡선과 따로)', () => {
+  assert.deepEqual(CONFIG.enemyScore, { base: 10, sizeRef: 20 / 3, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 } });
+  const c40 = (stage) => enemyPreyValue({ size: 40 / 3, stage, grade: 'C' }); // 시작 크기 1/3: 예전 크기 40
+  assert.deepEqual([1, 2, 3, 4, 5].map(c40), [30, 121, 485, 1455, 3880]);
+  assert.equal(enemyPreyValue({ size: 10, stage: 3, grade: 'C', special: true }), Math.round(10 * (10 / (20 / 3)) ** 1.6 * 16 * 8));
+  assert.ok(enemyPreyValue({ size: 1, stage: 1, grade: 'F' }) >= 1);
+  // 크기와 상관없이 내 크기(mySize)를 읽지 않는다: 먹는 쪽이 커져도 같은 먹이는 같은 요력이다.
+  assert.equal(enemyPreyValue({ size: 12, stage: 2, mySize: 6 }), enemyPreyValue({ size: 12, stage: 2, mySize: 60 }));
+  // 같은 먹이를 플레이어가 먹으면 먹는 순간의 내 크기에 따라 다르다(변경 이력 18).
+  assert.ok(preyValue({ size: 12, stage: 2, mySize: 6 }) > preyValue({ size: 12, stage: 2, mySize: 60 }));
 });
 
 test('preyValue: 최소 1, 배율 적용', () => {
@@ -145,17 +172,20 @@ test('크기 60 3단계 하나 > 크기 20 1단계 10개, 크기 큰 1단계 하
 });
 
 test('preyInfoOf는 단계·등급·특수·방위를 담고 preyValue에 그대로 쓸 수 있다', () => {
-  const info = preyInfoOf({ size: 30, stage: 3, grade: 'A', special: true, dir: 'east' }, true);
-  assert.deepEqual(info, { size: 30, stage: 3, grade: 'A', special: true, killedByTreasure: true, dir: 'east' });
+  const info = preyInfoOf({ size: 30, stage: 3, grade: 'A', special: true, dir: 'east' }, true, 12);
+  assert.deepEqual(info, { size: 30, stage: 3, grade: 'A', special: true, killedByTreasure: true, dir: 'east', mySize: 12 });
+  assert.equal(preyInfoOf({ size: 30 }).mySize, undefined);
   assert.equal(preyInfoOf({ size: 5 }).stage, 1);
   assert.equal(preyInfoOf({ size: 5 }).special, false);
   assert.ok(preyValue(preyInfoOf({ size: 5 })) >= 1);
 });
 
-test('bodyCostAt은 설정 공식(기본 비용 × 증가율^레벨)이다', () => {
+test('bodyCostAt은 설정 공식(기본 비용 × enhanceCostGrowth^레벨, 레벨마다 2배)이다', () => {
   const l = CONFIG.levelUp;
+  assert.equal(CONFIG.enhanceCostGrowth, 2);
   assert.equal(bodyCostAt(0), l.bodyBaseCost);
-  assert.ok(Math.abs(bodyCostAt(3) - l.bodyBaseCost * l.bodyCostGrowth ** 3) < 1e-9);
+  assert.ok(Math.abs(bodyCostAt(3) - l.bodyBaseCost * CONFIG.enhanceCostGrowth ** 3) < 1e-9);
+  assert.deepEqual([0, 1, 2, 3].map(bodyCostAt), [30, 60, 120, 240]);
 });
 
 test('topDietDir: 식성 1위, 동률이면 내 방위, 모두 0이면 fallback 또는 null', () => {

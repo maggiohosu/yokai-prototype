@@ -9,6 +9,9 @@ export const CONFIG = {
       hard: '높은 단계의 적이 자주 나와요. 같은 단계에서는 큰 적이 많아요.',
     },
     mult: 1.4, strongMult: 1.5, hardLives: 10,
+    // 나보다 큰 적(크기 구간의 마지막 칸, 1.15~1.75배)의 가중치에 노말·하드의 모든 단계에서 strongMult 위에 곱한다(사용자 지시 2026-11-23: 큰 적 확률 3배, 변경 이력 17).
+    // 확률이 아니라 가중치의 배율이다(확률을 3배로 하면 하드는 100%를 넘는다). 곱한 뒤 합을 1로 다시 맞춘다. 이지는 그대로다. 1로 두면 이전 값이다.
+    bigMult: 3,
     easy: { playerSpeedMult: 2, booster: false, autoFire: true },
   },
   // 글꼴(사용자 지시 2026-11-23): 모든 글자를 프리텐다드로. 눈누 694번(SIL OFL 1.1, 상업적 사용·수정·재배포 가능) 가변 웹폰트를 src/style.css의 @font-face로 불러온다.
@@ -23,7 +26,7 @@ export const CONFIG = {
     // 적 목표 인구는 모든 단계에서 같다(사용자 지시 2026-11-23: 5단계 전부 480). population은 지금 판의 목표이고 applyWorldScale이 fixedPopulation으로 맞춘다.
     fixedPopulation: 480,
     population: 480,
-    populationMult: 3, // 보충 묶음(refillBatch = 4 × 이 값)에만 쓴다. 인구는 fixedPopulation이 정한다.
+    populationMult: 6, // 보충 묶음(refillBatch = 4 × 이 값)에만 쓴다. 인구는 fixedPopulation이 정한다. 3 → 6: 한 변 1000에 480마리는 적끼리 먹는 소모가 커서 3이면 평균 인구가 300대에 머문다(plan.md 변경 이력 16).
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
     grid: 64,
     patternTile: 512,
@@ -40,6 +43,8 @@ export const CONFIG = {
     // 새 적이 다른 적과 띄울 간격(몸 반지름 합 + 이 값). 자리가 모자란 판(좁은 맵에 적 480마리)에서는 간격을 못 지켜도 가장 덜 붐비는 후보에 놓는다(crowdedSpawn).
     spawnGap: 22,
     crowdedSpawn: true,
+    // 새로 놓인 보충 적은 이 시간(실제 초, 게임 템포·속도 곡선을 곱해 시뮬레이션 시간으로 바꾼다) 동안 먹지도 먹히지도 않는다. 빈자리가 모자란 좁은 맵에서는 놓이자마자 겹친 적에게 먹혀 보충이 헛돌기 때문이다(1단계에서 놓인 적의 36%가 2초 안에 먹혔다).
+    spawnGraceSec: 5,
     offscreenMargin: 85,
     spawnAttempts: 90,
     refillInterval: 0.5 / 1.5, // 사용자 지시(2026-11-23): 적 리젠 1.5배 빠르게
@@ -103,20 +108,19 @@ export const CONFIG = {
   },
   // 적끼리 사냥(src/game/enemyAI.js). 속도 관련 값은 템포 1배 기준.
   hunt: { detect: 320, playerBias: 0.8, retargetSeconds: 0.35 },
-  // 특수 적(3단계 일부)의 구슬(src/game/enemyFire.js). 속도·쿨타임은 템포 1배 기준.
+  // 특수 적(5단계 적 일부)의 구슬(src/game/enemyFire.js). 속도·쿨타임은 템포 1배 기준.
   special: {
     rewardMult: 8, // 특수 적 처치 시 요력 배율(요력 대박)
     // 특수 적(구슬을 쏘는 적)은 5단계(pace.maxStage) 적만 될 수 있다(사용자 지시 2026-11-23, enemyFire.canBeSpecial). 1~4단계 적은 추첨하지 않는다.
     // 난이도 × 플레이어 단계별 특수 적 추첨 확률(chance)·재발사 간격(cooldown, 템포 1배 기준 시뮬레이션 초). 1·2단계는 아래 공통 기본값(0.3·2.2)을 쓴다.
-    // 사용자 지시(2026-11-23): 이지·노말 3~5단계는 이지 3단계 수준(T3 = 분당 27.8발), 하드는 3단계 T3·4~5단계 이지 4단계 수준(T4 = 분당 83.7발)을 넘지 않는다.
-    // 5단계 적만 쏘게 바꾼 뒤에도 상한을 넘는 모든 칸의 쿨타임을 늘려 상한에 맞췄다(값은 docs/balance-v4.md 17절의 측정). 쿨타임이 1차 수단이고, 상한 10으로도 모자란 이지 5단계만 chance를 낮췄다.
+    // 사용자 지시(2026-11-23): 이지·노말 3~5단계와 하드 3단계는 이지 3단계 수준(T3 = 화면 안 분당 27.8발), 하드 4·5단계는 이지 4단계 수준(T4 = 분당 83.7발)을 넘지 않는다.
+    // 쿨타임이 1차 수단이고 chance 0.3을 지킨다. 쿨타임 10으로도 상한에 못 닿는 이지 3·4·5단계만 쿨타임 10에 chance를 낮췄다.
+    // 값은 맵 한 변 1000·1500·2000·2600·3300, 적 480마리 고정에서 잰 것이다(docs/balance-v4.md 17절). 맵·인구를 바꾸면 다시 재야 한다.
     byStage: {
-      easy: { 3: { chance: 0.3, cooldown: 3.1 }, 4: { chance: 0.3, cooldown: 8 }, 5: { chance: 0.16, cooldown: 10 } },
-      normal: { 3: { chance: 0.3, cooldown: 3.4 }, 4: { chance: 0.3, cooldown: 6 }, 5: { chance: 0.3, cooldown: 7.9 } },
-      hard: { 3: { chance: 0.3, cooldown: 3.5 }, 4: { chance: 0.3, cooldown: 3.2 }, 5: { chance: 0.3, cooldown: 4.2 } },
+      easy: { 3: { chance: 0.21, cooldown: 10 }, 4: { chance: 0.2, cooldown: 10 }, 5: { chance: 0.19, cooldown: 10 } },
+      normal: { 3: { chance: 0.3, cooldown: 9 }, 4: { chance: 0.3, cooldown: 9.4 }, 5: { chance: 0.3, cooldown: 7.2 } },
+      hard: { 3: { chance: 0.3, cooldown: 8.9 }, 4: { chance: 0.3, cooldown: 5 }, 5: { chance: 0.3, cooldown: 3.7 } },
     },
-    // orbSpeed: 사용자 지시(2026-11-23) 두 번째 절반 130 → 65. 사거리·수명(= range × 1.5 / orbSpeed)은 거리 기준이라 비행 시간만 2배가 된다(약 4.4초 → 8.8초).
-    // maxOrbs: 수명(8.77초)이 쿨타임보다 길면 한 적이 구슬 여러 발을 동시에 띄운다(쿨타임 3~3.9초에서 3발, 8.2초에서 2발, 10초에서 1발). 48 → 96이어야 쿨타임이 가장 짧은 칸(하드 4단계 3초)에서도 사거리 안 특수 적 32마리가 계속 쏠 수 있다(docs/plan.md 변경 이력 14).
     chance: 0.3, range: 380, cooldown: 2.2, orbSpeed: 65, orbRadius: 7,
     damageRatio: 0.12, minDamage: 2 / 3, maxOrbs: 96, deathSize: 14 / 3,
     leadAim: 0.6, trailLength: 0.16, orbColor: 0xc2185b, coreColor: 0xffb3dd, trailColor: 0x7b1fa2,
@@ -126,13 +130,27 @@ export const CONFIG = {
   // 단계 차 Δ가 클수록 더 커야 한다(사용자 결정 2026-11-23): 필요 배수 = stageOverride + stageOverrideStep × (Δ - 1)
   // = 단계 차 1·2·3·4에 2·3·4·5배. 상위 단계는 하위가 그 배수 이상 크지 않으면 크기와 상관없이 하위를 먹는다. 같은 단계는 ratio.
   eating: { ratio: 1.1, areaGain: 0.32, stageOverride: 2, stageOverrideStep: 1 },
-  // 먹이 점수(=요력): base × (크기/sizeRef)^sizeExp × 단계 배율 × 등급 배율 × (보물 처치 배율) × (특수 적 배율)
-  // 크고 높은 단계 하나가 작고 낮은 단계 여러 개보다 낫도록 크기 지수 > 1, 단계 배율은 3단계까지 4배씩,
-  // 4·5단계는 보물 경제가 무너지지 않게 ×3, ×2.7로 늦춘다(사용자 결정 2026-11-23: ×48 / ×128).
-  score: { base: 10, sizeRef: 20 / 3, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 }, treasureMult: 1.5 },
+  // 먹이 점수(=요력): base × (먹이 크기 / 내 크기)^relExp × 단계 배율 × 등급 배율 × (보물 처치 배율) × (특수 적 배율)
+  // 사용자 결정 2026-11-23(변경 이력 18, "4단계 이상에서 요력 모으기가 너무 쉬워서 인플레이션이 심해"): 크기 항을 절대 크기가 아니라 '내 크기 대비 먹이 크기'로 바꿨다.
+  // 먹이 크기는 처음 크기 그대로(보물에 깎여도, combat.rewardSizeOf), 내 크기는 먹는 순간(먹기 직전)의 플레이어 크기라 meal.mySize에 담겨 온다.
+  // 같은 먹이도 내가 커질수록 요력이 줄어 큰 몸으로 작은 먹이를 쓸어 담는 인플레이션이 막힌다. 내 크기를 모르면(mySize 없음) sizeRef(= 시작 크기)를 쓴다.
+  // 단계 배율은 3단계까지 4배씩, 4단계 ×24, 5단계 ×176이다(예전 ×48 / ×128). 크기 지수 relExp > 1이라 같은 단계에서는 큰 먹이 하나가 작은 먹이 여럿보다 낫다.
+  // 5단계 ×176의 근거(변경 이력 18 후속): 처음 ×48로 두었더니 노말 5단계 분당 요력이 옛 식의 10%로 줄어 5단계가 거의 막혔다(이지 3%·하드 9%). 새 식은 한 마리 값이 몸 크기와 무관하게 일정하고 옛 식은 몸이 클수록
+  // 늘어서(5단계 몸 크기 36 근처의 먹이는 옛 식의 크기 항만 (36/6.67)^1.6 ≈ 15배) 옛 배율 128로도 21%였다. 5단계 분당 요력은 배율에 거의 비례한다(노말 24판 합쳐 ×128 25%, ×160 30%, ×176 32%, ×192 35%, ×224 40%).
+  // 목표 약 30%(25~45%)에 맞춰 ×176으로 정했다. 배율 숫자가 옛 128보다 큰 것은 식이 바뀌어서다(옛 식에서 먹이 크기가 맡던 몫을 새 식에서는 배율이 맡는다).
+  // 부작용: 4단계 판이 가끔 잡는 5단계 먹이의 값도 같이 커져 4단계 판별 비율이 59% → 약 72%(중앙값끼리 63% → 67%)가 되었다(docs/balance-v4.md 18절).
+  // base 28·relExp 2는 노말 1~5단계 12판씩의 먹기 기록으로 정했다: 1~3단계가 옛 식의 110 / 88 / 94%, 4단계 59~72%, 5단계 약 30%(권장 범위 1.2~1.6은 2단계가 -21%라 ±15%를 못 맞췄다, docs/balance-v4.md 18절).
+  score: { base: 28, sizeRef: 28 / 3, relExp: 2, stageMult: { 1: 1, 2: 4, 3: 16, 4: 24, 5: 176 }, treasureMult: 1.5 },
+  // 적이 먹어서 쌓는 요력(적의 자가 진화·몸집 강화용, rules.enemyPreyValue)은 변경 이력 18 이전 식 그대로다: base × (크기/sizeRef)^sizeExp × 단계 배율(1·4·16·48·128) × 등급 × (특수 적 배율).
+  // 플레이어의 요력 곡선을 바꿔도 적이 진화하는 속도(= 판 안 적 단계 분포·위협 수)가 달라지지 않게 따로 둔다. 새 식을 적에게도 쓰면 먹이가 늘 자기보다 작아 240초 동안 적의 자가 진화가 779번 → 40번 아래로 줄었다(docs/balance-v4.md 18절).
+  enemyScore: { base: 10, sizeRef: 20 / 3, sizeExp: 1.6, stageMult: { 1: 1, 2: 4, 3: 16, 4: 48, 5: 128 } },
+  // 모든 '강화' 비용은 레벨이 하나 오를 때마다 이 배수로 커진다(사용자 결정 2026-11-23: "고 강화가 될수록 요구 요력이 두배씩 커지게 해", 변경 이력 18).
+  // 비용 = 첫 레벨 비용 × enhanceCostGrowth^레벨. 대상: 여의주·보패 강화(treasure.upgradeCost), 종족 능력 강화(enhance.enhanceCost)와 판 안 능력 +1 카드(levelup.quickEnhanceCost),
+  // 판 안 몸집 강화(levelup.bodyCost, 적의 몸집 강화 rules.bodyCostAt도 같은 곡선). 강화 확률·실패·퇴화 규칙과 첫 레벨 비용은 그대로다.
+  enhanceCostGrowth: 2,
   // 판 안 성장: 요력이 다음 선택지 비용에 닿으면 잠깐 멈추고 [진화]/[몸집 강화]/[능력 강화] 중 고른다.
   levelUp: {
-    bodyBaseCost: 30, bodyCostGrowth: 1.6, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화
+    bodyBaseCost: 30, bodyMult: 1.2, // 몸집 강화: 확정, 크기 ×bodyMult, 판마다 초기화. 비용 = bodyBaseCost × enhanceCostGrowth^횟수(예전 1.6배씩)
     minGapRatio: 0.35, // 다음 멈춤까지 '이번 판에서 번 요력' 간격 = 가장 싼 카드 비용 × 이 값(아래 상·하한으로 자른다)
     pauseGapMin: 25, // 멈춤 사이에 번 요력의 하한: 잔액이 아무리 많아도 이보다 자주 멈추지 않는다
     pauseGapMax: 400, // 상한: 잔액이 아무리 많아도 이만큼만 벌면 판 안 선택이 열린다
@@ -160,9 +178,9 @@ export const CONFIG = {
   },
   // 본체 강화 1레벨당 배율(크기 성장). 이동 속도는 아래 balance.pace, 생명력은 vitality 섹션, 여의주 위력은 보물 강화 레벨이 맡는다.
   progression: { growthPerLevel: 0.08 },
-  // 직접 먹은 뒤부터 필드에서 실제로 흐른 시간을 센다.
+  // 직접 먹은 뒤부터 필드에서 실제로 흐른 시간을 센다. hungerGraceSec: 먹지 않고 이만큼 지나면 생명력이 줄기 시작한다(사용자 지시 2026-11-23: 5 → 3초, 변경 이력 17).
   vitality: {
-    hungerGraceSec: 5, baseSec: 4, perLevelSec: 0.6, hitDrainSec: 0.5,
+    hungerGraceSec: 3, baseSec: 4, perLevelSec: 0.6, hitDrainSec: 0.5,
     smallMealRatio: 0.8, bigMealRatio: 1.15, smallMealRestore: 0.25, similarMealRestore: 0.5,
     shrinkPerSec: 0.03, drainingSpeed: 1.25, starvingSpeed: 1.4, settleSec: 0.5,
     arcColor: 0x48765e, drainColor: 0xd69135, warnColor: 0xd6453d, arcWidth: 3, arcPad: 7, flashHz: 1.25,
@@ -211,9 +229,10 @@ export const CONFIG = {
   // 예고된 대요괴(사용자 결정 2026-11-23, 계획서 '변경 이력 5', 순수 규칙은 src/systems/herald.js). 모든 단계에서 판 중 intervalSec(**실제 초**, 판을 멈춘 동안은 세지 않는다)마다 한 마리씩 나온다.
   // 맞수(balance.rival, 4·5단계)와는 따로 센다. HUD가 등장까지 남은 시간을 보여 주고, 남은 시간이 warnSec 이하가 되면 짧은 안내(noticeSec초)를 띄운다. 나타나면 나와 같은 단계(1단계 판에서도 같은 단계),
   // 크기 = 내 크기 × sizeMin~sizeMax, 이름표 label(자가 진화·특수 적 없음: 맞수와 같은 규칙). 동시에 maxAlive마리까지, 살아 있는 동안은 다음 대요괴를 세지 않는다.
-  // 잡으면(내가 먹거나 여의주로 쓰러뜨림) 보상: 요력 = 그 먹이의 기본 요력 × bonusMult를 더(= 기본의 1 + bonusMult배), 여의주 드롭 확률은 dropChance로 올린다.
-  // 드롭은 확정이 아니다: 기본 드롭 굴림(treasure.dropChance)이 실패했을 때만 한 번 더 굴려 총 확률이 dropChance가 되게 한다. 끄려면 enabled: false.
-  herald: { enabled: true, intervalSec: 45, warnSec: 8, noticeSec: 3, maxAlive: 1, sizeMin: 1.1, sizeMax: 1.4, label: '대요괴', bonusMult: 3, dropChance: 0.5 },
+  // 잡으면(내가 먹거나 여의주로 쓰러뜨림) 보상: 요력 = 그 먹이의 기본 요력 × bonusMult를 더(= 기본의 1 + bonusMult배) + 보패 1개를 반드시 준다(사용자 지시 2026-11-23, 계획서 '변경 이력 19', 규칙은 src/systems/heraldReward.js).
+  // 보패는 아직 안 가진 보패 7종 중 같은 확률로 하나(+0). 모두 가졌거나 보관함이 가득 차 못 놓으면 가진 보패 중 하나를 +1 강화하고, 강화할 보패도 없으면(전부 최대 레벨 등) 이 대요괴 보너스 요력 × reward.yoryeokMult만큼 요력을 준다.
+  // 예전의 '여의주 드롭 확률을 0.5로 올리는 추가 굴림(dropChance)'은 보패 보상으로 바꿨다. 끄려면 enabled: false.
+  herald: { enabled: true, intervalSec: 45, warnSec: 8, noticeSec: 3, maxAlive: 1, sizeMin: 1.1, sizeMax: 1.4, label: '대요괴', bonusMult: 3, reward: { yoryeokMult: 2 } },
   // 공명 연쇄(사용자 결정 2026-11-23, 순수 규칙은 src/systems/resonance.js). 내가 먹은 요괴의 방위(동·서·남·북)가 이어지면 보너스 요력이 터진다.
   //   rule: 'streak' = 규칙 A(같은 방위 streak.length마리 연속), 'cycle' = 규칙 B(연달아 4마리가 동·서·남·북을 한 번씩), 'both' = 둘 다(기본), 'off' = 끔. 한 줄로 바꿔 비교한다.
   //   보너스 요력 = 연쇄에 든 먹이들의 요력 합 × bonus(규칙별). 터지면 연쇄를 처음부터 다시 센다. 연쇄는 마지막으로 먹은 뒤 windowSec(**판을 진행한 실제 초**)가 지나면 끊긴다(Infinity면 안 끊김).
@@ -256,7 +275,7 @@ export const CONFIG = {
     },
     enemyCell: 128,
     farThinkSteps: 4, // 화면 밖·감지 거리 두 배 밖에서 조향을 나눠 갱신하는 주기
-    refillPerFrame: 3,
+    refillPerFrame: 6, // 한 프레임에 놓는 보충 상한(3 → 6, 위 populationMult 설명과 같은 까닭)
     maxPixelRatio: 2,
     textureSize: 320,
     artUnits: 160,

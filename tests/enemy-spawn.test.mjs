@@ -153,7 +153,7 @@ test('seedField: 시작 직후 나를 먹을 수 있는 적은 안전 거리(1�
   assert.ok(d < 135, '844 × 390 시작 화면(반높이 약 135) 안');
 });
 
-test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 44%를 덮어도 시작 화면 안에는 나를 먹을 수 있는 적이 없다', () => {
+test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 44%를 덮어도 480마리를 다 놓고 시작 화면 안의 위협은 없거나 드물다(1단계 최대 3마리)', () => {
   for (const stage of [1, 3, 5]) {
     for (const seed of [731, 732]) {
       const { size } = applyWorldScale(stage);
@@ -161,10 +161,13 @@ test('seedField: 큰 화면(1920 × 1080, 1단계 시야 889 × 500)이 맵의 4
       const hw = 1920 / z / 2, hh = 1080 / z / 2;
       const startView = { left: size / 2 - hw, right: size / 2 + hw, top: size / 2 - hh, bottom: size / 2 + hh };
       const { player, enemies } = seedWorld(stage, seed, 'normal', startView);
-      assert.equal(enemies.length, 480);
+      // 큰 적 3배(변경 이력 17)로 1단계 노말은 적의 82%가 위협이라 큰 화면이 가린 44%를 빼면 빈자리가 모자란다. 480마리를 다 놓으려고 마지막 시도는 화면 안 제외를 푼다.
+      assert.equal(enemies.length, 480, `${stage}단계 시드 ${seed}`);
       const visible = enemies.filter((e) => e.x > startView.left && e.x < startView.right && e.y > startView.top && e.y < startView.bottom);
-      assert.equal(visible.filter((e) => canEat(e, player)).length, 0, `${stage}단계 시드 ${seed}`);
-      if (stage === 1) assert.ok(visible.length > 100, '먹이는 화면에도 놓인다: ' + visible.length);
+      // 화면 안 제외를 푼 마지막 시도로 놓인 위협은 1단계에서 드물게 1~3마리다(20시드 합 12마리). 3단계 이후는 0이다.
+      assert.ok(visible.filter((e) => canEat(e, player)).length <= (stage === 1 ? 3 : 0), `${stage}단계 시드 ${seed}`);
+      // 큰 적 3배로 1단계 시작의 먹이(위협이 아닌 적)가 40% → 18%(약 86마리)로 줄어 하한을 100 → 40으로 낮췄다(실측 64). 먹이가 화면에도 놓이는지만 본다.
+      if (stage === 1) assert.ok(visible.length > 40, '먹이는 화면에도 놓인다: ' + visible.length);
     }
   }
 });
@@ -239,7 +242,7 @@ test('spawnPoint: 화면이 맵의 큰 비율을 덮어 몸 전체가 화면 밖
   const pad = CONFIG.world.offscreenMargin + 60 * artUnitsFor(1) / CONFIG.render.bodyRadius * 0.52;
   let found = 0, full = 0;
   for (let i = 0; i < 200; i++) {
-    const pos = spawnPoint(player, [], 60, { view, stage: 1 });
+    const pos = spawnPoint(player, [], 60, { view, stage: 1, relax: true });
     if (!pos) continue;
     found++;
     assert.ok(pos.y < view.top || pos.y > view.bottom, '중심은 화면 밖');
@@ -248,6 +251,8 @@ test('spawnPoint: 화면이 맵의 큰 비율을 덮어 몸 전체가 화면 밖
   assert.ok(view.top - pad < 60 + CONFIG.world.spawnGap, '시험 조건: 몸 전체가 화면 밖인 자리가 없다');
   assert.ok(found >= 190, `큰 적도 자리를 찾는다: ${found}/200`);
   assert.equal(full, 0);
+  // relax를 안 주면(일반 보충) 화면 밖 규칙을 줄이지 않고 자리가 없으면 null이다(다음 보충 때 다시 시도한다).
+  assert.equal(spawnPoint(player, [], 60, { view, stage: 1 }), null);
 });
 
 test('growMoveCount: 맵이 커지면 옛 땅이 새 맵에서 차지하는 면적 비율만큼 남기고 나머지를 새 땅으로 옮겨 밀도를 같게 한다', () => {
@@ -275,12 +280,13 @@ test('적 수: 모든 단계의 목표 인구가 480으로 같다(사용자 지�
   assert.deepEqual(sizes, [1000, 1500, 2000, 2600, 3300]);
 });
 
-test('성장 뒤 큰 적 구간은 노말 1·2단계에서 약 27%, 3단계부터 50%다', () => {
+test('성장 뒤 큰 적 구간은 노말 1·2단계에서 약 53%, 3단계부터 75%다(큰 적 가중치 3배, 변경 이력 17)', () => {
   const farGrown = E.earlyUntilSize * 3;
   for (const stage of [1, 2, 3, 4, 5]) {
-    const expectedBig = stage < 3 ? 0.3 / 1.1 : 0.5;
+    // 종전 27%·50%에서 큰 칸 가중치만 3배: 0.2 × 4.5 / (0.67 + 0.13 + 0.9), 0.4 × 4.5 / (0.45 + 0.15 + 1.8)
+    const expectedBig = stage < 3 ? 0.9 / 1.7 : 0.75;
     assert.ok(Math.abs(sizeWeights(farGrown, stage)[2] - expectedBig) < 1e-9);
-    assert.ok(Math.abs(sizeWeights(CONFIG.player.startSize, stage)[2] - 0.6) < 1e-9);
+    assert.ok(Math.abs(sizeWeights(CONFIG.player.startSize, stage)[2] - 2.25 / 2.75) < 1e-9);
   }
   // 많이 뽑으면 나보다 큰 적(1.15배 이상)의 비율이 크게 늘어난다
   const originalRandom = Math.random;
@@ -296,7 +302,7 @@ test('성장 뒤 큰 적 구간은 노말 1·2단계에서 약 27%, 3단계부�
         return big / N;
       };
       const before = share(2), after = share(4);
-      assert.ok(after > 0.2 && after >= before * 1.8, `크기 ${size}: 큰 적 비율 ${before} → ${after}`);
+      assert.ok(after > 0.7 && after >= before * 1.8, `크기 ${size}: 큰 적 비율 ${before} → ${after}`);
     }
   } finally {
     Math.random = originalRandom;
@@ -324,8 +330,8 @@ test('bossRingFor: 대요괴·맞수 고리의 안쪽 반지름이 화면 크기
   const { size } = applyWorldScale(1);
   const player = { x: size / 2, y: size / 2, size: 30 };
   const view = { left: 0, right: 1000, top: 219, bottom: 781, width: 1000, height: 562 };
-  assert.equal(spawnPoint(player, [], 40, { near: bossRingFor(view), view }), null);
-  assert.ok(spawnPoint(player, [], 40, { view }), '맵 전체의 화면 밖에서는 찾는다');
+  assert.equal(spawnPoint(player, [], 40, { near: bossRingFor(view), view, relax: true }), null);
+  assert.ok(spawnPoint(player, [], 40, { view, relax: true }), '맵 전체의 화면 밖에서는 찾는다(대요괴·맞수는 relax)');
 });
 
 test('대요괴·맞수의 최대 출현 크기도 중앙과 모서리에서 맵 안·화면 밖에 놓인다', () => {

@@ -17,10 +17,12 @@ function setup(yoryeok = 0, patch = {}) {
   return { progress, run: createRunLevel(progress) };
 }
 
-test('bodyCost는 기본 비용에서 시작해 번마다 growth배로 늘어난다', () => {
+test('bodyCost는 기본 비용에서 시작해 번마다 enhanceCostGrowth(2)배로 늘어난다', () => {
+  assert.equal(CONFIG.enhanceCostGrowth, 2);
   assert.equal(bodyCost(0), L.bodyBaseCost);
-  assert.equal(bodyCost(1), Math.round(L.bodyBaseCost * L.bodyCostGrowth));
-  assert.equal(bodyCost(3), Math.round(L.bodyBaseCost * L.bodyCostGrowth ** 3));
+  assert.equal(bodyCost(1), Math.round(L.bodyBaseCost * CONFIG.enhanceCostGrowth));
+  assert.equal(bodyCost(3), Math.round(L.bodyBaseCost * CONFIG.enhanceCostGrowth ** 3));
+  assert.deepEqual([0, 1, 2, 3, 4].map(bodyCost), [30, 60, 120, 240, 480]);
   for (let n = 0; n < 8; n++) assert.ok(bodyCost(n + 1) > bodyCost(n));
 });
 

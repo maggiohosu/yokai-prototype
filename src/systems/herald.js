@@ -74,11 +74,4 @@ export function heraldBonusYoryeok(baseGain) {
   return Math.round(Math.max(0, finite(baseGain, 0)) * Math.max(0, finite(cfg().bonusMult, 0)));
 }
 
-// 기본 드롭 굴림이 실패한 뒤 한 번 더 굴리는 확률. 총 확률 = base + (1 - base) × extra = max(base, dropChance).
-// 기본 확률이 이미 dropChance 이상이면 0(깎지 않는다). 확정 드롭이 아니다: dropChance는 1 미만이어야 한다.
-export function heraldExtraDropChance(baseChance) {
-  const base = clamp(finite(baseChance, 0), 0, 1);
-  const target = clamp(finite(cfg().dropChance, 0), 0, 1);
-  if (target <= base || base >= 1) return 0;
-  return (target - base) / (1 - base);
-}
+// 보패 보상(처치하면 반드시 1개)은 heraldReward.js가 정한다. 예전의 '여의주 드롭 확률을 dropChance로 올리는 한 번 더 굴림'은 없어졌다(계획서 '변경 이력 19').

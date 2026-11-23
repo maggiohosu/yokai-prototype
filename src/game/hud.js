@@ -97,7 +97,7 @@ export class Hud {
     if (hidden) return;
     const alive = view.mode === 'alive';
     const label = alive ? '대요괴 출현!' : '대요괴 등장까지';
-    const count = alive ? '처치하면 큰 보상' : Math.ceil(view.remainSec) + '초';
+    const count = alive ? '처치하면 보패 1개' : Math.ceil(view.remainSec) + '초';
     const key = [alive, view.warn, label, count, Math.round(view.current * 10)].join('|');
     if (key === this.heraldKey) return;
     this.heraldKey = key;
