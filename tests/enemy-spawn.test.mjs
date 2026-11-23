@@ -107,7 +107,7 @@ test('spawnPoint(near): 시작 고리와 보충 고리 안에서만 나오고, �
 
 test('적 수: 3단계 이후 예전보다 늘고(지수 1.15), 단계마다 커진다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
-  assert.deepEqual(pops, [72, 115, 160, 216, 284]);
+  [72, 115, 160, 216, 284].forEach((base, i) => assert.ok(Math.abs(pops[i] - base * CONFIG.world.populationMult) <= 2));
   const old = [72, 108, 144, 187, 238];
   for (let i = 1; i < 5; i++) assert.ok(pops[i] > old[i] && pops[i] > pops[i - 1]);
 });

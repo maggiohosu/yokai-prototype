@@ -34,6 +34,22 @@ export class Enemy extends Actor {
     this.diet = newDiet();
     this.bodyLevel = 0;
     this.wanderTime = 0;
+    this.steer = {};
+    this.direction = null;
+    this.aiIntent = null;
+    this.aiTimer = 0;
+    this.wanderAngle = 0;
+    this.fireCd = undefined;
+    this.speedSize = 0;
+    this.sizeSpeed = 1;
+    this.phase = undefined;
+    this.flash = 0;
+    this.punch = 1;
+    this.rival = undefined;
+    this.herald = undefined;
+    this.rewardSize = undefined;
+    this.thinkSlot = scene.nextThinkSlot ?? 0;
+    scene.nextThinkSlot = (this.thinkSlot + 1) % CONFIG.render.farThinkSteps;
     this.vx = 0;
     this.vy = 0;
     this.reversed = false;
@@ -135,7 +151,7 @@ export class Enemy extends Actor {
     this.special = rollSpecial(this.size, this.stage, rng);
   }
   // 플레이어와 다른 적을 함께 보고: 나를 먹을 수 있는 상대에게서 도망, 내가 먹을 수 있는 상대를 추격, 아니면 배회.
-  step(player, dt, grid) {
+  step(player, dt, grid, think = true, blend = 1 - Math.exp(-CONFIG.enemy.turnRate * dt)) {
     const ai = CONFIG.enemy;
     const now = nowOf(this.scene);
     // 대풍에 밀리는 중: 의지와 상관없이 밀린다.
@@ -148,10 +164,19 @@ export class Enemy extends Actor {
     }
     const early = ai.earlySpeedMult?.[player.stage ?? 1] ?? 1; // 초반에는 적이 느리다
     // 선무 구름 안에서는 느려지고, 크기가 클수록 느리다(balance.sizeSpeedMultiplier: 플레이어와 같은 규칙).
-    const slow = slowFactor(this, now) * sizeSpeedMultiplier(this.size);
+    if (this.speedSize !== this.size) {
+      this.speedSize = this.size;
+      this.sizeSpeed = sizeSpeedMultiplier(this.size);
+    }
+    const slow = slowFactor(this, now) * this.sizeSpeed;
     if (this.size >= player.size) this.reversed = false;
-    const intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt, now) : null;
-    const dir = intentDirection(this, intent);
+    let intent = this.aiIntent;
+    if (think || !intent || intent.target?.sprite?.active === false || this.reversed ||
+        this.charmUntil > now || this.fearUntil > now || this.charmGraceUntil > now || intent.forced) {
+      intent = grid ? pickIntent(this, player, grid, CONFIG.hunt, dt, now) : null;
+      this.direction = intentDirection(this, intent, this.steer);
+    } else this.aiTimer -= dt;
+    const dir = this.direction;
     let vx, vy;
     if (dir) {
       const speed = (intent.mode === 'flee' ? ai.fleeSpeed : ai.chaseSpeed) * early * slow;
@@ -173,7 +198,6 @@ export class Enemy extends Actor {
       if (this.y < edge) vy = Math.abs(vy);
       if (this.y > end) vy = -Math.abs(vy);
     }
-    const blend = 1 - Math.exp(-ai.turnRate * dt);
     this.vx += (vx - this.vx) * blend;
     this.vy += (vy - this.vy) * blend;
     this.move(this.vx * dt, this.vy * dt);

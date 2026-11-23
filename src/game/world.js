@@ -1,5 +1,6 @@
 import { CONFIG, REGIONS } from '../config.js';
 import { canEat } from '../systems/rules.js';
+import { queryGrid } from './enemyAI.js';
 import { worldFor } from '../systems/worldScale.js';
 import { sizeWeightsFor, stageWeightsFor } from '../systems/difficulty.js';
 
@@ -115,7 +116,9 @@ export function shouldCullOnEvolve(enemy, player, playerStage, rng = Math.random
 }
 
 // stage를 넘기면 시작 직후 플레이어를 먹을 수 있는 적(단계 규칙 포함)을 멀리 둔다. 안 넘기면 크기만 본다.
-export function spawnPoint(player, enemies, size, { view, near, initial, stage } = {}) {
+const spawnHits = [];
+
+export function spawnPoint(player, enemies, size, { view, near, initial, stage, grid } = {}) {
   const edge = size + world.spawnGap;
   const dangerous = stage == null ? size >= player.size * CONFIG.eating.ratio : canEat({ size, stage }, player);
   for (let attempt = 0; attempt < world.spawnAttempts; attempt++) {
@@ -137,7 +140,8 @@ export function spawnPoint(player, enemies, size, { view, near, initial, stage }
     }
     const safe = initial && dangerous ? world.safeStart : edge + player.size;
     if ((x - player.x) ** 2 + (y - player.y) ** 2 < safe ** 2) continue;
-    if (enemies.some((e) => (x - e.x) ** 2 + (y - e.y) ** 2 < (edge + e.size) ** 2)) continue;
+    const nearEnemies = grid ? queryGrid(grid, x, y, edge + grid.maxSize, spawnHits) : enemies;
+    if (nearEnemies.some((e) => (x - e.x) ** 2 + (y - e.y) ** 2 < (edge + e.size) ** 2)) continue;
     return { x, y };
   }
   return null; // 가시 영역이 맵 전체면 화면 안에 생성하지 않고 다음 보충 때 재시도한다.

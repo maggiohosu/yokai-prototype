@@ -57,11 +57,15 @@ export class Fx {
     const speed = Math.hypot(vx, vy);
     const rate = m.breathRate * (1 + Math.min(speed / 200, 1.2));
     const s = REDUCED ? 0 : Math.sin(this.t * rate + actor.phase) * m.breathAmount;
-    actor.punch = actor.punch ? Math.max(1, actor.punch - dt * m.punchDecay) : 1;
+    this.decayActor(actor, dt);
     const base = actor.baseScale ?? actor.sprite.scaleX;
     actor.sprite.setScale(base * (1 + s) * actor.punch, base * (1 - s) * actor.punch);
     const tilt = REDUCED ? 0 : Math.max(-m.maxTilt, Math.min(m.maxTilt, vx * m.tiltPerSpeed));
     actor.sprite.angle += (tilt - actor.sprite.angle) * Math.min(1, dt * 8);
+  }
+
+  decayActor(actor, dt) {
+    actor.punch = actor.punch ? Math.max(1, actor.punch - dt * this.m.punchDecay) : 1;
     if (actor.flash > 0) {
       actor.flash -= dt;
       if (actor.flash <= 0) actor.sprite.clearTint();

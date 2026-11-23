@@ -3,7 +3,7 @@ import { canEat, eatPair } from '../systems/rules.js';
 import { ABILITY_RULES } from '../systems/tuning-abilities.js';
 import { eatBlocked, inGrace, isAlly } from './status.js';
 
-// Phaser 의존 없는 순수 로직. 적 70~80마리 기준으로 가볍게 동작한다.
+// 열·행 배열로 이웃을 직접 찾고, 채워진 칸만 생성 순서대로 순회한다.
 const KEY_SPAN = 4096;
 const OFFSET = 2048;
 
@@ -16,30 +16,62 @@ export function isAlive(actor) {
   return !(actor.sprite && actor.sprite.active === false);
 }
 
-export function buildGrid(actors, cell) {
-  const buckets = new Map();
-  let maxSize = 0;
-  for (const actor of actors) {
-    if (!isAlive(actor)) continue;
-    const key = keyOf(Math.floor(actor.x / cell), Math.floor(actor.y / cell));
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(actor);
-    else buckets.set(key, [actor]);
-    if (actor.size > maxSize) maxSize = actor.size;
+function createGrid() {
+  return {
+    columns: [], pool: [], used: 0, maxSize: 0,
+    // 기존 디버그·검사 호출자가 요청할 때만 좌표 키 Map을 만든다.
+    get buckets() {
+      const result = new Map();
+      for (let i = 0; i < this.used; i++) {
+        const bucket = this.pool[i];
+        result.set(keyOf(bucket.cx, bucket.cy), bucket);
+      }
+      return result;
+    },
+  };
+}
+
+export function buildGrid(actors, cell, grid = createGrid()) {
+  const { pool, columns } = grid;
+  for (let i = 0; i < grid.used; i++) {
+    const bucket = pool[i];
+    columns[bucket.cx][bucket.cy] = undefined;
+    bucket.length = 0;
   }
-  return { cell, buckets, maxSize };
+  grid.used = 0;
+  grid.maxSize = 0;
+  grid.cell = cell;
+  for (const actor of actors) if (isAlive(actor)) insertGrid(grid, actor);
+  return grid;
+}
+
+export function insertGrid(grid, actor) {
+  const cx = Math.floor(actor.x / grid.cell), cy = Math.floor(actor.y / grid.cell);
+  const column = grid.columns[cx] ?? (grid.columns[cx] = []);
+  let bucket = column[cy];
+  if (!bucket) {
+    const i = grid.used++;
+    bucket = grid.pool[i] ?? (grid.pool[i] = []);
+    bucket.cx = cx;
+    bucket.cy = cy;
+    column[cy] = bucket;
+  }
+  bucket.push(actor);
+  if (actor.size > grid.maxSize) grid.maxSize = actor.size;
 }
 
 // 중심이 (x, y)에서 반경 r 안에 있는 액터. out을 넘기면 배열을 재사용한다.
 export function queryGrid(grid, x, y, r, out = []) {
   out.length = 0;
-  const { cell, buckets } = grid;
+  const { cell, columns } = grid;
   const r2 = r * r;
   const x0 = Math.floor((x - r) / cell), x1 = Math.floor((x + r) / cell);
   const y0 = Math.floor((y - r) / cell), y1 = Math.floor((y + r) / cell);
   for (let cx = x0; cx <= x1; cx++) {
+    const column = columns[cx];
+    if (!column) continue;
     for (let cy = y0; cy <= y1; cy++) {
-      const bucket = buckets.get(keyOf(cx, cy));
+      const bucket = column[cy];
       if (!bucket) continue;
       for (const actor of bucket) {
         const dx = actor.x - x, dy = actor.y - y;
@@ -51,17 +83,17 @@ export function queryGrid(grid, x, y, r, out = []) {
 }
 
 const scratch = [];
-const mealScratch = [];
 
-function dist(a, b) {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+function distSq(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return dx * dx + dy * dy;
 }
 
 function stillValid(enemy, intent, cfg) {
   const t = intent.target;
   if (intent.mode === 'wander') return true;
   if (!t || !isAlive(t)) return false;
-  if (dist(enemy, t) > cfg.detect * 1.35) return false;
+  if (distSq(enemy, t) > (cfg.detect * 1.35) ** 2) return false;
   return intent.mode === 'flee' ? canEat(t, enemy) : canEat(enemy, t);
 }
 
@@ -70,17 +102,18 @@ function choose(enemy, player, grid, cfg, now) {
   let prey = null, preyScore = Infinity;
   const lure = ABILITY_RULES.mark.lureMult;
   const consider = (other, isPlayer) => {
-    const d = dist(enemy, other);
+    const d = distSq(enemy, other);
     if (canEat(other, enemy)) {
       if (d < threatD) { threat = other; threatD = d; }
     } else if (canEat(enemy, other)) {
       // 파사인(3단계 이상)이 찍힌 요괴는 다른 요괴의 먹잇감 점수가 낮아져 사냥당하기 쉽다.
-      const score = isPlayer ? d * cfg.playerBias : (other.markLure && other.markUntil > now ? d * lure : d);
+      const weight = isPlayer ? cfg.playerBias : other.markLure && other.markUntil > now ? lure : 1;
+      const score = d * weight * weight;
       if (score < preyScore) { prey = other; preyScore = score; }
     }
   };
   // 역전 중인 적은 플레이어를 사냥감으로도 위협으로도 보지 않는다(감지 거리 안에서는 pickIntent가 먼저 도망을 정한다).
-  if (!enemy.reversed && player && isAlive(player) && dist(enemy, player) <= cfg.detect) consider(player, true);
+  if (!enemy.reversed && player && isAlive(player) && distSq(enemy, player) <= cfg.detect ** 2) consider(player, true);
   const near = queryGrid(grid, enemy.x, enemy.y, cfg.detect, scratch);
   for (const other of near) if (other !== enemy) consider(other, false);
   if (threat) return { mode: 'flee', target: threat };
@@ -98,7 +131,7 @@ function chooseAlly(enemy, player, grid, cfg, now) {
   const near = queryGrid(grid, enemy.x, enemy.y, cfg.detect * rule.senseMult, scratch);
   for (const other of near) {
     if (other === enemy || isAlly(other, now)) continue;
-    const d = dist(enemy, other);
+    const d = distSq(enemy, other);
     if (canEat(other, enemy)) {
       if (d < threatD) { threat = other; threatD = d; }
     } else if (canEat(enemy, other)) {
@@ -107,7 +140,7 @@ function chooseAlly(enemy, player, grid, cfg, now) {
   }
   if (threat) return { mode: 'flee', target: threat };
   if (prey) return { mode: 'chase', target: prey };
-  if (player && isAlive(player) && dist(enemy, player) >= rule.leash) return { mode: 'follow', target: player };
+  if (player && isAlive(player) && distSq(enemy, player) >= rule.leash ** 2) return { mode: 'follow', target: player };
   return { mode: 'wander', target: null };
 }
 
@@ -115,8 +148,8 @@ function allyStillValid(enemy, intent, cfg) {
   const t = intent.target;
   if (intent.mode === 'wander') return true;
   if (!t || !isAlive(t)) return false;
-  if (intent.mode === 'follow') return dist(enemy, t) >= ABILITY_RULES.charm.leash * 0.6;
-  if (dist(enemy, t) > cfg.detect * ABILITY_RULES.charm.senseMult * 1.35) return false;
+  if (intent.mode === 'follow') return distSq(enemy, t) >= (ABILITY_RULES.charm.leash * 0.6) ** 2;
+  if (distSq(enemy, t) > (cfg.detect * ABILITY_RULES.charm.senseMult * 1.35) ** 2) return false;
   return intent.mode === 'flee' ? canEat(t, enemy) : canEat(enemy, t);
 }
 
@@ -144,7 +177,7 @@ export function pickIntent(enemy, player, grid, cfg = CONFIG.hunt, dt = 0, now =
   }
   // 역전 중인 적(enemy.reversed)은 시간이 지나도 풀리지 않고(먹기·진화·몸집 강화로만 풀린다) 플레이어를 쫓지 않는다.
   // 감지 거리 안에서는 플레이어에게서 도망하고, 밖에서는 플레이어를 빼고 평소처럼 움직인다.
-  if (enemy.reversed && player && isAlive(player) && dist(enemy, player) <= cfg.detect) {
+  if (enemy.reversed && player && isAlive(player) && distSq(enemy, player) <= cfg.detect ** 2) {
     enemy.aiIntent = { mode: 'flee', target: player };
     enemy.aiTimer = cfg.retargetSeconds;
     return enemy.aiIntent;
@@ -162,31 +195,44 @@ export function pickIntent(enemy, player, grid, cfg = CONFIG.hunt, dt = 0, now =
 }
 
 // 의도에 따른 단위 이동 방향. wander면 null(기존 배회 로직 사용).
-export function intentDirection(enemy, intent) {
+export function intentDirection(enemy, intent, out = {}) {
   if (!intent || intent.mode === 'wander' || !intent.target) return null;
   const dx = intent.target.x - enemy.x, dy = intent.target.y - enemy.y;
-  const d = Math.hypot(dx, dy);
-  if (!d) return { x: 1, y: 0 };
+  const d = Math.sqrt(dx * dx + dy * dy);
   const s = intent.mode === 'flee' ? -1 : 1;
-  return { x: (s * dx) / d, y: (s * dy) / d };
+  out.x = d ? (s * dx) / d : 1;
+  out.y = d ? (s * dy) / d : 0;
+  return out;
 }
 
 // 적끼리 닿아서 먹히는 쌍 [먹는 쪽, 먹히는 쪽] 목록(rules.eatPair 규칙). 한 마리는 한 번만 먹힌다.
 // now를 주면 빙결·경직·위협(겁먹음) 중인 사냥꾼은 아무것도 먹지 못한다(다른 적에게 먹히는 것은 그대로).
-export function findMeals(grid, opts, now = null) {
-  const meals = [];
-  const eaten = new Set();
-  for (const bucket of grid.buckets.values()) {
+export function findMeals(grid, opts, now = null, meals = [], eaten = new Set()) {
+  meals.length = 0;
+  eaten.clear();
+  const { columns, cell, maxSize } = grid;
+  for (let index = 0; index < grid.used; index++) {
+    const bucket = grid.pool[index];
     for (const a of bucket) {
       if (eaten.has(a)) continue;
-      const near = queryGrid(grid, a.x, a.y, a.size + grid.maxSize, mealScratch);
-      for (const b of near) {
-        if (b === a || eaten.has(b) || eaten.has(a)) continue;
-        const pair = eatPair(a, b, opts);
-        if (!pair) continue;
-        if (now !== null && eatBlocked(pair[0], now)) continue;
-        eaten.add(pair[1]);
-        meals.push(pair);
+      const x = a.x, y = a.y, reach = a.size + maxSize;
+      const x0 = Math.floor((x - reach) / cell), x1 = Math.floor((x + reach) / cell);
+      const y0 = Math.floor((y - reach) / cell), y1 = Math.floor((y + reach) / cell);
+      search: for (let cx = x0; cx <= x1; cx++) {
+        const column = columns[cx];
+        if (!column) continue;
+        for (let cy = y0; cy <= y1; cy++) {
+          const neighbors = column[cy];
+          if (!neighbors) continue;
+          for (const b of neighbors) {
+            if (b === a || eaten.has(b)) continue;
+            const pair = eatPair(a, b, opts);
+            if (!pair || (now !== null && eatBlocked(pair[0], now))) continue;
+            eaten.add(pair[1]);
+            meals.push(pair);
+            if (pair[1] === a) break search;
+          }
+        }
       }
     }
   }

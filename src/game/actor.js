@@ -28,7 +28,7 @@ export class Actor {
     const margin = Math.min(this.size, CONFIG.world.size / 2);
     this.sprite.x = clamp(this.x + dx, margin, CONFIG.world.size - margin);
     this.sprite.y = clamp(this.y + dy, margin, CONFIG.world.size - margin);
-    if (dx !== 0) this.sprite.setFlipX(dx < 0);
+    if (dx !== 0 && this.sprite.flipX !== (dx < 0)) this.sprite.setFlipX(dx < 0);
   }
   eat(prey) {
     this.setSize(Math.sqrt(this.size ** 2 + CONFIG.eating.areaGain * prey.size ** 2));

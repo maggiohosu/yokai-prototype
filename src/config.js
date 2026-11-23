@@ -19,6 +19,7 @@ export const CONFIG = {
   world: {
     size: 4000,
     population: 72,
+    populationMult: 3, // 사용자 지시(2026-11-23): 적 출몰 3배. worldFor의 적 수(단계별 인구)에 곱한다.
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
     grid: 64,
     patternTile: 512,
@@ -32,7 +33,7 @@ export const CONFIG = {
     offscreenMargin: 85,
     spawnAttempts: 90,
     refillInterval: 0.5 / 1.5, // 사용자 지시(2026-11-23): 적 리젠 1.5배 빠르게
-    refillBatch: 4,
+    get refillBatch() { return 4 * this.populationMult; },
   },
   // 사용자 지시(2026-11-23): 플레이어와 적이 예전의 1/3 크기에서 시작한다. 크기에 묶인 값들도 함께 1/3(카메라는 camera.refSize 28 기준이라 화면에서도 1/3로 보인다).
   player: { startSize: 28 / 3, speed: 131 }, // 사용자 지시: 218 → 262(1.2배) → 131(나·적 기본 속도 0.5배, 2026-11-23)
@@ -231,6 +232,10 @@ export const CONFIG = {
     targetFps: 60,
     maxDelta: 0.05,
     maxStep: 1 / 60, // 템포를 곱한 뒤 한 계산 단계의 최대 시간(초)
+    maxSteps: 8,
+    enemyCell: 128,
+    farThinkSteps: 4, // 화면 밖·감지 거리 두 배 밖에서 조향을 나눠 갱신하는 주기
+    refillPerFrame: 3,
     maxPixelRatio: 2,
     textureSize: 320,
     artUnits: 160,

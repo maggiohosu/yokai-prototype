@@ -1292,7 +1292,7 @@ export class Combat {
   // 적 위의 상태 표시(평면 도형만): 빙결 육각, 위협 톱니, 작열 불꽃, 파사인 마름모, 매혹 고리·여우불
   drawStatus(g, now) {
     for (const e of this.scene.enemies) {
-      if (!e.sprite.active) continue;
+      if (!e.sprite.active || e.sprite.visible === false) continue;
       const { x, y, size } = e;
       if (e.frozenUntil > now) {
         for (const [width, color] of FREEZE_PASSES) {

@@ -12,11 +12,11 @@ test.afterEach(() => {
   applyWorldScale(1); // 다른 시험에 월드 크기가 남지 않게 되돌린다
 });
 
-test('단계마다 맵이 커진다: 월드 크기 4000 → 6000 → 8000 → 10400 → 13200, 적 72 → 115 → 160 → 216 → 284', () => {
+test('단계마다 맵이 커진다: 월드 크기 4000 → 6000 → 8000 → 10400 → 13200, 적 216 → 약 345 → 약 480 → 648 → 853(예전의 3배)', () => {
   const sizes = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).size);
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.deepEqual(sizes, [4000, 6000, 8000, 10400, 13200]);
-  assert.deepEqual(pops, [72, 115, 160, 216, 284]);
+  [72, 115, 160, 216, 284].forEach((old, i) => assert.ok(Math.abs(pops[i] - old * 3) <= 2));
   for (let i = 1; i < 5; i++) assert.ok(sizes[i] > sizes[i - 1] && pops[i] > pops[i - 1]);
   assert.equal(stageWorldScale(1), 1);
 });
@@ -32,13 +32,13 @@ test('단계 범위 밖·이상한 입력은 1~5단계로 자른다', () => {
 test('applyWorldScale: CONFIG.world의 크기와 적 수를 바꾸고, 같은 단계로 여러 번 불러도 같고, 1단계로 돌아온다', () => {
   const r = applyWorldScale(4);
   assert.equal(CONFIG.world.size, 10400);
-  assert.equal(CONFIG.world.population, 216);
-  assert.deepEqual(r, { scale: M.stageScale[4], size: 10400, population: 216 });
+  assert.ok(Math.abs(CONFIG.world.population - 648) <= 2);
+  assert.deepEqual(r, { scale: M.stageScale[4], size: 10400, population: CONFIG.world.population });
   applyWorldScale(4);
   assert.equal(CONFIG.world.size, 10400);
   applyWorldScale(1);
   assert.equal(CONFIG.world.size, 4000);
-  assert.equal(CONFIG.world.population, 72);
+  assert.equal(CONFIG.world.population, 216);
 });
 
 test('월드를 읽는 코드는 새 크기를 본다: 방위 경계는 새 중심, 액터는 새 월드 안에서만 움직인다', () => {
@@ -134,5 +134,5 @@ test('growthTarget: 판 안에서는 맵이 커지기만 한다(정비 역진화
   growthTarget(5, CONFIG.world.size);
   growthTarget(1, CONFIG.world.size);
   assert.equal(CONFIG.world.size, 6000);
-  assert.equal(CONFIG.world.population, 115);
+  assert.equal(CONFIG.world.population, worldFor(2).population);
 });

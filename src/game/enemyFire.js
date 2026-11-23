@@ -39,11 +39,11 @@ export class EnemyFire {
     enemy.fireCd -= dt;
     if (enemy.fireCd > 0) return false;
     const dx = player.x - enemy.x, dy = player.y - enemy.y;
-    const d = Math.hypot(dx, dy);
-    if (d > cfg.range) return false;
+    const d2 = dx * dx + dy * dy;
+    if (d2 > cfg.range * cfg.range) return false;
     if (this.orbs.length >= cfg.maxOrbs) return false;
     enemy.fireCd = cfg.cooldown;
-    const t = d / cfg.orbSpeed;
+    const t = Math.sqrt(d2) / cfg.orbSpeed;
     const tx = player.x + this.vx * t * cfg.leadAim - enemy.x;
     const ty = player.y + this.vy * t * cfg.leadAim - enemy.y;
     const m = Math.hypot(tx, ty) || 1;
@@ -130,15 +130,34 @@ export class EnemyFire {
 }
 
 // 특수 적 둘레의 돌아가는 붉은 점선 고리. t는 초 단위 시간.
+let dashShape = [];
+function ringShape(count) {
+  if (dashShape.length === count * 8) return dashShape;
+  dashShape = [];
+  for (let i = 0; i < count; i++) {
+    for (let j = 0; j <= 3; j++) {
+      const angle = (i + j * 0.55 / 3) * 2 * Math.PI / count;
+      dashShape.push(Math.cos(angle), Math.sin(angle));
+    }
+  }
+  return dashShape;
+}
+
 export function drawSpecialMark(g, enemy, t) {
   const cfg = CONFIG.special;
   const r = enemy.size * cfg.ringPad + 4;
-  const n = cfg.ringDashes, step = (Math.PI * 2) / n, spin = t * cfg.ringSpin;
+  const view = g.scene?.cameras?.main?.worldView; // 화면 밖 고리는 그리지 않는다(drawStageMark와 같은 판정)
+  if (view && (enemy.x + r < view.left || enemy.x - r > view.right || enemy.y + r < view.top || enemy.y - r > view.bottom)) return;
+  const shape = ringShape(cfg.ringDashes);
+  const spin = t * cfg.ringSpin;
+  const cos = r * Math.cos(spin), sin = r * Math.sin(spin);
   g.lineStyle(cfg.ringWidth, cfg.ringColor, 0.9);
-  for (let i = 0; i < n; i++) {
-    const a = spin + i * step;
-    g.beginPath();
-    g.arc(enemy.x, enemy.y, r, a, a + step * 0.55, false);
-    g.strokePath();
+  g.beginPath();
+  for (let i = 0; i < shape.length; i += 2) {
+    const x = enemy.x + cos * shape[i] - sin * shape[i + 1];
+    const y = enemy.y + sin * shape[i] + cos * shape[i + 1];
+    if (i % 8 === 0) g.moveTo(x, y);
+    else g.lineTo(x, y);
   }
+  g.strokePath();
 }
