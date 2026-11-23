@@ -82,7 +82,13 @@ export class PlayScene extends Phaser.Scene {
     sfx.preload(['boost-start', 'boost-loop', 'eat', 'player-hurt', 'orb-fire', 'orb-hit',
       'shot-fan', 'shot-sword', 'shot-gourd', 'shot-beads', 'shot-bell', 'shot-seal', 'shot-mirror']);
     this.boostVoice = null;
-    this.events.once('shutdown', () => this.stopBoostSfx());
+    this.game.events.on('hidden', this.stopBoostSfx, this);
+    this.game.events.on('blur', this.stopBoostSfx, this);
+    this.events.once('shutdown', () => {
+      this.game.events.off('hidden', this.stopBoostSfx, this);
+      this.game.events.off('blur', this.stopBoostSfx, this);
+      this.stopBoostSfx();
+    });
     const onEatFx = (meal) => {
       const p = this.player;
       if (!meal.byAlly) sfx.play('eat', { volume: 0.8 });
@@ -575,7 +581,7 @@ export class PlayScene extends Phaser.Scene {
   }
   // 특수 적 구슬에 맞으면 크기(=체력)가 줄고, 일정 크기 아래면 판 종료.
   stopBoostSfx() {
-    this.boostVoice?.stop();
+    this.boostVoice?.stop(0);
     this.boostVoice = null;
   }
   applyEnemyHits(hits) {
@@ -893,8 +899,9 @@ export class PlayScene extends Phaser.Scene {
       return;
     }
     const boosting = this.boostSec > 0;
-    if (boosting && !this.boostVoice) {
-      sfx.play('boost-start', { volume: 0.7 });
+    if (boosting && !this.boostVoice?.started) {
+      if (this.boostVoice) this.boostVoice.stop();
+      else sfx.play('boost-start', { volume: 0.7 });
       this.boostVoice = sfx.play('boost-loop', { volume: 0.5, loop: true });
     } else if (!boosting && this.boostVoice) {
       this.stopBoostSfx();

@@ -12,6 +12,7 @@ function syncOrientation() {
   if (portrait.matches) {
     if (!rotateGuide.open) rotateGuide.showModal();
     if (game?.loop.running) {
+      game.scene.getScene('Play')?.stopBoostSfx();
       game.loop.sleep();
       sleptForRotation = true;
     }

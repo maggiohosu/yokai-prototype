@@ -63,6 +63,19 @@ test('광선은 실측 끝점, 파문·웅덩이는 실제 반경, 낙하는 높
   assert.ok(seal.some(([op, x, y]) => op === 'translateCanvas' && x === 0 && y === -18));
 });
 
+test('옥인 착지 충격 고리는 실제 낙하 반경과 줄기·티어 색을 쓴다', () => {
+  for (const r of [24, 73]) {
+    for (let tier = 1; tier <= 5; tier++) {
+      const calls = record(g => drawWeaponShot(g, { ...shot, effect: 'impact', r }, 'seal', 'N1', tier));
+      assert.ok(calls.some(([op, x, y]) => op === 'translateCanvas' && x === shot.x && y === shot.y));
+      assert.ok(calls.some(([op, x, y, radius, start, end]) =>
+        op === 'arc' && x === 0 && y === 0 && radius === r && start === 0 && end === Math.PI * 2));
+      assert.ok(colors(calls).includes(orbStyleOf('N1').main));
+      assert.equal(colors(calls).includes(0xefbd6c), tier >= 4);
+    }
+  }
+});
+
 test('여의주의 기존 구슬 그림을 유지한다', () => {
   for (const stem of [null, 'E4', 'S3']) {
     assert.deepEqual(record(g => drawWeaponShot(g, shot, 'yeouiju', stem, 5)), record(g => drawOrb(g, shot, stem, 5)));

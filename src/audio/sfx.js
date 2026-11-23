@@ -10,7 +10,7 @@
 const BASE = new URL('../../assets/sfx/', import.meta.url).href;
 const VOLUME_KEY = 'yokai-sfx-volume';
 const GESTURES = ['pointerdown', 'touchend', 'keydown'];
-const SILENT = Object.freeze({ stop() {} });
+const SILENT = Object.freeze({ started: false, stop() {} });
 
 function storedVolume() {
   try {
@@ -149,6 +149,7 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
       }
     });
     return {
+      get started() { return source !== null && !cancelled; },
       stop(fadeMs = 60) {
         cancelled = true;
         if (!source || !ctx) return;

@@ -160,6 +160,8 @@ export function drawWeaponShot(g, shot, kind, stemKey = null, tier = 1) {
     ring(g, shot.r ?? 15, style, stage);
   } else if (kind === 'gourd' && shot.effect === 'pool') {
     pool(g, shot.r ?? 45, style, stage);
+  } else if (kind === 'seal' && shot.effect === 'impact') {
+    ring(g, shot.r, style, stage);
   } else if (kind === 'seal' && shot.effect === 'shadow') {
     const r = shot.r ?? 16;
     g.fillStyle(INK, .22).fillCircle(0, 0, r);
