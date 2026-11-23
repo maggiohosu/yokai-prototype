@@ -66,7 +66,8 @@ test('1단계 플레이어 실제 속도 약 170: 예전(113)의 1.5배, 1단계
   const real = CONFIG.player.speed * CONFIG.tempo * tempoMultiplier(at(1)) * playerSpeedMultiplier(at(1, 0));
   const old = CONFIG.player.speed * CONFIG.tempo * OLD_F.min ** 2;
   const enemy = CONFIG.enemy.chaseSpeed * CONFIG.enemy.earlySpeedMult[1] * CONFIG.tempo * tempoMultiplier(at(1));
-  assert.ok(Math.abs(real - 170.3) < 0.5, '1단계 속도 ' + real);
+  // 사용자 지시(2026-11-23): 나·적 기본 속도 0.5배 → 실제 속도도 절반(약 85), 비율은 그대로
+  assert.ok(Math.abs(real - 170.3 * 0.5) < 0.5, '1단계 속도 ' + real);
   assert.ok(Math.abs(real / old - 1.5) < 0.01, '예전 대비 ' + real / old);
   assert.ok(Math.abs(real / enemy - 1.733) < 0.01, '적 대비 ' + real / enemy);
 });

@@ -20,11 +20,11 @@ export const CONFIG = {
     spawnGap: 22,
     offscreenMargin: 85,
     spawnAttempts: 90,
-    refillInterval: 0.5,
+    refillInterval: 0.5 / 1.5, // 사용자 지시(2026-11-23): 적 리젠 1.5배 빠르게
     refillBatch: 4,
   },
   // 사용자 지시(2026-11-23): 플레이어와 적이 예전의 1/3 크기에서 시작한다. 크기에 묶인 값들도 함께 1/3(카메라는 camera.refSize 28 기준이라 화면에서도 1/3로 보인다).
-  player: { startSize: 28 / 3, speed: 262 }, // 사용자 지시: 218 → 262(1.2배, 2026-11-23)
+  player: { startSize: 28 / 3, speed: 131 }, // 사용자 지시: 218 → 262(1.2배) → 131(나·적 기본 속도 0.5배, 2026-11-23)
   enemy: {
     // 생성 시점 플레이어 반지름의 배수. 후반에도 맵에 들어갈 수 있는 크기로 제한한다.
     sizes: [
@@ -69,13 +69,13 @@ export const CONFIG = {
     stage3Size: 31 / 3,
     maxSpawnSize: 140 / 3, // 시작 크기 1/3(커밋 25c7d7f) 때 환산이 빠져 있던 값을 balance 1단계에서 140 → 140/3으로 맞췄다(docs/balance-v4.md 4절). 되돌리려면 140.
     detect: 290,
-    fleeSpeed: 130,
-    chaseSpeed: 108,
+    fleeSpeed: 65, // 사용자 지시: 적 기본 속도 0.5배(130 → 65)
+    chaseSpeed: 54, // 0.5배(108 → 54)
     // 초반 적 이동 속도 배율(플레이어 진화 단계별, 사용자 지시 2026-11-23: 초반 70%). 없는 단계는 1.
     earlySpeedMult: { 1: 0.7, 2: 0.85 },
     // 적 몸집 상한(src/systems/growthCap.js). 크기 ≤ min(maxSize, max(minCap, 플레이어 크기 × maxSizeVsPlayer)), 몸집 강화는 maxBodyLevel번까지.
     growthCap: { maxSizeVsPlayer: 2.5, minCap: 70 / 3, maxSize: 200, maxBodyLevel: 3 },
-    wanderSpeed: 39,
+    wanderSpeed: 19.5, // 0.5배(39 → 19.5)
     turnRate: 4,
     wanderInterval: [1.25, 3.4],
     wallMargin: 64,
