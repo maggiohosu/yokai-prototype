@@ -54,9 +54,19 @@ function affinity(progress) {
   return section;
 }
 
+function enhSumOf(progress) {
+  return Object.values(progress.enh).reduce((total, value) => total + value, 0);
+}
+
 function gradeTable(progress) {
-  const sum = Object.values(progress.enh).reduce((total, value) => total + value, 0);
-  return disclosure('등급별 확률', OddsTable('본체 강화를 반영한 등급 확률', Object.entries(gradeOdds(sum))));
+  return disclosure('등급별 확률', OddsTable('본체 강화를 반영한 등급 확률', Object.entries(gradeOdds(enhSumOf(progress)))));
+}
+
+// '이 결과가 나올 확률' 한 줄(사용자 결정 2026-11-23, 계획서 변경 이력 5): 나온 등급의 굴림 확률. 소수 첫째 자리까지('A등급이 나올 확률 12.5%').
+// 진화 화면의 결과와 판 안 진화 카드의 결과가 같은 문장을 쓴다. 확률은 본체 강화(진화해도 안 바뀐다)로 정해지는 gradeOdds다.
+export function gradeChanceText(progress, grade) {
+  const chance = gradeOdds(enhSumOf(progress))[grade];
+  return Number.isFinite(chance) ? grade + '등급이 나올 확률 ' + Math.round(chance * 10) / 10 + '%' : '';
 }
 
 export function EvolveView(progress, forms, { onDone, getFormImage, save = saveProgress } = {}) {
@@ -98,7 +108,7 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
     const reveal = el('section', 'yk-reveal');
     const art = formImage(getFormImage, form, grade);
     art.dataset.grade = grade;
-    reveal.append(art, el('strong', 'yk-grade-label', grade + '등급'),
+    reveal.append(art, el('strong', 'yk-grade-label', grade + '등급'), el('p', 'yk-description yk-grade-chance', gradeChanceText(progress, grade)),
       el('h3', 'yk-form-name', form.name), el('p', 'yk-caption', abilityLabel(form)), el('p', 'yk-description', form.desc));
     if (firstDiscovery) reveal.append(el('p', 'yk-discovery', '첫 발견으로 보호권 1장 획득'));
     body.replaceChildren(reveal, gradeTable(progress));

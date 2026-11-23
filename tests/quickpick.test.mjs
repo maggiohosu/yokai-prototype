@@ -7,7 +7,7 @@ import { buildChoices, evolutionCost } from '../src/systems/evolution.js';
 import { enhanceCost } from '../src/systems/enhance.js';
 import {
   allQuickCards, applyQuickCard, bodyCost, createRunLevel, earnedThisRun, evolutionCatalog,
-  pickQuickCards, quickEnhanceCost, QUICK_STAT_NAMES,
+  pickQuickCards, quickEnhanceCost, QUICK_STAT_NAMES, rerollQuickCards, rerollsLeft,
 } from '../src/systems/levelup.js';
 
 const L = CONFIG.levelUp;
@@ -234,4 +234,111 @@ test('카드 id는 겹치지 않고 비용은 모두 유한하다', () => {
   const cards = allQuickCards(progress, run, FORMS);
   assert.equal(new Set(cards.map((card) => card.id)).size, cards.length);
   assert.ok(cards.every((card) => Number.isFinite(card.cost) && card.cost > 0));
+});
+
+// ---- 다시 뽑기(계획서 '변경 이력 5'): 한 판에 CONFIG.reroll.perRun번, 요력은 들지 않고 같은 조건으로 새로 뽑는다 ----
+const ids = (cards) => cards.map((card) => card.id).sort().join('|');
+
+test('다시 뽑기 설정: 한 판에 1번이 기본이고, 판마다 새 run이라 판마다 다시 생긴다', () => {
+  assert.equal(CONFIG.reroll.perRun, 1);
+  const { progress, run } = setup(5000);
+  assert.equal(rerollsLeft(run), 1);
+  assert.equal(rerollsLeft({}), 1, 'rerollsLeft가 없는 옛 run도 기본 횟수로 본다');
+  assert.equal(rerollsLeft(undefined), 1);
+  // 쓴 뒤에도 새 판(새 run)은 다시 1번이다
+  rerollQuickCards(progress, run, FORMS, { rng: seeded(1) });
+  assert.equal(rerollsLeft(run), 0);
+  assert.equal(rerollsLeft(createRunLevel(progress)), 1);
+});
+
+test('다시 뽑기: 한 번 쓰면 남은 횟수 0, 두 번째는 null이고 카드·요력·run이 그대로다', () => {
+  const { progress, run } = setup(5000, { stage: 5 });
+  const first = pickQuickCards(progress, run, FORMS, { rng: seeded(3) });
+  const result = rerollQuickCards(progress, run, FORMS, { rng: seeded(4), previous: first });
+  assert.ok(result);
+  assert.equal(result.left, 0);
+  assert.equal(rerollsLeft(run), 0);
+  const snapshot = JSON.stringify({ progress, run });
+  assert.equal(rerollQuickCards(progress, run, FORMS, { rng: seeded(5), previous: result.cards }), null);
+  assert.equal(JSON.stringify({ progress, run }), snapshot, '실패한 뒤 아무것도 바뀌지 않는다');
+});
+
+test('다시 뽑기는 요력을 쓰지 않고, 같은 조건(살 수 있는 카드 규칙)으로 새로 뽑는다', () => {
+  for (const [yoryeok, patch] of [[5000, {}], [5000, { stage: 4, formId: 'gumiho' }], [5000, { stage: 5 }], [evolutionCost(2) - 1, {}]]) {
+    for (let seed = 1; seed <= 25; seed++) {
+      const { progress, run } = setup(yoryeok, patch);
+      const before = JSON.stringify(progress);
+      const first = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
+      const result = rerollQuickCards(progress, run, FORMS, { rng: seeded(seed + 1000), previous: first });
+      assert.ok(result, '뽑을 카드가 있으면 새로 뽑힌다');
+      assert.equal(JSON.stringify(progress), before, '요력도 진행도 그대로');
+      assert.ok(result.cards.length >= 1);
+      assert.ok(result.cards.every((card) => card.cost <= progress.yoryeok), '살 수 있는 카드만');
+      assert.equal(new Set(result.cards.map((card) => card.id)).size, result.cards.length, '같은 카드가 두 번 나오면 안 된다');
+      // 진화를 살 수 있는지 여부(= 진화 카드가 있는지)는 처음 조건과 같다
+      assert.equal(kinds(result.cards).includes('evolve'), kinds(first).includes('evolve'));
+    }
+  }
+});
+
+test('다시 뽑기: 지금 화면과 다른 구성이 나온다(바뀔 여지가 있을 때)', () => {
+  for (const patch of [{}, { stage: 4, formId: 'gumiho' }, { stage: 5 }]) {
+    for (let seed = 1; seed <= 40; seed++) {
+      const { progress, run } = setup(5000, patch);
+      const first = pickQuickCards(progress, run, FORMS, { rng: seeded(seed) });
+      const result = rerollQuickCards(progress, run, FORMS, { rng: seeded(seed * 7 + 1), previous: first });
+      assert.equal(result.changed, true);
+      assert.notEqual(ids(result.cards), ids(first), JSON.stringify(patch) + ' seed ' + seed);
+    }
+  }
+});
+
+test('다시 뽑기: 고를 수 있는 구성이 하나뿐이면 그대로 돌려주고 횟수는 쓰지 않는다', () => {
+  const { progress, run } = setup(5000, { stage: 5 });
+  for (const stat of Object.keys(progress.enh)) progress.enh[stat] = 10;
+  const first = pickQuickCards(progress, run, FORMS);
+  assert.deepEqual(kinds(first), ['body']);
+  const result = rerollQuickCards(progress, run, FORMS, { previous: first });
+  assert.equal(result.changed, false);
+  assert.deepEqual(kinds(result.cards), ['body']);
+  assert.equal(result.left, 1);
+  assert.equal(rerollsLeft(run), 1, '바뀐 게 없으면 횟수를 아끼게 한다');
+});
+
+test('다시 뽑기: 살 수 있는 카드가 없으면 null이고 횟수도 그대로', () => {
+  const { progress, run } = setup(0);
+  assert.equal(rerollQuickCards(progress, run, FORMS, { previous: [] }), null);
+  assert.equal(rerollsLeft(run), 1);
+});
+
+test('다시 뽑기 횟수는 설정값을 따른다(0이면 처음부터 쓸 수 없다, 3이면 세 번)', () => {
+  const saved = CONFIG.reroll.perRun;
+  try {
+    CONFIG.reroll.perRun = 0;
+    const none = setup(5000);
+    assert.equal(rerollsLeft(none.run), 0);
+    assert.equal(rerollQuickCards(none.progress, none.run, FORMS), null);
+    CONFIG.reroll.perRun = 3;
+    const three = setup(5000, { stage: 5 });
+    let previous = pickQuickCards(three.progress, three.run, FORMS, { rng: seeded(9) });
+    for (let n = 1; n <= 3; n++) {
+      const result = rerollQuickCards(three.progress, three.run, FORMS, { rng: seeded(20 + n), previous });
+      assert.ok(result, n + '번째');
+      assert.equal(result.left, 3 - n);
+      previous = result.cards;
+    }
+    assert.equal(rerollQuickCards(three.progress, three.run, FORMS, { previous }), null);
+  } finally {
+    CONFIG.reroll.perRun = saved;
+  }
+});
+
+test('다시 뽑은 카드도 탭하면 그대로 적용된다(요력 차감·결과는 예전 카드와 같은 규칙)', () => {
+  const { progress, run } = setup(5000, { stage: 5 });
+  const first = pickQuickCards(progress, run, FORMS, { rng: seeded(11) });
+  const { cards } = rerollQuickCards(progress, run, FORMS, { rng: seeded(12), previous: first });
+  const card = cards.find((c) => c.kind === 'body');
+  const result = applyQuickCard(progress, run, card, FORMS);
+  assert.deepEqual(result, { kind: 'body', cost: bodyCost(0), mult: L.bodyMult });
+  assert.equal(progress.yoryeok, 5000 - bodyCost(0));
 });

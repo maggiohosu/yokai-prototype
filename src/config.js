@@ -177,6 +177,18 @@ export const CONFIG = {
     // 승천: 5단계에서 크기가 targetSize에 닿으면 판 승리. 보상 요력 = baseReward + rewardPerSize × 크기(150에서 390,000 ≈ 5단계 크기 100 적 4마리). title은 결과 창 제목.
     ascension: { stage: 5, targetSize: 150, baseReward: 300000, rewardPerSize: 600, title: '승천' },
   },
+  // 예고된 대요괴(사용자 결정 2026-11-23, 계획서 '변경 이력 5', 순수 규칙은 src/systems/herald.js). 모든 단계에서 판 중 intervalSec(**실제 초**, 판을 멈춘 동안은 세지 않는다)마다 한 마리씩 나온다.
+  // 맞수(balance.rival, 4·5단계)와는 따로 센다. HUD가 등장까지 남은 시간을 보여 주고, 남은 시간이 warnSec 이하가 되면 짧은 안내(noticeSec초)를 띄운다. 나타나면 나와 같은 단계(1단계 판에서도 같은 단계),
+  // 크기 = 내 크기 × sizeMin~sizeMax, 이름표 label(자가 진화·특수 적 없음: 맞수와 같은 규칙). 동시에 maxAlive마리까지, 살아 있는 동안은 다음 대요괴를 세지 않는다.
+  // 잡으면(내가 먹거나 여의주로 쓰러뜨림) 보상: 요력 = 그 먹이의 기본 요력 × bonusMult를 더(= 기본의 1 + bonusMult배), 여의주 드롭 확률은 dropChance로 올린다.
+  // 드롭은 확정이 아니다: 기본 드롭 굴림(treasure.dropChance)이 실패했을 때만 한 번 더 굴려 총 확률이 dropChance가 되게 한다. 끄려면 enabled: false.
+  herald: { enabled: true, intervalSec: 45, warnSec: 8, noticeSec: 3, maxAlive: 1, sizeMin: 1.1, sizeMax: 1.4, label: '대요괴', bonusMult: 3, dropChance: 0.5 },
+  // 공명 연쇄(사용자 결정 2026-11-23, 순수 규칙은 src/systems/resonance.js). 내가 먹은 요괴의 방위(동·서·남·북)가 이어지면 보너스 요력이 터진다.
+  //   rule: 'streak' = 규칙 A(같은 방위 streak.length마리 연속), 'cycle' = 규칙 B(연달아 4마리가 동·서·남·북을 한 번씩), 'both' = 둘 다(기본), 'off' = 끔. 한 줄로 바꿔 비교한다.
+  //   보너스 요력 = 연쇄에 든 먹이들의 요력 합 × bonus(규칙별). 터지면 연쇄를 처음부터 다시 센다. 연쇄는 마지막으로 먹은 뒤 windowSec(**판을 진행한 실제 초**)가 지나면 끊긴다(Infinity면 안 끊김).
+  resonance: { rule: 'both', windowSec: 8, streak: { length: 3, bonus: 0.3 }, cycle: { bonus: 0.5 }, flashSec: 0.9 },
+  // 빠른 성장 카드의 [다시 뽑기]: 한 판에 perRun번(0이면 버튼을 숨긴다). 요력은 들지 않고, 같은 조건(같은 잔액·같은 규칙)으로 카드를 새로 뽑는다.
+  reroll: { perRun: 1 },
   // 부스터(플레이어 전용, src/game/booster.js; 사용자 결정 2026-11-23). 누르는 동안 플레이어 이동 속도(속도 곡선 적용 후)에만 배율을 곱한다. 적·발사체는 그대로.
   // 배율 = baseMult × 줄기 보정 + 이동 속도 강화 레벨 × perSpeedLevel. 줄기 보정 = form.stem → src/data/stems.js의 boostMult → 1.0(줄기 없는 mimul).
   // 게이지(maxSec)·회복·지연은 화면 시간(초)으로 계산하고(템포·속도 곡선과 무관), 0이 되면 가속이 끝나 minRestartSec 이상 찰 때까지 다시 켜지지 않는다.

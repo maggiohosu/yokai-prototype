@@ -6,7 +6,7 @@ import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
 import { between, clamp, colorPicker, drawWorld, nearSpawnPlan, refillRingFor, regionAt, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage, startStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
-import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, shouldPause } from '../systems/levelup.js';
+import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
 import { drawStageMark } from '../art/marks.js';
 import { Player } from '../game/player.js';
 import { Enemy } from '../game/enemy.js';
@@ -27,9 +27,16 @@ import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
 import { absorbHit, createVitality, stepVitality, vitalityVisible } from '../systems/vitality.js';
 import { HubView } from '../ui/HubView.js';
-import { EvolveView } from '../ui/EvolveView.js';
+import { EvolveView, gradeChanceText } from '../ui/EvolveView.js';
 import { QuickPick } from '../ui/QuickPick.js';
 import { QUICK_STAT_NAMES } from '../systems/levelup.js';
+import { createHeraldState, heraldBonusYoryeok, heraldExtraDropChance, heraldRetry, heraldSizeCap, heraldView, stepHerald } from '../systems/herald.js';
+import { createResonanceState, recordMeal, resonanceView } from '../systems/resonance.js';
+import { addToInventory, dropChance } from '../systems/treasure.js';
+
+// 공명 표시용 방위 이름(청·백·적·흑)과 연출 색
+const DIR_NAME = Object.fromEntries(Object.entries(REGIONS).map(([dir, region]) => [dir, region.color]));
+const DIR_FX = { east: 0x58c8a4, west: 0xf3ead2, south: 0xff8a6b, north: 0x6f87a8 };
 
 export class PlayScene extends Phaser.Scene {
   constructor() {
@@ -89,10 +96,21 @@ export class PlayScene extends Phaser.Scene {
       this.fx.floatText(p.x, p.y - p.size * 1.8, '여의주 획득!', '#ffe27a');
       this.fx.burst(p.x, p.y, 0xffe27a, 14, 1);
     };
+    // 예고된 대요괴(herald.js)·공명 연쇄(resonance.js): 상태는 판마다 새로 만든다. 시간은 판을 진행한 실제 초(playSec)로 센다(판이 멈춘 동안은 서 있다).
+    this.heraldState = createHeraldState();
+    this.heraldStats = { spawned: 0, slain: 0 };
+    this.resonance = createResonanceState();
+    this.resonanceStats = { streak: 0, cycle: 0, bonus: 0 };
+    this.playSec = 0;
+    this.dropMark = 0; // 마지막 먹기까지 센 여의주 드롭 수(this.run.drops). 이번 먹기에서 기본 드롭이 났는지 알아내는 기준
+    // 리스너 등록 순서가 중요하다: session.attachSession의 먹기 처리(요력·기본 드롭 굴림)가 먼저, 아래 afterEat(대요괴 보상·공명)가 그다음에 돈다.
+    const onAfterEat = (meal) => this.afterEat(meal);
     this.events.on('eat', onEatFx);
+    this.events.on('eat', onAfterEat);
     this.events.on('treasureDrop', onDropFx);
     this.events.once('shutdown', () => {
       this.events.off('eat', onEatFx);
+      this.events.off('eat', onAfterEat);
       this.events.off('treasureDrop', onDropFx);
     });
     this.enemies = [];
@@ -104,6 +122,13 @@ export class PlayScene extends Phaser.Scene {
     const arena = document.getElementById('arena');
     this.joystick = new Joystick(document);
     this.combat = new Combat(this, this.progress);
+    // 내가 잡은 먹이가 대요괴이면 meal에 표시를 붙인다(직접 먹기·여의주로 쓰러뜨리기 모두 combat.meal을 거친다). 매혹한 요괴가 먹은 것도 표시는 붙지만 afterEat가 보상에서 뺀다.
+    const baseMeal = this.combat.meal.bind(this.combat);
+    this.combat.meal = (enemy, killedByTreasure) => {
+      const meal = baseMeal(enemy, killedByTreasure);
+      if (enemy.herald) meal.herald = true;
+      return meal;
+    };
     this.enemyFire = new EnemyFire(this);
     this.fireGfx = this.add.graphics().setDepth(4.5);
     this.events.once('shutdown', () => this.enemyFire?.destroy());
@@ -131,6 +156,7 @@ export class PlayScene extends Phaser.Scene {
     this.hud.update(this.player, this.cameras.main.worldView);
     this.events.once('shutdown', this.releaseControls, this);
     this.events.once('shutdown', () => this.quickPick?.close());
+    this.events.once('shutdown', () => this.hud?.dispose());
     document.getElementById('loading').hidden = true;
     // 확인용: ?debug=hub / ?debug=evolve (저장하지 않는 시험용 요력 지급), ?debug=lv는 판 중에 요력을 지급한다.
     if (debug === 'lv' && !data.progress) {
@@ -164,6 +190,9 @@ export class PlayScene extends Phaser.Scene {
       yoryeok: this.progress.yoryeok,
       getFormImage: (id) => this.formImage(id),
       onPick: (card) => this.pickCard(card),
+      // 다시 뽑기(한 판에 CONFIG.reroll.perRun번): 같은 잔액·같은 규칙으로 새로 뽑는다. 새 카드는 여기서 이미 정해지고 화면은 보여주기만 한다.
+      rerollsLeft: rerollsLeft(this.level),
+      onReroll: (shown) => rerollQuickCards(this.progress, this.level, FORMS, { previous: shown }),
     });
   }
   pickCard(card) {
@@ -188,10 +217,11 @@ export class PlayScene extends Phaser.Scene {
     if (result.kind === 'evolve') {
       this.applyForm();
       this.recalcPace();
-      this.fx.floatText(p.x, p.y - p.size * 2.1, '진화! ' + result.form.name + ' · ' + result.grade + '등급', '#ffd45c');
-      const ability = abilityLabel(result.form);
-      if (ability) this.fx.floatText(p.x, p.y - p.size * 3.5, ability, '#85cfb7');
-      if (result.firstDiscovery) this.fx.floatText(p.x, p.y - p.size * 2.9, '첫 발견! 보호권 +1', '#c4f7e6');
+      // 결과 글자는 한 줄씩 겹치지 않게 쌓는다(줄 간격은 화면 픽셀이라 줌으로 나눈다). 이 결과(등급)가 나올 확률 한 줄은 계획서 변경 이력 5.
+      const lines = [['진화! ' + result.form.name + ' · ' + result.grade + '등급', '#ffd45c'], [gradeChanceText(this.progress, result.grade), '#fff1b8'], [abilityLabel(result.form), '#85cfb7']];
+      if (result.firstDiscovery) lines.push(['첫 발견! 보호권 +1', '#c4f7e6']);
+      const step = 22 / this.cameras.main.zoom;
+      lines.filter(([text]) => text).forEach(([text, color], i) => this.fx.floatText(p.x, p.y - p.size * 2.1 - i * step, text, color));
     } else if (result.kind === 'body') {
       p.setSize(p.size * result.mult);
       p.maxSize = Math.max(p.maxSize, p.size);
@@ -349,8 +379,120 @@ export class PlayScene extends Phaser.Scene {
     const dir = this.nextColor(regionAt(pos.x, pos.y));
     const enemy = new Enemy(this, pos, size, dir, stage);
     if (options.rival) enemy.markRival(); // 맞수 대요괴: 이름표 '맞수', 진화 없음, 몸집 상한 플레이어 × 1.3
+    if (options.herald) this.markHerald(enemy); // 예고된 대요괴: 맞수와 같은 규칙에 이름표 '대요괴', 몸집 상한 플레이어 × herald.sizeMax
     this.enemies.push(enemy);
+    this.lastSpawned = enemy;
     return true;
+  }
+  // 예고된 대요괴(herald.js): markRival(진화·몸집 강화·특수 적 없음, 이름표)을 먼저 거친 적에 이름표·몸집 상한만 바꾼다. 맞수와 세는 방식이 달라서 herald 표식을 따로 둔다.
+  markHerald(enemy) {
+    enemy.herald = true;
+    enemy.label?.setText(CONFIG.herald.label).setFontSize('13px').setBackgroundColor('#914837');
+    enemy.capSize = () => {
+      const cap = heraldSizeCap(this.player?.size);
+      if (cap > 0 && enemy.size > cap) enemy.setSize(cap);
+    };
+  }
+  // 대요괴 한 프레임: 등장 시각이면 플레이어 둘레 화면 밖(모든 단계에서)에 한 마리 놓고, 남은 시간이 warnSec 이하가 되면 안내한다. dt는 실제 초(멈춘 동안은 호출되지 않는다).
+  stepHeraldWave(dt, view) {
+    const h = CONFIG.herald;
+    const alive = this.enemies.reduce((n, e) => n + (e.herald && e.sprite.active ? 1 : 0), 0);
+    const { spawn, cue } = stepHerald(this.heraldState, { dt, alive, playerStage: this.player.stage ?? 1, playerSize: this.player.size });
+    if (cue === 'warn') this.hud.heraldNotice('대요괴가 곧 나타납니다! 준비하세요', h.noticeSec, 'warn');
+    if (!spawn) return;
+    const opts = { view, stage: spawn.stage, rival: true, herald: true };
+    const ring = refillRingFor(view, CONFIG.enemy.nearSpawn.refillRing);
+    if (!(this.spawn(spawn.size, { ...opts, near: ring }) || this.spawn(spawn.size, opts))) {
+      heraldRetry(this.heraldState);
+      return;
+    }
+    this.heraldStats.spawned++;
+    const ratio = Number((spawn.size / this.player.size).toFixed(1));
+    this.hud.heraldNotice('대요괴 출현! 내 크기의 ' + ratio + '배, 잡으면 큰 보상', h.noticeSec, 'arrive');
+    if (!this.reducedMotion) this.cameras.main.shake(this.fx.m.shakeMs, this.fx.m.shakeIntensity);
+  }
+  // 먹기 직후 처리(session의 요력·기본 드롭 굴림이 먼저 돈 뒤): 대요괴 처치 보상과 공명 연쇄. 매혹한 요괴가 먹은 것은 내 처치·내 연쇄가 아니다.
+  afterEat(meal) {
+    const droppedByBase = this.run.drops > this.dropMark; // 이번 먹기에서 session의 기본 굴림이 성공했는가
+    this.dropMark = this.run.drops;
+    if (meal.byAlly || this.stress) return;
+    if (meal.herald) this.slayHerald(meal, droppedByBase);
+    this.chainResonance(meal);
+  }
+  // 대요괴 처치: 요력 보너스(기본 요력 × bonusMult) + 기본 드롭 굴림이 실패했을 때만 한 번 더 굴려 총 확률을 herald.dropChance로 올린다(확정 드롭 아님).
+  slayHerald(meal, droppedByBase) {
+    const p = this.player;
+    const gain = mealYoryeok(meal);
+    const bonus = heraldBonusYoryeok(gain);
+    this.progress.yoryeok += bonus;
+    this.run.yoryeok += bonus;
+    let dropped = droppedByBase;
+    if (!dropped && Math.random() < heraldExtraDropChance(dropChance({ killedByTreasure: meal.killedByTreasure }))) dropped = this.giveTreasure();
+    this.saveProgress(this.progress);
+    this.heraldStats.slain++;
+    this.fx.floatText(p.x, p.y - p.size * 2.6, '대요괴 처치! 요력 +' + bonus + ' 더', '#ffd45c');
+    this.fx.burst(p.x, p.y, 0xffd45c, 36, 1.8);
+    this.hud.heraldNotice('대요괴를 잡았습니다! 요력 +' + (gain + bonus) + (dropped ? ' · 여의주 획득' : ''), CONFIG.herald.noticeSec, 'slain');
+  }
+  // 여의주 하나를 준다(session.onEat와 같은 방식: 장착 칸이 비었으면 장착, 아니면 보관함). 보관함이 가득 차면 못 받는다.
+  giveTreasure() {
+    const treasure = { level: 0 };
+    let got = false;
+    if (!this.progress.treasure) {
+      this.progress.treasure = treasure;
+      got = true;
+    } else got = addToInventory(this.progress, treasure);
+    if (got) {
+      this.run.drops++;
+      this.dropMark = this.run.drops;
+      this.events.emit('treasureDrop', this.run.drops);
+    }
+    return got;
+  }
+  // 공명 연쇄(resonance.js): 먹은 요괴의 방위가 이어지면 보너스 요력과 짧은 연출.
+  chainResonance(meal) {
+    const hit = recordMeal(this.resonance, { dir: meal.dir, gain: mealYoryeok(meal) }, this.playSec);
+    if (!hit) return;
+    const p = this.player;
+    this.progress.yoryeok += hit.bonus;
+    this.run.yoryeok += hit.bonus;
+    this.saveProgress(this.progress);
+    this.resonanceStats[hit.rule]++;
+    this.resonanceStats.bonus += hit.bonus;
+    const name = hit.rule === 'streak' ? DIR_NAME[hit.dir] + ' ' + hit.count + '연속' : '네 방위 한 바퀴';
+    this.fx.floatText(p.x, p.y - p.size * 3.2, '공명! ' + name + ' +' + hit.bonus + ' 요력', '#c4f7e6');
+    this.fx.burst(p.x, p.y, hit.dir ? DIR_FX[hit.dir] : 0xffe27a, 26, 1.5);
+    this.hud.flashResonance('공명! +' + hit.bonus, CONFIG.resonance.flashSec);
+  }
+  // 대요괴 표식: 몸 둘레의 겹 고리(숨쉬듯 깜박임). 화면 밖에 있으면 화면 가장자리에 방향 화살표를 그린다. 두께·크기는 화면 픽셀이라 줌으로 나눈다.
+  drawHeraldMark(g, enemy, now) {
+    const cam = this.cameras.main;
+    const zoom = cam.zoom;
+    const view = cam.worldView;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 5);
+    const r = enemy.size * 1.3;
+    const inside = enemy.x + r > view.left && enemy.x - r < view.right && enemy.y + r > view.top && enemy.y - r < view.bottom;
+    if (inside) {
+      g.lineStyle(3 / zoom, 0x914837, 0.55 + 0.4 * pulse);
+      g.strokeCircle(enemy.x, enemy.y, r);
+      g.lineStyle(2 / zoom, 0xe7cb8a, 0.9);
+      g.strokeCircle(enemy.x, enemy.y, r + 6 / zoom);
+      return;
+    }
+    const dx = enemy.x - view.centerX, dy = enemy.y - view.centerY;
+    const margin = 30 / zoom;
+    const k = Math.min((view.width / 2 - margin) / Math.max(1e-6, Math.abs(dx)), (view.height / 2 - margin) / Math.max(1e-6, Math.abs(dy)));
+    const px = view.centerX + dx * k, py = view.centerY + dy * k;
+    const a = Math.atan2(dy, dx), u = 1 / zoom;
+    g.fillStyle(0x914837, 0.7 + 0.3 * pulse);
+    g.lineStyle(2 * u, 0xe7cb8a, 1);
+    g.beginPath();
+    g.moveTo(px + Math.cos(a) * 16 * u, py + Math.sin(a) * 16 * u);
+    g.lineTo(px + Math.cos(a + 2.5) * 12 * u, py + Math.sin(a + 2.5) * 12 * u);
+    g.lineTo(px + Math.cos(a - 2.5) * 12 * u, py + Math.sin(a - 2.5) * 12 * u);
+    g.closePath();
+    g.fillPath();
+    g.strokePath();
   }
   seedEnemies() {
     const { world, enemy } = CONFIG;
@@ -695,6 +837,7 @@ export class PlayScene extends Phaser.Scene {
     this.boostHeld = !!this.boosterButton?.held;
     // 진화로 단계 템포가 오르면 곧바로 빨라지지 않고 서서히 따라간다(나는 가만히 있는데 맵이 늘어나 더 느려 보인다).
     if (this.pace !== this.paceTarget) this.pace = easePace(this.pace, this.paceTarget, dt);
+    this.playSec += dt; // 판을 진행한 실제 초(멈춘 동안은 여기까지 오지 않는다): 공명 연쇄의 끊김 시간에 쓴다
     const sim = dt * CONFIG.tempo * this.pace;
     const simStart = stress ? performance.now() : 0;
     this.simulate(sim, direction);
@@ -719,6 +862,7 @@ export class PlayScene extends Phaser.Scene {
     for (const enemy of this.enemies) {
       if (!enemy.sprite.active) continue;
       if (enemy.special) drawSpecialMark(fg, enemy, now);
+      if (enemy.herald) this.drawHeraldMark(fg, enemy, now);
       drawStageMark(fg, enemy, myStage, now);
     }
     this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
@@ -742,7 +886,7 @@ export class PlayScene extends Phaser.Scene {
     }
     // 맞수 대요괴(balance.rivalPlan): 4·5단계에서 실제 25초마다, 동시 최대 2마리. 시험 판(?stress)은 적 구성을 직접 정하므로 건너뛴다.
     if (!this.stress) {
-      this.rivalState.alive = this.enemies.reduce((n, e) => n + (e.rival && e.sprite.active ? 1 : 0), 0);
+      this.rivalState.alive = this.enemies.reduce((n, e) => n + (e.rival && !e.herald && e.sprite.active ? 1 : 0), 0); // 대요괴는 맞수 수에 세지 않는다(따로 센다)
       // 맞수 간격은 실제 25초: 템포가 서서히 오르는 동안에도 어긋나지 않게 목표 템포로 환산한 시뮬레이션 시간을 준다.
       const plan = rivalPlan(this.player.stage ?? 1, this.player.size, this.rivalState, dt * CONFIG.tempo * this.paceTarget);
       const nearPlan = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
@@ -750,12 +894,17 @@ export class PlayScene extends Phaser.Scene {
       const rivalOpts = { view, stage: plan?.stage, rival: true };
       if (plan && !(ring && this.spawn(plan.size, { ...rivalOpts, near: ring })) && !this.spawn(plan.size, rivalOpts)) rivalRetry(this.rivalState);
     }
+    // 예고된 대요괴(herald.js): 모든 단계에서 실제 intervalSec마다. 시험 판(?stress)과 미리보기(?debug=hub|evolve)에서는 세지 않는다.
+    const heraldOn = !this.stress && !this.preview;
+    if (heraldOn) this.stepHeraldWave(dt, view);
     this.hudTime -= dt;
     if (this.hudTime <= 0) {
       this.hudTime = CONFIG.render.hudInterval;
       this.hud.update(this.player, view);
       const gauge = pauseGauge(this.progress, this.level);
       this.hud.setGauge(gauge.current, gauge.target, '다음 성장까지');
+      this.hud.setHerald(heraldOn ? heraldView(this.heraldState) : { mode: 'off' });
+      this.hud.setResonance(resonanceView(this.resonance, this.playSec), DIR_NAME);
     }
   }
 }

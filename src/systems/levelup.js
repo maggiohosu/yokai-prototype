@@ -11,6 +11,7 @@ import { buildChoices, evolutionCost, evolve } from './evolution.js';
 //   nextPauseAt 다음 멈춤 기준. '이번 판에서 번 요력' 단위
 //   pauseFromEarned 이번 구간이 시작된 시점의 번 요력(게이지 계산용)
 //   lastPauseSec 마지막 멈춤의 실제 시각(초)
+//   rerollsLeft 카드 [다시 뽑기]를 쓸 수 있는 남은 횟수. 처음 쓸 때 채워진다(없으면 CONFIG.reroll.perRun이고, 판마다 새 run이라 판마다 다시 생긴다)
 const LU = () => CONFIG.levelUp;
 
 // 몸집 강화 n번째(0부터)의 요력 비용.
@@ -166,6 +167,34 @@ export function pickQuickCards(progress, run, forms, { rng = Math.random, count 
 
 function byKind(a, b) {
   return KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || a.id.localeCompare(b.id);
+}
+
+// ---- 다시 뽑기(계획서 '변경 이력 5', 근거 docs/research/slotbound.md 6절 R3) ----
+// 한 판에 CONFIG.reroll.perRun번. 요력은 들지 않고, 같은 조건(같은 잔액·같은 규칙)으로 카드를 새로 뽑는다.
+// 새 카드는 이 함수 안에서 모두 정해지고, 화면은 돌려받은 카드를 보여주기만 한다(원칙 5). 진화 카드의 등급·미지의 형태는 예전처럼 카드를 탭할 때 굴린다.
+export function rerollsLeft(run) {
+  const left = Number(run?.rerollsLeft ?? CONFIG.reroll.perRun);
+  return Number.isFinite(left) ? Math.max(0, Math.floor(left)) : 0;
+}
+
+const cardSet = (cards) => cards.map((card) => card.id).sort().join('|');
+
+// 남은 횟수가 없거나 뽑을 카드가 없으면 null. 아니면 { cards, left, changed }.
+// previous(지금 화면의 카드)와 다른 구성이 나오도록 최대 maxTries번 다시 뽑는다. 그래도 같은 구성뿐이면(고를 수 있는 카드가 그것뿐) changed가 false이고 횟수는 쓰지 않는다.
+export function rerollQuickCards(progress, run, forms, { rng = Math.random, previous = [], maxTries = 8 } = {}) {
+  const before = rerollsLeft(run);
+  if (before <= 0) return null;
+  const same = cardSet(previous);
+  let cards = [];
+  let changed = false;
+  for (let i = 0; i < Math.max(1, maxTries); i++) {
+    cards = pickQuickCards(progress, run, forms, { rng });
+    changed = cardSet(cards) !== same;
+    if (!cards.length || changed) break;
+  }
+  if (!cards.length) return null;
+  run.rerollsLeft = changed ? before - 1 : before;
+  return { cards, left: run.rerollsLeft, changed };
 }
 
 // 카드를 적용한다. 요력이 모자라거나 더 올릴 수 없으면 아무것도 바꾸지 않고 null.

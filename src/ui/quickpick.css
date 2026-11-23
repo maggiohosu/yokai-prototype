@@ -59,6 +59,22 @@
   color: var(--ochre); font: 600 13px/1.2 var(--sans);
 }
 
+/* 다시 뽑기: 카드 아래 한 줄. 요력은 들지 않는다. 누르는 칸은 44px 이상. */
+.qp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 12px; }
+.qp-reroll {
+  min-height: 44px; padding: 8px 16px;
+  border: 2px solid var(--paper); border-radius: 6px;
+  background: transparent; color: var(--paper);
+  font: 600 14px/1.2 var(--sans); cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.qp-reroll[hidden] { display: none; }
+.qp-reroll:hover { background: var(--ink-hover); }
+.qp-reroll:active { background: var(--ink); transform: translateY(1px); }
+.qp-reroll:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+.qp-reroll-note { min-height: 1.2em; color: var(--gold); font-size: 12px; line-height: 1.3; }
+.qp-reroll-note:empty { display: none; }
+
 /* 아주 좁은 화면: 세로로 한 장씩. 카드 높이는 그대로 96px 이상이다. */
 @media (max-width: 339px) {
   .qp-cards { grid-template-columns: minmax(0, 1fr); }
