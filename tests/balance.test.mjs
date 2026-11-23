@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { preyValue } from '../src/systems/rules.js';
 import { zoomFor } from '../src/game/camera.js';
+import { applyWorldScale } from '../src/systems/worldScale.js';
 import {
   ascension, createRivalState, growthDamping, growthGain, playerFeelMultiplier, playerSpeedMultiplier,
   easePace, rivalPlan, rivalRetry, rivalSizeCap, sizeSpeedMultiplier, stageZoomMultiplier, tempoMultiplier, upkeep,
@@ -411,15 +412,20 @@ test('stageZoomMultiplier: 모두 1(진화한 뒤의 화면은 처음 시작 화
 test('zoomFor(stage): 어느 단계에서든 같은 크기의 화면은 같고(처음 시작 화면), 1단계는 예전과 같고, 월드 밖이 보이지 않는다', () => {
   const [w, h] = [1280, 720];
   const size = CONFIG.player.startSize;
-  near(zoomFor(size, w, h, 1), zoomFor(size, w, h));
-  for (let stage = 2; stage <= 5; stage++) near(zoomFor(size, w, h, stage), zoomFor(size, w, h, 1));
-  near(zoomFor(size, w, h, 3) / zoomFor(size, w, h, 1), stageZoomMultiplier(3), 1e-9);
-  // 아주 커져도 화면의 긴 변이 월드보다 넓어지지 않는다(월드 밖이 보이지 않는다)
-  for (const stage of [1, 3, 5]) {
-    const z = zoomFor(1e9, w, h, stage);
-    assert.ok(w / z <= CONFIG.world.size + 1e-6, `stage ${stage}: 시야 ${w / z}`);
-  }
-  assert.equal(zoomFor(1e9, 740, 360, 1), CONFIG.camera.minZoom);
+  try {
+    applyWorldScale(5); // 맵이 화면보다 충분히 커서 하한이 기본 minZoom인 판(1단계 한 변 1000에서는 긴 변 / 1000이 하한이다)
+    near(zoomFor(size, w, h, 1), zoomFor(size, w, h));
+    for (let stage = 2; stage <= 5; stage++) near(zoomFor(size, w, h, stage), zoomFor(size, w, h, 1));
+    near(zoomFor(size, w, h, 3) / zoomFor(size, w, h, 1), stageZoomMultiplier(3), 1e-9);
+    // 아주 커져도 화면의 긴 변이 월드보다 넓어지지 않는다(월드 밖이 보이지 않는다)
+    for (const stage of [1, 3, 5]) {
+      applyWorldScale(stage);
+      const z = zoomFor(1e9, w, h, stage);
+      assert.ok(w / z <= CONFIG.world.size + 1e-6, `stage ${stage}: 시야 ${w / z}`);
+    }
+    applyWorldScale(5);
+    assert.equal(zoomFor(1e9, 740, 360, 1), CONFIG.camera.minZoom);
+  } finally { applyWorldScale(1); }
 });
 
 test('easePace: 진화로 단계 템포가 바뀌어도 곧바로 뛰지 않고 시정수(paceTauSec, 실제 40초)로 서서히 새 값에 다가간다', () => {

@@ -13,12 +13,13 @@ test.afterEach(() => {
   applyWorldScale(1); // 다른 시험에 월드 크기가 남지 않게 되돌린다
 });
 
-test('단계마다 맵이 커지고 적 인구는 216·345·480·648·852마리가 된다', () => {
+test('단계마다 맵이 커지고(1000·1500·2000·2600·3300) 적 인구는 모든 단계에서 480마리다', () => {
   const sizes = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).size);
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
-  assert.deepEqual(sizes, [2000, 3000, 4000, 5200, 6600]);
-  assert.deepEqual(pops, [216, 345, 480, 648, 852]);
-  for (let i = 1; i < 5; i++) assert.ok(sizes[i] > sizes[i - 1] && pops[i] > pops[i - 1]);
+  assert.deepEqual(sizes, [1000, 1500, 2000, 2600, 3300]);
+  assert.deepEqual(pops, [480, 480, 480, 480, 480]);
+  assert.equal(CONFIG.world.fixedPopulation, 480);
+  for (let i = 1; i < 5; i++) assert.ok(sizes[i] > sizes[i - 1]);
   assert.equal(stageWorldScale(1), 1);
 });
 
@@ -32,14 +33,14 @@ test('단계 범위 밖·이상한 입력은 1~5단계로 자른다', () => {
 
 test('applyWorldScale: CONFIG.world의 크기와 적 수를 바꾸고, 같은 단계로 여러 번 불러도 같고, 1단계로 돌아온다', () => {
   const r = applyWorldScale(4);
-  assert.equal(CONFIG.world.size, 5200);
-  assert.equal(CONFIG.world.population, 648);
-  assert.deepEqual(r, { scale: M.stageScale[4], size: 5200, population: CONFIG.world.population });
+  assert.equal(CONFIG.world.size, 2600);
+  assert.equal(CONFIG.world.population, 480);
+  assert.deepEqual(r, { scale: M.stageScale[4], size: 2600, population: CONFIG.world.population });
   applyWorldScale(4);
-  assert.equal(CONFIG.world.size, 5200);
+  assert.equal(CONFIG.world.size, 2600);
   applyWorldScale(1);
-  assert.equal(CONFIG.world.size, 2000);
-  assert.equal(CONFIG.world.population, 216);
+  assert.equal(CONFIG.world.size, 1000);
+  assert.equal(CONFIG.world.population, 480);
 });
 
 test('월드를 읽는 코드는 새 크기를 본다: 방위 경계는 새 중심, 액터는 새 월드 안에서만 움직인다', () => {
@@ -62,10 +63,10 @@ test('카메라 하한은 단계별 최소 배율과 화면 긴 변을 월드에
   const [w, h] = [1264, 625];
   applyWorldScale(1);
   const start = zoomFor(CONFIG.player.startSize, w, h, 1);
-  assert.equal(zoomFloor(w, h, 1), 1264 / 2000);
-  assert.equal(zoomFloor(844, 390, 1), 0.43);
-  assert.equal(zoomFor(200, 844, 390, 1), 0.43);
-  assert.equal(zoomFor(200, 1920, 1080, 1), 0.96);
+  assert.equal(zoomFloor(w, h, 1), 1264 / 1000);
+  assert.equal(zoomFloor(844, 390, 1), 844 / 1000);
+  assert.equal(zoomFor(200, 844, 390, 1), 844 / 1000);
+  assert.equal(zoomFor(200, 1920, 1080, 1), 1.92);
   for (const stage of [2, 3, 4, 5]) {
     const { size } = applyWorldScale(stage);
     assert.equal(zoomFloor(1920, 1080, stage), Math.max(CONFIG.camera.minZoom, 1920 / size));
@@ -77,7 +78,10 @@ test('844×390에서는 기존 시작 배율이고, 진화 연출 중 넓어진 
   applyWorldScale(1);
   const phoneZoom = zoomFor(CONFIG.player.startSize, 844, 390);
   assert.ok(Math.abs(phoneZoom - 1.4394859765554318) < 1e-9);
-  assert.equal(zoomFloor(844, 390), CONFIG.camera.minZoom);
+  assert.equal(zoomFloor(844, 390), 844 / 1000, '1단계는 맵 한 변 1000이라 긴 변이 월드에 담기는 배율이 기본 하한 0.43보다 크다');
+  applyWorldScale(5);
+  assert.equal(zoomFloor(844, 390), CONFIG.camera.minZoom, '5단계(3300)에서는 기본 하한 0.43이다');
+  applyWorldScale(1);
   const cam = {
     width: 1688, height: 780, zoom: 1,
     setSize(w, h) { this.width = w; this.height = h; return this; },
@@ -138,7 +142,7 @@ test('drawWorld: 바닥 무늬는 tileSprite 하나이고, 돌려준 destroy가 
   const view = drawWorld(scene);
   const tiles = scene.created.filter((o) => o.kind === 'tileSprite');
   assert.equal(tiles.length, 1, '타일 이미지 수백 개가 아니라 tileSprite 하나');
-  assert.deepEqual(tiles[0].args.slice(0, 4), [0, 0, 4000, 4000], '월드 크기만큼');
+  assert.deepEqual(tiles[0].args.slice(0, 4), [0, 0, 2000, 2000], '월드 크기만큼');
   assert.equal(scene.created.filter((o) => o.kind === 'text').length, 4, '방위 글자 4개');
   assert.ok(scene.created.length >= 7);
   assert.ok(scene.created.every((o) => !o.destroyed));
@@ -149,23 +153,23 @@ test('drawWorld: 바닥 무늬는 tileSprite 하나이고, 돌려준 destroy가 
   applyWorldScale(5);
   const again = drawWorld(scene);
   const last = scene.created.filter((o) => o.kind === 'tileSprite').at(-1);
-  assert.deepEqual(last.args.slice(0, 4), [0, 0, 6600, 6600]);
+  assert.deepEqual(last.args.slice(0, 4), [0, 0, 3300, 3300]);
   again.destroy();
 });
 
 test('growthTarget: 판 안에서는 맵이 커지기만 한다(정비 역진화로 낮은 단계가 되어도 줄이지 않는다)', () => {
   // 진화(커지는 경우): 새 월드를 돌려준다
-  assert.deepEqual(growthTarget(2, 2000), worldFor(2));
-  assert.equal(growthTarget(3, 3000).size, 4000);
-  assert.equal(growthTarget(5, 5200).size, 6600);
+  assert.deepEqual(growthTarget(2, 1000), worldFor(2));
+  assert.equal(growthTarget(3, 1500).size, 2000);
+  assert.equal(growthTarget(5, 2600).size, 3300);
   // 같은 크기·작아지는 경우(2→1단계 역진화, 5→4단계 등): null이라 월드를 건드리지 않는다
-  assert.equal(growthTarget(2, 3000), null);
-  assert.equal(growthTarget(1, 3000), null);
-  assert.equal(growthTarget(4, 6600), null);
+  assert.equal(growthTarget(2, 1500), null);
+  assert.equal(growthTarget(1, 1500), null);
+  assert.equal(growthTarget(4, 3300), null);
   // 확인만 하므로 CONFIG.world는 바뀌지 않는다(applyWorldScale을 먼저 부르면 바뀐다)
   applyWorldScale(2);
   growthTarget(5, CONFIG.world.size);
   growthTarget(1, CONFIG.world.size);
-  assert.equal(CONFIG.world.size, 3000);
+  assert.equal(CONFIG.world.size, 1500);
   assert.equal(CONFIG.world.population, worldFor(2).population);
 });

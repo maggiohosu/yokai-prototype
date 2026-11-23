@@ -5,12 +5,12 @@ import { CONFIG } from '../src/config.js';
 import { Enemy } from '../src/game/enemy.js';
 import { EnemyFire, canBeSpecial, rollSpecial, specialRule } from '../src/game/enemyFire.js';
 
-// 난이도 × 플레이어 단계별 [chance, cooldown]. 값은 docs/balance-v4.md 17절의 측정(시드 15판, 시드당 정상 템포 60초)으로 맞췄다.
+// 난이도 × 플레이어 단계별 [chance, cooldown]. 값은 docs/balance-v4.md 17절의 측정(시드 24판, 시드당 정상 템포 60초)으로 맞췄다.
 // 표를 바꾸면 아래 MEASURED의 chance·cooldown과 분당 발사 수도 다시 재서 함께 고쳐야 한다.
 const TABLE = {
-  easy: [[0.3, 3.6], [0.3, 7.9], [0.16, 10]],
-  normal: [[0.3, 3.4], [0.3, 5.9], [0.3, 8.2]],
-  hard: [[0.3, 3.6], [0.3, 3], [0.3, 3.9]],
+  easy: [[0.3, 3.1], [0.3, 8], [0.16, 10]],
+  normal: [[0.3, 3.4], [0.3, 6], [0.3, 7.9]],
+  hard: [[0.3, 3.5], [0.3, 3.2], [0.3, 4.2]],
 };
 
 test('플레이어 난이도와 단계가 특수 적 비율·발사 간격을 정한다', () => {
@@ -38,21 +38,21 @@ test('쿨타임이 1차 수단이다: 모든 칸의 쿨타임이 기본 2.2보�
   }
 });
 
-// 측정 기록: 같은 시드의 판을 (chance, cooldown)으로 다시 돌린 분당 화면 안 발사 수의 중앙값(15판).
+// 측정 기록: 같은 시드의 판을 (chance, cooldown)으로 다시 돌린 분당 화면 안 발사 수의 중앙값(24판).
 // old는 배포판 4182ded(12판), afterRule은 5단계 적만 쏘게 바꾼 직후(chance 0.3·쿨타임 2.2), perMin은 아래 표 값이다.
 // 상한 T3·T4는 이전 계획(노말 3단계 B/3, 4단계 2B/3, B = 4182ded 노말 3단계 분당 98발)의 쿨타임을 이지에 적용했을 때의 이지 3·4단계 빈도다.
 const MEASURED = {
   B: 98, T3: 27.8, T4: 83.7,
   cells: {
-    easy3: { chance: 0.3, cooldown: 3.6, old: 68, afterRule: 45.8, perMin: 28.0 },
-    easy4: { chance: 0.3, cooldown: 7.9, old: 127, afterRule: 98.4, perMin: 28.1 },
-    easy5: { chance: 0.16, cooldown: 10, old: 193, afterRule: 217.7, perMin: 28.3 },
-    normal3: { chance: 0.3, cooldown: 3.4, old: 98, afterRule: 41.2, perMin: 27.5 },
-    normal4: { chance: 0.3, cooldown: 5.9, old: 158, afterRule: 96.5, perMin: 28.1 },
-    normal5: { chance: 0.3, cooldown: 8.2, old: 233, afterRule: 184.1, perMin: 27.9 },
-    hard3: { chance: 0.3, cooldown: 3.6, old: 104, afterRule: 47.4, perMin: 27.1 },
-    hard4: { chance: 0.3, cooldown: 3, old: 190, afterRule: 119.2, perMin: 83.9 },
-    hard5: { chance: 0.3, cooldown: 3.9, old: 264, afterRule: 156, perMin: 83.9 },
+    easy3: { chance: 0.3, cooldown: 3.1, old: 68, afterRule: 41.4, perMin: 28.4 },
+    easy4: { chance: 0.3, cooldown: 8, old: 127, afterRule: 101.9, perMin: 27.7 },
+    easy5: { chance: 0.16, cooldown: 10, old: 193, afterRule: 224.4, perMin: 28.1 },
+    normal3: { chance: 0.3, cooldown: 3.4, old: 98, afterRule: 44.1, perMin: 27.6 },
+    normal4: { chance: 0.3, cooldown: 6, old: 158, afterRule: 97.1, perMin: 28.4 },
+    normal5: { chance: 0.3, cooldown: 7.9, old: 233, afterRule: 170.8, perMin: 27.1 },
+    hard3: { chance: 0.3, cooldown: 3.5, old: 104, afterRule: 47, perMin: 28.4 },
+    hard4: { chance: 0.3, cooldown: 3.2, old: 190, afterRule: 122.1, perMin: 85.5 },
+    hard5: { chance: 0.3, cooldown: 4.2, old: 264, afterRule: 168.2, perMin: 84.3 },
   },
 };
 

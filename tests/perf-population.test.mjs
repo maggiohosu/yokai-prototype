@@ -7,16 +7,17 @@ import { fakeEnemy, fakePlayer } from './fixtures-abilities.mjs';
 
 test.afterEach(() => applyWorldScale(1));
 
-test('적 수 3배: 단계별 인구가 예전(72·115·160·216·284)의 3배다', () => {
+test('적 수 고정: 모든 단계의 목표 인구가 480이고 보충 묶음은 4 × 3이다', () => {
   const pops = [1, 2, 3, 4, 5].map((stage) => worldFor(stage).population);
   assert.equal(CONFIG.world.populationMult, 3);
-  assert.deepEqual(pops, [72, 115, 160, 216, 284].map(base => base * 3));
+  assert.equal(CONFIG.world.refillBatch, 12);
+  assert.deepEqual(pops, [480, 480, 480, 480, 480]);
 });
 
 // 전체 프레임 예산은 Chrome 시험에서 검증한다. 이 보조 시험은 단일 AI·충돌 단계의 큰 회귀를 잡는다.
-test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) => {
-  const { size: world, population: n } = applyWorldScale(5);
-  assert.deepEqual([world, n], [6600, 852]);
+function stepCost(t, stage, expected) {
+  const { size: world, population: n } = applyWorldScale(stage);
+  assert.deepEqual([world, n], expected);
   let r = 12345;
   const rnd = () => (r = (r * 1664525 + 1013904223) % 4294967296) / 4294967296;
   const enemies = [];
@@ -39,4 +40,9 @@ test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) 
   }
   t.diagnostic(`월드 ${world}×${world}, 적 ${n}마리: 단계당 평균 ${(total / STEPS).toFixed(3)}ms, 최악 ${worst.toFixed(3)}ms`);
   assert.ok(total / STEPS <= 6, `단계당 평균 ${(total / STEPS).toFixed(3)}ms > 6ms`);
-});
+}
+
+test('성능: 5단계 인구에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 5, [3300, 480]));
+
+// 1단계는 한 변 1000에 480마리(10만 칸²당 48마리)라 가장 촘촘하다: 이웃 조회 후보가 가장 많은 판이다.
+test('성능: 1단계 인구(가장 촘촘한 판)에서 AI·충돌 한 단계 시간을 잰다', (t) => stepCost(t, 1, [1000, 480]));

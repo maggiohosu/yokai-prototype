@@ -17,19 +17,29 @@ export const CONFIG = {
   // 게임 템포 배율(사용자 지시 2026-11-22: 3배). 이동·적 AI·발사체·쿨타임·보충에 곱한다.
   tempo: 3.9, // 사용자 지시: 3 → 3.9(1.3배, 2026-11-23)
   world: {
-    size: 2000, // 사용자 지시(2026-11-23): 맵 면적 1/4, 적 수 그대로
-    population: 72,
-    populationMult: 3, // 단계별 기본 인구를 반올림한 뒤 곱한다. 72·115·160·216·284 → 216·345·480·648·852.
+    // 1단계 한 변. 단계마다 balance.map.stageScale을 곱해 1000·1500·2000·2600·3300이다.
+    // 사용자 지시(2026-11-23): 맵 면적을 두 번 1/4로(한 변 4000 → 2000 → 1000, 원래의 면적 1/16). 속도·크기는 그대로.
+    size: 1000,
+    // 적 목표 인구는 모든 단계에서 같다(사용자 지시 2026-11-23: 5단계 전부 480). population은 지금 판의 목표이고 applyWorldScale이 fixedPopulation으로 맞춘다.
+    fixedPopulation: 480,
+    population: 480,
+    populationMult: 3, // 보충 묶음(refillBatch = 4 × 이 값)에만 쓴다. 인구는 fixedPopulation이 정한다.
     regionShare: { east: 0.72, west: 0.72, south: 0.72, north: 0.72 },
     grid: 64,
     patternTile: 512,
     landscapeSeed: 731,
     boundaryWidth: 8,
+    // 판을 시작할 때 플레이어 둘레에 먼저 놓는 적 수(먹이는 innerRing, 위협은 outerRing 반지름 범위). 나머지는 맵 전체에 고르게 놓는다(모든 단계).
     initialNeighbors: 12,
     innerRing: [110, 370],
     outerRing: [460, 650],
+    // 시작 직후 나를 먹을 수 있는 적을 두지 않는 거리. 좁은 맵(1단계 한 변 1000)에서는 한 변 × safeStartShare를 넘지 않게 줄이고 두 고리도 같은 비율로 줄인다
+    // (안 줄이면 반지름 420 원이 맵의 절반을 덮어 위협이 바깥 띠에만 몰린다). 1000에서는 330이고 휴대폰 시작 화면(844 × 390)의 반대각선 323 밖이다.
     safeStart: 420,
+    safeStartShare: 0.33,
+    // 새 적이 다른 적과 띄울 간격(몸 반지름 합 + 이 값). 자리가 모자란 판(좁은 맵에 적 480마리)에서는 간격을 못 지켜도 가장 덜 붐비는 후보에 놓는다(crowdedSpawn).
     spawnGap: 22,
+    crowdedSpawn: true,
     offscreenMargin: 85,
     spawnAttempts: 90,
     refillInterval: 0.5 / 1.5, // 사용자 지시(2026-11-23): 적 리젠 1.5배 빠르게
@@ -63,13 +73,12 @@ export const CONFIG = {
       4: [0.03, 0.12, 0.3, 0.35, 0.2],
       5: [0.01, 0.06, 0.2, 0.35, 0.38],
     },
-    // 3단계 이후에는 적을 시작 장소 근처에 모아 만나는 적이 많아 보이게 한다(사용자 지시 2026-11-23: 적이 너무 적다 → 시작 장소 근처에 배치).
-    // 판을 시작할 때 initialNeighbors를 뺀 적의 share 비율을 플레이어(= 시작 장소) 둘레 startRing(월드 단위 반지름 범위)에 놓고, 나머지는 월드 전체에 퍼진다.
-    // 보충되는 적(과 맞수)도 플레이어 둘레 refillRing의 화면 밖에서 나온다. 1·2단계는 예전처럼 월드 전체에서 보충된다.
-    // preyInner: 시작 때 내가 먹을 수 있는 적(위협이 아닌 적)은 시작 화면 안쪽(반지름 preyInner)부터 놓는다(위협은 safeStart 밖).
-    // refillPad: 보충 고리는 화면 바깥에서 시작한다(안쪽 반지름 = max(refillRing[0], 화면 대각선 / 2 + refillPad)), 큰 화면에서도 고리가 화면에 가려지지 않는다.
-    // evolveCull: 판 안 진화로 3단계 이상이 될 때 플레이어보다 낮은 단계의 멀리 있는(refillRing[0] 밖) 적을 이 비율만큼 지운다(보충이 stageWeights대로 더 강한 적을 채운다).
-    nearSpawn: { fromStage: 3, share: 0.75, startRing: [260, 850], preyInner: 120, refillRing: [450, 1600], refillPad: 250, evolveCull: 0.85 },
+    // 3단계 이후 규칙(큰 적 비중·크기 상한은 fromStage부터). 적은 시작 때도 보충 때도 맵 전체에 고르게 놓는다(사용자 지시 2026-11-23: 3단계 이후 적이 너무 몰려 있다 →
+    // 시작 장소 근처에 75%를 모으던 배치를 없앴다. 시작 화면 안전 거리 safeStart와 화면 밖 보충 규칙은 그대로).
+    // evolveCull: 판 안 진화로 fromStage 이상이 될 때 플레이어보다 낮은 단계의 멀리 있는(keepRadius 밖) 적을 이 비율만큼 지운다(보충이 stageWeights대로 더 강한 적을 채운다).
+    lateStage: { fromStage: 3, evolveCull: 0.85, keepRadius: 450 },
+    // 맞수·대요괴는 플레이어 둘레 화면 밖 고리에서 먼저 찾고 자리가 없으면 맵 전체의 화면 밖에서 찾는다. 고리 안쪽 반지름 = max(ring[0], 화면 대각선 / 2 + pad), 바깥 = 안쪽 + (ring[1] - ring[0]).
+    bossRing: { ring: [450, 1600], pad: 250 },
     // 3단계 이후 적 크기 분포(작은/비슷한/큰 적 가중치, sizes의 weight 대신 쓴다). 5단계가 최고 단계라 적이 더 높은 단계가 될 수 없으므로
     // 나보다 큰 적(= 나를 먹을 수 있는 같은 단계 적)의 비율을 0.2 → 0.4로 올린다(사용자 지시 2026-11-23: 3단계 이후 적이 너무 약하다). 시작 직후는 earlyWeights가 먼저 적용된다.
     hardSizeWeights: [0.45, 0.15, 0.4],
@@ -102,9 +111,9 @@ export const CONFIG = {
     // 사용자 지시(2026-11-23): 이지·노말 3~5단계는 이지 3단계 수준(T3 = 분당 27.8발), 하드는 3단계 T3·4~5단계 이지 4단계 수준(T4 = 분당 83.7발)을 넘지 않는다.
     // 5단계 적만 쏘게 바꾼 뒤에도 상한을 넘는 모든 칸의 쿨타임을 늘려 상한에 맞췄다(값은 docs/balance-v4.md 17절의 측정). 쿨타임이 1차 수단이고, 상한 10으로도 모자란 이지 5단계만 chance를 낮췄다.
     byStage: {
-      easy: { 3: { chance: 0.3, cooldown: 3.6 }, 4: { chance: 0.3, cooldown: 7.9 }, 5: { chance: 0.16, cooldown: 10 } },
-      normal: { 3: { chance: 0.3, cooldown: 3.4 }, 4: { chance: 0.3, cooldown: 5.9 }, 5: { chance: 0.3, cooldown: 8.2 } },
-      hard: { 3: { chance: 0.3, cooldown: 3.6 }, 4: { chance: 0.3, cooldown: 3 }, 5: { chance: 0.3, cooldown: 3.9 } },
+      easy: { 3: { chance: 0.3, cooldown: 3.1 }, 4: { chance: 0.3, cooldown: 8 }, 5: { chance: 0.16, cooldown: 10 } },
+      normal: { 3: { chance: 0.3, cooldown: 3.4 }, 4: { chance: 0.3, cooldown: 6 }, 5: { chance: 0.3, cooldown: 7.9 } },
+      hard: { 3: { chance: 0.3, cooldown: 3.5 }, 4: { chance: 0.3, cooldown: 3.2 }, 5: { chance: 0.3, cooldown: 4.2 } },
     },
     // orbSpeed: 사용자 지시(2026-11-23) 두 번째 절반 130 → 65. 사거리·수명(= range × 1.5 / orbSpeed)은 거리 기준이라 비행 시간만 2배가 된다(약 4.4초 → 8.8초).
     // maxOrbs: 수명(8.77초)이 쿨타임보다 길면 한 적이 구슬 여러 발을 동시에 띄운다(쿨타임 3~3.9초에서 3발, 8.2초에서 2발, 10초에서 1발). 48 → 96이어야 쿨타임이 가장 짧은 칸(하드 4단계 3초)에서도 사거리 안 특수 적 32마리가 계속 쏠 수 있다(docs/plan.md 변경 이력 14).
@@ -188,10 +197,10 @@ export const CONFIG = {
     // (나는 실제로 빨라지고 적도 빨라지지만 서로 같이 빨라져서 화면에서는 느려 보인다). 진화한 뒤의 화면과 크기는 처음 시작 화면과 같다(view.stageZoom 모두 1).
     // carry/tauSec은 '나만' 진화 직전 크기 기준으로 느리게 시작하는 옛 규칙이다. 적이 같이 느려지지 않아 지금은 끈다(carry 0).
     evolveSlow: { carry: 0, tauSec: 45, paceTauSec: 40 },
-    // 월드 한 변은 기본 크기 × 단계 배율, 적 수는 round(기본 인구 × 단계 배율^populationExp) × populationMult.
-    // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고 새 땅을 보충으로 채운다.
-    // 2000 → 3000 → 4000 → 5200 → 6600. 적 수는 위 populationExp로 정한다(면적이 아니라 배율에 가깝게 늘려 CPU 부담을 줄인다).
-    map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 }, populationExp: 1.15 }, // 기본 인구 72·115·160·216·284, 배율 3에서 216·345·480·648·852.
+    // 월드 한 변은 world.size × 단계 배율이고, 적 수는 모든 단계에서 world.fixedPopulation(480)이다.
+    // 판을 그 단계로 열 때 적용하고, 판 안 진화에서는 옛 월드가 새 월드 한가운데에 놓이게 옮기고, 새 땅에는 옛 적의 일부를 화면 밖에서 옮겨 맵 전체에 고르게 퍼뜨린다(PlayScene.growWorld).
+    // 1000 → 1500 → 2000 → 2600 → 3300. 적 밀도는 1단계(10만 칸²당 48마리)가 가장 높고 5단계(4.4마리)가 가장 낮다.
+    map: { stageScale: { 1: 1, 2: 1.5, 3: 2, 4: 2.6, 5: 3.3 } },
     // 맞수 대요괴: 플레이어가 minStage 이상일 때 interval(**실제 초**, 조정자 결정 2026-11-23)마다 동시에 maxAlive마리 안에서 1마리 생성(같은 단계, 크기 = 플레이어 × sizeMin~sizeMax).
     // 시뮬레이션 시간 dtSim은 tempo × stageMult[플레이어 단계]로 나눠 실제 초로 바꿔 센다.
     // 맞수의 몸집 상한은 플레이어 × capVsPlayer(절대 상한은 enemy.growthCap.maxSize). 이름표는 label.

@@ -1,14 +1,14 @@
 import { CONFIG } from '../config.js';
 
-// 단계마다 맵이 커진다(사용자 지시 2026-11-23: "단계마다 맵을 크게"). 월드 크기·적 수를 단계별 배율(CONFIG.balance.map)로 정한다.
+// 단계마다 맵이 커진다(사용자 지시 2026-11-23: "단계마다 맵을 크게"). 월드 크기를 단계별 배율(CONFIG.balance.map)로 정하고, 적 수는 모든 단계에서 같다(CONFIG.world.fixedPopulation).
 // Phaser·DOM 의존이 없다. CONFIG.world를 직접 고쳐서(월드를 읽는 모든 코드는 호출할 때마다 읽는다) 크기와 적 수가 한곳에서 바뀐다.
 // 바닥 그림(drawWorld)과 카메라 경계는 PlayScene이 다시 만든다.
-let base = null; // 처음 부를 때의 기본 한 변과 배율 적용 전 인구(각각 독립적인 기준값)
+let base = null; // 처음 부를 때의 기본 한 변(배율을 곱하기 전의 기준값)
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 function baseWorld() {
-  base ??= { size: CONFIG.world.size, population: CONFIG.world.population };
+  base ??= { size: CONFIG.world.size };
   return base;
 }
 
@@ -19,14 +19,14 @@ export function stageWorldScale(stage) {
   return stageScale[clamp(Math.round(Number(stage)) || 1, 1, maxStage)];
 }
 
-// 그 단계의 월드 크기와 적 수. 적 수는 배율^populationExp에 비례한다(면적에 비례하면 너무 많아 선형에 가깝게 늘린다).
+// 그 단계의 월드 크기와 적 수. 적 수는 단계와 무관하게 fixedPopulation이다(맵이 작은 1단계가 가장 붐빈다).
 export function worldFor(stage) {
-  const { size, population } = baseWorld();
+  const { size } = baseWorld();
   const scale = stageWorldScale(stage);
   return {
     scale,
     size: Math.round(size * scale),
-    population: Math.round(population * scale ** CONFIG.balance.map.populationExp) * CONFIG.world.populationMult,
+    population: CONFIG.world.fixedPopulation,
   };
 }
 

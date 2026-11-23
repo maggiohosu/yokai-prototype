@@ -260,6 +260,9 @@ test('염주 분화는 같은 적에 화면 1초에 한 번만 발생한다', ()
 });
 
 test('염주와 합쳐진 호신주는 적 구슬을 막고 재생 뒤 다시 막는다', () => {
+  const size = CONFIG.world.size;
+  CONFIG.world.size = 4000; // 시험용 플레이어가 (1000, 1000)에 있다: 1단계 맵(한 변 1000) 밖이면 적 구슬이 경계에서 지워진다
+  try {
   const w = world('beads', 15, [], 'orbit');
   w.step();
   assert.equal(w.combat.pearls.length, 0);
@@ -277,6 +280,7 @@ test('염주와 합쳐진 호신주는 적 구슬을 막고 재생 뒤 다시 �
   w.scene.simTime = bead.regenAt;
   incoming();
   assert.equal(fire.orbs.length, 0);
+  } finally { CONFIG.world.size = size; }
 });
 
 test('단호로는 겹친 웅덩이마다 4마리의 첫 진입만 세고 지속 피해는 각각 준다', () => {

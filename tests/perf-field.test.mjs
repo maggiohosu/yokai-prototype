@@ -63,7 +63,7 @@ test('인구 시험의 생성 실패는 그 프레임만 중단하고 같은 배
   const stress = new PopulationStress(new URLSearchParams('stage=1'));
   let attempts = 0, ticks = 0, firstGrid;
   const scene = {
-    enemies: Array.from({ length: 213 }, (_, i) => ({ x: i, y: 100, size: 5 })),
+    enemies: Array.from({ length: 477 }, (_, i) => ({ x: i, y: 500, size: 5 })), // 새 적(y 100)과 떨어진 줄에 둔다
     cameras: { main: { worldView: {} } }, player: { size: 12 },
     spawn(_size, { grid }) {
       firstGrid ??= grid;
@@ -77,9 +77,9 @@ test('인구 시험의 생성 실패는 그 프레임만 중단하고 같은 배
     tick() { ticks++; },
   };
   stress.update(scene, 16);
-  assert.deepEqual([attempts, ticks, scene.enemies.length], [1, 1, 213]);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [1, 1, 477]);
   stress.update(scene, 16);
-  assert.deepEqual([attempts, ticks, scene.enemies.length], [4, 2, 216]);
+  assert.deepEqual([attempts, ticks, scene.enemies.length], [4, 2, 480]);
   assert.equal(queryGrid(firstGrid, 302, 100, 5).length, 3);
 });
 
@@ -321,7 +321,7 @@ if (process.env.YOKAI_PERF_URL) test('헤드리스 Chrome 여섯 장면의 인�
   const median = values => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
   const overBudget = [];
   try {
-    for (const [stage, worldSize, population] of [[1, 2000, 216], [3, 4000, 480], [5, 6600, 852]]) {
+    for (const [stage, worldSize, population] of [[1, 1000, 480], [3, 2000, 480], [5, 3300, 480]]) {
       for (const w of ['yeouiju', 'mirror']) {
         const results = [];
         for (let trial = 0; trial < rounds; trial++) {
@@ -464,7 +464,7 @@ if (process.env.YOKAI_PERF_URL) test('능력·무기 단독 시험은 4000 월�
         const { worldFor } = await import('./src/systems/worldScale.js');
         return [CONFIG.world.size, window.__stressReport.population, worldFor(1).size];
       });
-      assert.deepEqual(field, [4000, 72, 2000]);
+      assert.deepEqual(field, [4000, 72, 1000]);
     }
   } finally { await browser.close(); }
 });

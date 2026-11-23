@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CONFIG } from '../src/config.js';
 import { padLimits, padVector, inStickZone, smoothAxis, keyVector } from '../src/game/joystick.js';
 import { zoomFor } from '../src/game/camera.js';
+import { applyWorldScale } from '../src/systems/worldScale.js';
 
 const center = { x: 100, y: 300 };
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, a + ' ≈ ' + b);
@@ -85,6 +86,9 @@ test('keyVector: WASD·방향키, 대각선도 길이 1, 반대 키는 상쇄', 
 });
 
 // ---- 카메라 배율: 화면의 짧은 변 기준 ----
+// 맵이 화면보다 충분히 큰 판(5단계 3300)에서 잰다. 1단계 한 변 1000에서는 화면의 긴 변 / 1000이 하한이라 아래 식과 다르다(tests/world-scale.test.mjs).
+test.beforeEach(() => applyWorldScale(5));
+test.afterEach(() => applyWorldScale(1));
 test('zoomFor: 세로 화면은 짧은 변으로 배율을 정하고 긴 변을 월드 안에 담는다', () => {
   const cam = CONFIG.camera;
   const old = (size, width) =>

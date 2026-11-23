@@ -12,17 +12,18 @@ import { fakeEnemy, fakePlayer, makeWorld } from './fixtures-abilities.mjs';
 const STEPS = 300;
 const H = 0.0975 / 6;
 const LIMIT_MS = 0.25;
+const ENEMIES = 72;
 
 function lcg(seed) {
   let r = seed;
   return () => (r = (r * 1664525 + 1013904223) % 4294967296) / 4294967296;
 }
 
-// 플레이어 둘레(반지름 60~360)에 단계·크기가 섞인 적 72마리. 크기는 매 단계 되돌려 쓰러지지 않게 한다.
+// 플레이어 둘레(반지름 60~360)에 단계·크기가 섞인 적 72마리(능력·무기 단독 시험 판의 예전 조건이라 판 인구 480과 무관하게 고정한다). 크기는 매 단계 되돌려 쓰러지지 않게 한다.
 function stressWorld(formId) {
   const rnd = lcg(7);
   const enemies = [];
-  for (let i = 0; i < CONFIG.world.population; i++) {
+  for (let i = 0; i < ENEMIES; i++) {
     const a = rnd() * Math.PI * 2, d = 60 + rnd() * 300, size = 18 + rnd() * 60;
     const e = fakeEnemy(1000 + Math.cos(a) * d, 1000 + Math.sin(a) * d, size, { stage: 1 + Math.floor(rnd() * 5) });
     e.baseSize = size;

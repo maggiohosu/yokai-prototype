@@ -4,7 +4,7 @@ import { STEMS } from '../data/stems.js';
 import { abilityLabel } from '../systems/abilities.js';
 import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
-import { between, clamp, colorPicker, drawWorld, nearSpawnPlan, refillRingFor, regionAt, rollSpawnSize, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage, startStage } from '../game/world.js';
+import { bossRingFor, clamp, colorPicker, drawWorld, growMoveCount, offscreenPad, regionAt, rollSpawnSize, seedField, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
 import { drawStageMark, StageMarks } from '../art/marks.js';
@@ -354,7 +354,7 @@ export class PlayScene extends Phaser.Scene {
     this.fx.burst(p.x, p.y, 0xfff1b8, 30, 1.6);
   }
   // 진화로 단계가 오르면 맵이 커진다(balance.map). 옛 월드가 새 월드의 한가운데에 놓이도록 모두 옮기고(방위 경계와 방위반은 그대로 한가운데),
-  // 바닥을 다시 그리고, 새 땅은 보충으로 채운다. 날아가던 구슬·장판은 지운다.
+  // 바닥을 다시 그리고, 새 땅에는 옛 땅의 적 일부를 화면 밖에서 옮겨 온다(적 수가 모든 단계에서 같아 그냥 두면 새 땅이 텅 비고 옛 땅 한가운데만 붐빈다). 날아가던 구슬·장판은 지운다.
   growWorld() {
     const before = CONFIG.world.size;
     // 판 안에서는 맵을 줄이지 않는다(강화 유지 역진화 등): 적·플레이어가 경계 밖으로 밀리는 것을 막는다.
@@ -365,19 +365,56 @@ export class PlayScene extends Phaser.Scene {
       actor.sprite.x += shift;
       actor.sprite.y += shift;
     }
-    // 3단계 이상으로 오르면 멀리 흩어진 낮은 단계 적을 evolveCull 비율만큼 지운다: 보충이 플레이어 둘레에서 stageWeights대로 더 강한 적을 채운다.
+    // 3단계 이상으로 오르면 멀리 흩어진 낮은 단계 적을 evolveCull 비율만큼 지운다: 보충이 stageWeights대로 더 강한 적을 채운다.
     const myStage = this.progress.stage;
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       if (!shouldCullOnEvolve(this.enemies[i], this.player, myStage)) continue;
       this.enemies[i].destroy();
       this.enemies.splice(i, 1);
     }
+    this.spreadIntoNewLand(before, size, shift);
     this.combat.clearEffects();
     this.enemyFire.clear();
     this.worldView?.destroy();
     this.worldView = drawWorld(this);
     this.follow?.rebound?.();
     this.refillTime = 0;
+  }
+  // 맵이 커진 직후, 옛 땅(한 변 before, 새 땅 안 shift 오프셋)에 몰린 적의 (1 - 면적 비율)만큼을 새 땅(테두리)의 화면 밖으로 옮긴다.
+  // 지금 화면에 보이는 적(스프라이트가 걸친 것까지)과 맞수·대요괴는 그대로 두고, 도착 자리는 진화 연출로 물러서는 화면 밖에서 고른다. 자리가 모자라면 옮길 수 있는 만큼만 옮긴다.
+  spreadIntoNewLand(before, size, shift) {
+    const p = this.player;
+    // 카메라는 아직 옛 위치(플레이어·적만 shift 옮겨짐; follow·setBounds는 렌더 직전·뒤에 갱신): 시야를 shift만큼 보정한다.
+    const raw = cameraView(this.cameras.main, this.cameraBounds);
+    const cam = { left: raw.left + shift, right: raw.right + shift, top: raw.top + shift, bottom: raw.bottom + shift };
+    const widen = 1 / CONFIG.balance.view.evolveZoom; // 진화 연출로 카메라가 물러선다
+    const wide = {
+      left: p.x - (p.x - cam.left) * widen, right: p.x + (cam.right - p.x) * widen,
+      top: p.y - (p.y - cam.top) * widen, bottom: p.y + (cam.bottom - p.y) * widen,
+    };
+    const seen = (e) => {
+      const pad = offscreenPad(e.size, e.stage);
+      return e.x > cam.left - pad && e.x < cam.right + pad && e.y > cam.top - pad && e.y < cam.bottom + pad;
+    };
+    const inOld = (x, y) => x >= shift && x <= shift + before && y >= shift && y <= shift + before;
+    const movable = this.enemies.filter((e) => e.sprite.active && !e.rival && !e.herald && !seen(e));
+    let todo = growMoveCount(this.enemies.length, before, size);
+    for (let i = movable.length - 1; i > 0; i--) { // 무작위로 섞는다
+      const j = Math.floor(Math.random() * (i + 1));
+      [movable[i], movable[j]] = [movable[j], movable[i]];
+    }
+    // 격자는 한 번만 만든다. 옮긴 적은 새 칸에 다시 넣는다(옛 칸의 항목은 살아 있는 좌표를 읽어 새 자리가 아니면 반경 밖이라 무해하다).
+    // 옮길 적 자신의 옛 자리는 옛 땅 안이고 도착 자리는 새 땅이라, 자기 자신과 겹침을 따지는 것은 경계 근처에서 보수적으로 거를 뿐이다.
+    const grid = this.placementGrid = buildGrid(this.enemies, CONFIG.render.enemyCell, this.placementGrid);
+    for (const e of movable) {
+      if (todo <= 0) break;
+      const pos = spawnPoint(p, this.enemies, e.size, { view: wide, stage: e.stage, grid, region: (x, y) => !inOld(x, y) });
+      if (!pos) continue;
+      e.sprite.x = pos.x;
+      e.sprite.y = pos.y;
+      insertGrid(grid, e);
+      todo--;
+    }
   }
   // 판 안 카드·진화 화면·HUD 초상화는 도감과 같은 128px 썸네일(formId → dataURL 캐시)을 쓴다.
   formImage(formId) {
@@ -511,7 +548,7 @@ export class PlayScene extends Phaser.Scene {
     if (cue === 'warn') this.hud.heraldNotice('대요괴가 곧 나타납니다! 준비하세요', h.noticeSec, 'warn');
     if (!spawn) return;
     const opts = { view, stage: spawn.stage, rival: true, herald: true };
-    const ring = refillRingFor(view, CONFIG.enemy.nearSpawn.refillRing);
+    const ring = bossRingFor(view);
     if (!(this.spawn(spawn.size, { ...opts, near: ring }) || this.spawn(spawn.size, opts))) {
       heraldRetry(this.heraldState);
       return;
@@ -603,31 +640,14 @@ export class PlayScene extends Phaser.Scene {
     g.fillPath();
     g.strokePath();
   }
+  // 적을 모두 놓는다(world.seedField): 플레이어 둘레에 initialNeighbors마리, 나머지는 모든 단계에서 맵 전체에 고르게. 1·2단계는 처음에 모두 1단계, 3단계부터는 startStageWeights로 높은 단계가 나온다.
   seedEnemies() {
-    const { world, enemy } = CONFIG;
-    const playerStage = this.player.stage ?? 1;
-    // 3단계 이후에는 적을 시작 장소 근처에 모으고(nearSpawn) 처음부터 높은 단계가 나온다(startStageWeights). 1·2단계는 예전처럼 모두 1단계에서 시작한다.
-    const plan = nearSpawnPlan(playerStage, world.population);
     const grid = this.placementGrid = buildGrid(this.enemies, CONFIG.render.enemyCell, this.placementGrid);
-    for (let i = 0; i < world.population; i++) {
-      const roll = rollSpawnSize();
-      let stage = startStage(playerStage, Math.random, this.difficulty);
-      let size = spawnSize(this.player.size, playerStage, this.difficulty, stage, roll);
-      let near;
-      if (i < world.initialNeighbors) {
-        near = canEat({ size, stage }, this.player) ? world.outerRing : world.innerRing;
-        if (i === 0) {
-          stage = 1; // 첫 한 마리는 늘 가까이 있는 작은 먹이(1단계)다
-          const small = enemy.sizes[0];
-          size = this.player.size * between([small.min, small.max]);
-          near = [world.innerRing[0], world.innerRing[0]];
-        }
-      } else if (plan && i < world.initialNeighbors + plan.count) {
-        // 위협이 아닌 적(내가 먹을 수 있음)은 시작 화면 안쪽부터, 위협은 안전 거리(safeStart) 밖의 시작 고리에 놓는다.
-        near = canEat({ size, stage }, this.player) ? plan.startRing : plan.preyRing;
-      }
-      if (!this.spawn(size, { near, initial: true, stage, grid })) this.spawn(size, { initial: true, stage, grid });
-    }
+    const { left, right, top, bottom } = cameraView(this.cameras.main, this.cameraBounds);
+    seedField({
+      player: this.player, difficulty: this.difficulty, startView: { left, right, top, bottom },
+      spawn: (size, options) => this.spawn(size, { ...options, grid }),
+    });
   }
   // victory = { title, reward }: 승천처럼 이긴 판(결과 창에 승리 제목과 보상 요력). 없으면 평소 종료.
   // 하드: 판이 먹히거나 쓰러져 끝나면 목숨 1개를 쓴다(승천은 쓰지 않는다). 0이 되면 이 캐릭터(저장 슬롯)를 지운다.
@@ -1136,19 +1156,12 @@ export class PlayScene extends Phaser.Scene {
       const count = Math.min(this.refillPending, CONFIG.render.refillPerFrame, Math.max(0, CONFIG.world.population - this.enemies.length));
       this.refillPending = count ? this.refillPending - count : 0;
       const grid = this.placementGrid = buildGrid(this.enemies, CONFIG.render.enemyCell, this.placementGrid);
-      // 3단계 이후에는 보충되는 적도 플레이어 둘레(화면 밖)에서 나온다(nearSpawn). 1·2단계는 월드 전체.
-      const refill = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
-      const refillRing = refill ? refillRingFor(view, refill.refillRing) : null; // 고리 안쪽 반지름을 화면 크기에 맞춘다
+      // 보충되는 적은 모든 단계에서 맵 전체의 화면 밖에 고르게 놓는다(몰리지 않게). 화면 밖 자리가 모자라면 spawnPoint가 화면 밖 여유를 줄이고 가장 덜 붐비는 곳을 쓴다.
       for (let i = 0; i < count; i++) {
         const playerStage = this.player.stage ?? 1;
-        const roll = rollSpawnSize();
-        const trySpawn = (near) => {
-          const stage = spawnStage(playerStage, Math.random, this.difficulty);
-          const enemySize = spawnSize(size, playerStage, this.difficulty, stage, roll);
-          return this.spawn(enemySize, { view, near, stage, grid });
-        };
-        // 그래도 자리를 못 찾으면 월드 전체에서 한 번 더 찾는다(보충이 멈추지 않게).
-        if (!refillRing || !trySpawn(refillRing)) trySpawn();
+        const stage = spawnStage(playerStage, Math.random, this.difficulty);
+        const enemySize = spawnSize(size, playerStage, this.difficulty, stage, rollSpawnSize());
+        this.spawn(enemySize, { view, stage, grid });
       }
     }
     if (this.populationStress) this.populationStress.refillMs = performance.now() - refillStart;
@@ -1157,10 +1170,9 @@ export class PlayScene extends Phaser.Scene {
       this.rivalState.alive = this.enemies.reduce((n, e) => n + (e.rival && !e.herald && e.sprite.active ? 1 : 0), 0); // 대요괴는 맞수 수에 세지 않는다(따로 센다)
       // 맞수 간격은 실제 25초: 템포가 서서히 오르는 동안에도 어긋나지 않게 목표 템포로 환산한 시뮬레이션 시간을 준다.
       const plan = rivalPlan(this.player.stage ?? 1, this.player.size, this.rivalState, dt * CONFIG.tempo * this.paceTarget);
-      const nearPlan = nearSpawnPlan(this.player.stage ?? 1, CONFIG.world.population);
-      const ring = nearPlan ? refillRingFor(view, nearPlan.refillRing) : null;
+      const ring = bossRingFor(view);
       const rivalOpts = { view, stage: plan?.stage, rival: true };
-      if (plan && !(ring && this.spawn(plan.size, { ...rivalOpts, near: ring })) && !this.spawn(plan.size, rivalOpts)) rivalRetry(this.rivalState);
+      if (plan && !this.spawn(plan.size, { ...rivalOpts, near: ring }) && !this.spawn(plan.size, rivalOpts)) rivalRetry(this.rivalState);
     }
     // 예고된 대요괴(herald.js): 모든 단계에서 실제 intervalSec마다. 시험 판(?stress)과 미리보기(?debug=hub|evolve)에서는 세지 않는다.
     const heraldOn = !this.stress && !this.preview;
