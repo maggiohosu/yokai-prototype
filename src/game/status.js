@@ -101,6 +101,27 @@ export function tryKnock(e, now, vx, vy, pushSim, stunSim, gateSim) {
   return true;
 }
 
+// 대풍 방향 규칙(docs/design-weapons.md 3-1): 밀기 방향 (dx,dy)가 플레이어 쪽을 향하면(되돌아오는 칼·안쪽 메아리 등)
+// 플레이어 → 적 방향으로 바꾼다. 적을 내 쪽으로 밀어 오는 일을 막는다. 결과는 out.x, out.y(단위 벡터)에 쓰고 out을 돌려준다.
+export function outwardPush(dx, dy, ex, ey, px, py, out) {
+  const len = Math.hypot(dx, dy);
+  if (len > 0) {
+    dx /= len;
+    dy /= len;
+  }
+  if (dx * (px - ex) + dy * (py - ey) > 0 || len === 0) {
+    const ox = ex - px, oy = ey - py;
+    const m = Math.hypot(ox, oy);
+    if (m > 0) {
+      dx = ox / m;
+      dy = oy / m;
+    }
+  }
+  out.x = dx;
+  out.y = dy;
+  return out;
+}
+
 // 매혹: 이미 아군·유예이거나 면역이면 못 건다. durationSim 뒤 풀리고 graceSim 동안은 도망, 면역은 풀린 뒤 immuneSim.
 export function tryCharm(e, now, durationSim, graceSim, immuneSim) {
   if (isShielded(e, now) || now < e.charmImmuneUntil) return false;

@@ -20,6 +20,7 @@
     <link rel="stylesheet" href="./src/ui/quickpick.css" />
     <link rel="stylesheet" href="./src/ui/title.css" />
     <link rel="stylesheet" href="./src/ui/enhanceFx.css" />
+    <link rel="stylesheet" href="./src/ui/abilityInfo.css" />
   </head>
   <body>
     <header class="masthead">
@@ -37,7 +38,7 @@
     <main id="arena" aria-label="사방 들판 게임 화면">
       <div id="phaser-host"></div>
       <section class="hud" aria-label="플레이 현황">
-        <div class="identity">
+        <div class="identity" role="button" tabindex="0" aria-haspopup="dialog" aria-label="내 요괴 능력 안내 열기, 판이 멈춥니다">
           <span id="avatar-slot" class="portrait"></span>
           <div><small>1단계</small><strong>미물</strong></div>
         </div>
@@ -82,8 +83,7 @@
         <dialog id="specimen-dialog" aria-labelledby="specimen-name">
           <form method="dialog"><button type="submit" aria-label="큰 그림 닫기">닫기</button></form>
           <img alt="">
-          <div class="entry"><h3 id="specimen-name"></h3><small></small><p></p></div>
-        </dialog>
+          <div class="entry"><h3 id="specimen-name"></h3><small></small><p></p></div>        </dialog>
       </div>
     </main>
     <dialog id="rotate-guide" aria-labelledby="rotate-title" aria-describedby="rotate-help">

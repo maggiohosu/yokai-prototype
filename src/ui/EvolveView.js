@@ -9,6 +9,7 @@ import { buildChoices, canEvolve, devolve, evolve, evolutionCost, gradeOdds, unk
 import { abilityLabel } from '../systems/abilities.js';
 import { ALIGNMENT } from '../systems/tuning-evolution.js';
 import { OddsTable, button, disclosure, el, formImage, number, openOverlay } from './OddsTable.js';
+import { AbilityInfoView, withInfoButton } from './AbilityInfoView.js';
 
 // 도감은 다음 형태(next), 규칙 모듈은 이전 형태(from)로 같은 진화 경로를 표현한다.
 function evolutionForms(forms) {
@@ -82,8 +83,10 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
   const current = catalog.find(form => form.id === progress.formId);
   const { dialog, header, body, footer, close } = openOverlay('진화');
   let result = null;
+  let info = null;
   function finish() {
     if (!dialog.open) return;
+    info?.close();
     close();
     onDone?.(result);
   }
@@ -137,7 +140,11 @@ export function EvolveView(progress, forms, { onDone, getFormImage, save = saveP
         card.append(formImage(getFormImage, choice.form, 'F'), name);
         card.style.setProperty('--yk-tint', REGIONS[choice.form.dir]?.tint);
       }
-      cards.append(card);
+      cards.append(withInfoButton(card, choice.form?.name ?? '미지의 진화', () => {
+        info = AbilityInfoView(choice.form?.id, {
+          progress, getFormImage, mystery: choice.unknown, onClose: () => { info = null; },
+        });
+      }));
     }
     body.append(cards);
     // 미지는 ①②를 뺀 나머지 중에서 뽑는다(unknownPool). 확률도 그 후보 수로 적는다.

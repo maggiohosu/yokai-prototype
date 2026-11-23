@@ -1,5 +1,7 @@
 import { REGIONS } from '../config.js';
 import { FORMS } from '../data/forms.js';
+import { sortGallery } from '../data/gallery-sort.js';
+import { AbilityInfoView } from '../ui/AbilityInfoView.js';
 import { artUnitsFor, getFormPortrait, getFormThumbnail } from '../art/creature.js';
 import { loadProgress } from '../state/save.js';
 
@@ -49,7 +51,9 @@ export class GalleryScene extends Phaser.Scene {
     });
     function closePortrait() { portrait.removeAttribute('src'); }
     dialog.addEventListener('close', closePortrait);
+    let info = null; // 열려 있는 능력 안내 창
     this.events.once('shutdown', () => {
+      info?.close();
       thumbs.disconnect();
       dialog.close();
       closePortrait();
@@ -57,49 +61,63 @@ export class GalleryScene extends Phaser.Scene {
       cards.replaceChildren();
       filters.replaceChildren();
     });
-    for (const form of FORMS) {
+    for (const form of sortGallery(FORMS, discovered)) {
       const region = REGIONS[form.dir];
+      const locked = !discovered.has(form.id);
+      const name = locked ? '???' : form.name;
       const card = document.createElement('article');
       card.className = 'card';
       card.dataset.dir = form.dir;
       card.dataset.form = form.id;
       card.dataset.stage = form.stage;
-      card.classList.toggle('undiscovered', !discovered.has(form.id));
+      card.classList.toggle('undiscovered', locked);
       card.style.setProperty('--tint', region?.tint ?? '#dce5c5');
       card.style.setProperty('--region-ink', region?.ink ?? '#657441');
       const specimen = document.createElement('button');
       specimen.type = 'button';
       specimen.className = 'specimen';
       specimen.style.setProperty('--art-ratio', artUnitsFor(form.stage) / artUnitsFor(5));
-      specimen.setAttribute('aria-label', form.name + (discovered.has(form.id) ? ' 크게 보기' : ' 미발견 실루엣 크게 보기'));
+      specimen.setAttribute('aria-label', (locked ? '미발견 요괴' : name) + ' 능력 안내 보기');
       specimen.setAttribute('aria-haspopup', 'dialog');
       const img = document.createElement('img');
-      img.alt = form.name;
+      img.alt = locked ? '미발견 요괴 실루엣' : name;
       specimen.append(img);
       const entry = document.createElement('div');
       entry.className = 'entry';
       const meta = document.createElement('small');
       meta.textContent = [form.stage + '단계', region?.name, form.stage >= 3 && branchName[form.branch],
-        !discovered.has(form.id) && '미발견']
+        locked && '미발견']
         .filter(Boolean)
         .join(' · ');
       const title = document.createElement('h3');
-      title.textContent = form.name;
+      title.textContent = name;
       const desc = document.createElement('p');
-      desc.textContent = form.desc;
+      desc.textContent = locked ? '능력 ???' : form.desc;
       entry.append(meta, title, desc);
       card.append(specimen, entry);
       cards.append(card);
       thumbs.observe(card);
-      specimen.addEventListener('click', () => {
-        dialog.classList.toggle('undiscovered', !discovered.has(form.id));
+      // 옛 큰 그림 창. 카드를 탭하면 능력 안내가 열리고, 그 창의 [그림 크게 보기]에서 이 창으로 온다.
+      const showSpecimen = () => {
+        dialog.classList.toggle('undiscovered', locked);
         dialog.style.setProperty('--tint', region?.tint ?? '#dce5c5');
-        dialog.querySelector('h3').textContent = form.name;
+        dialog.querySelector('h3').textContent = name;
         dialog.querySelector('small').textContent = meta.textContent;
-        dialog.querySelector('p').textContent = form.desc;
-        portrait.alt = form.name;
+        dialog.querySelector('p').textContent = desc.textContent;
+        portrait.alt = img.alt;
         portrait.src = getFormPortrait(this, form.id);
         dialog.showModal();
+      };
+      card.addEventListener('click', () => {
+        specimen.focus({ preventScroll: true });
+        info?.close();
+        info = AbilityInfoView(form.id, {
+          progress,
+          locked,
+          getFormImage: (id) => getFormThumbnail(this, id),
+          onZoom: showSpecimen,
+          onClose: () => { info = null; },
+        });
       });
     }
     const filterBy = (dir) => {

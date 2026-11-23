@@ -42,6 +42,10 @@ export function followPlayer(scene, player) {
     const blend = 1 - Math.exp(-rate * dt);
     cam.setZoom(cam.zoom + (target() - cam.zoom) * blend);
   };
+  update.recenter = ({ width, height }) => {
+    cam.setSize(width, height);
+    cam.setZoom(target()).centerOn(player.x, player.y);
+  };
   // 월드 크기가 바뀐 뒤(진화로 맵이 커진 뒤)에 부른다: 카메라가 월드 밖으로 나가지 않게 경계를 다시 잡는다.
   update.rebound = () => cam.setBounds(0, 0, CONFIG.world.size, CONFIG.world.size);
   // 진화하는 순간(크기·단계가 바뀐 직후)에 부른다: 직전 배율 × factor까지 물러서고(월드 밖이 보이지 않는 한계까지만) evolveHoldSec 동안 머문 뒤 시작 화면 배율로 돌아온다.

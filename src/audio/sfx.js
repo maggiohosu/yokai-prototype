@@ -123,7 +123,7 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
   }
 
   // 아직 불러오지 못했으면 이번 재생은 건너뛴다(늦게 울리는 소리는 결과와 어긋난다).
-  function play(name, { volume: gain = 1, rate = 1, waitMs = 120 } = {}) {
+  function play(name, { volume: gain = 1, rate = 1, waitMs = 120, loop = false } = {}) {
     if (!ctx || volume <= 0) {
       preload([name]);
       return SILENT;
@@ -138,6 +138,7 @@ export function createSfx({ base = BASE, fetchImpl, AudioCtor, target, canPlayTy
         source = ctx.createBufferSource();
         source.buffer = buffer;
         source.playbackRate.value = rate;
+        source.loop = !!loop;
         const level = ctx.createGain();
         level.gain.value = clampVolume(gain);
         source.connect(level);

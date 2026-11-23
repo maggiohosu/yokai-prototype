@@ -14,6 +14,8 @@ import { Joystick } from '../game/joystick.js';
 import { followPlayer } from '../game/camera.js';
 import { Hud } from '../game/hud.js';
 import { Combat } from '../game/combat.js';
+import { WEAPON_IDS } from '../data/weapons.js';
+import { seedWeaponStress } from '../game/weaponFire.js';
 import { FireButton } from '../game/fireButton.js';
 import { BoosterButton, boosterMult, createBooster, stepBoosterSim } from '../game/booster.js';
 import { MaintButton } from '../game/maintButton.js';
@@ -26,7 +28,9 @@ import { buildGrid, findMeals } from '../game/enemyAI.js';
 import { EnemyFire, drawSpecialMark, isFatal } from '../game/enemyFire.js';
 import { Fx } from '../game/fx.js';
 import { absorbHit, createVitality, stepVitality, vitalityVisible } from '../systems/vitality.js';
+import { sfx } from '../audio/sfx.js';
 import { HubView } from '../ui/HubView.js';
+import { AbilityInfoView } from '../ui/AbilityInfoView.js';
 import { EvolveView, gradeChanceText } from '../ui/EvolveView.js';
 import { QuickPick } from '../ui/QuickPick.js';
 import { QUICK_STAT_NAMES } from '../systems/levelup.js';
@@ -51,13 +55,13 @@ export class PlayScene extends Phaser.Scene {
     // ?debug=lv: 저장하지 않는 시험 판. 게임은 그대로 돌고 요력만 지급해 빠른 성장 선택을 열어 본다.
     // ?stress=abilities: 저장하지 않는 시험 판. 능력 16종을 차례로 한 번씩 발동시키고 프레임 시간을 잰다(setupStress).
     const stressMode = new URLSearchParams(location.search).get('stress');
-    const sandbox = preview || debug === 'lv' || stressMode === 'abilities';
+    const sandbox = preview || debug === 'lv' || stressMode === 'abilities' || stressMode === 'weapons';
     const progress = data.progress ?? this.registry.get('progress') ?? loadProgress();
     this.progress = sandbox ? structuredClone(progress) : progress;
     this.saveProgress = sandbox ? () => true : saveProgress;
     if (!sandbox) this.registry.set('progress', this.progress);
     this.simTime = 0; // 시뮬레이션 시계(초). 상태이상 타이머가 이 시계로 돈다 — 판 안 카드로 멈춘 동안에는 서 있다.
-    this.stress = stressMode === 'abilities' ? this.setupStress(new URLSearchParams(location.search)) : null;
+    this.stress = stressMode === 'abilities' || stressMode === 'weapons' ? this.setupStress(new URLSearchParams(location.search)) : null;
     // 단계마다 맵이 커진다(balance.map): 판을 그 단계의 월드 크기·적 수로 열고 바닥을 그린다. 시험 판(?stress)은 1단계 월드로 고정한다.
     applyWorldScale(this.stress ? 1 : this.progress.stage);
     this.worldView = drawWorld(this);
@@ -75,8 +79,13 @@ export class PlayScene extends Phaser.Scene {
     this.paused = false;
     this.preview = preview;
     this.run = attachSession(this, this.progress, Math.random, this.saveProgress);
+    sfx.preload(['boost-start', 'boost-loop', 'eat', 'player-hurt', 'orb-fire', 'orb-hit',
+      'shot-fan', 'shot-sword', 'shot-gourd', 'shot-beads', 'shot-bell', 'shot-seal', 'shot-mirror']);
+    this.boostVoice = null;
+    this.events.once('shutdown', () => this.stopBoostSfx());
     const onEatFx = (meal) => {
       const p = this.player;
+      if (!meal.byAlly) sfx.play('eat', { volume: 0.8 });
       const gain = mealYoryeok(meal);
       if (meal.byAlly) {
         // 매혹한 요괴가 먹은 요력(요력만 내 것이 된다).
@@ -147,8 +156,9 @@ export class PlayScene extends Phaser.Scene {
     this.maintenance = null; // 정비 화면이 열려 있는 동안 { before }
     this.maintButton = new MaintButton(arena, () => this.openMaintenance());
     this.follow = followPlayer(this, this.player);
-    this.hud = new Hud();
-    const avatar = document.getElementById('avatar');
+    this.scale.on('resize', this.follow.recenter);
+    this.events.once('shutdown', () => this.scale.off('resize', this.follow.recenter));
+    this.hud = new Hud(() => this.openAbilityInfo());
     this.refreshIdentity();
     document.getElementById('result').hidden = true;
     this.makePlayerMarker();
@@ -156,6 +166,7 @@ export class PlayScene extends Phaser.Scene {
     this.hud.update(this.player, this.cameras.main.worldView);
     this.events.once('shutdown', this.releaseControls, this);
     this.events.once('shutdown', () => this.quickPick?.close());
+    this.events.once('shutdown', () => this.abilityInfo?.close());
     this.events.once('shutdown', () => this.hud?.dispose());
     document.getElementById('loading').hidden = true;
     // 확인용: ?debug=hub / ?debug=evolve (저장하지 않는 시험용 요력 지급), ?debug=lv는 판 중에 요력을 지급한다.
@@ -187,6 +198,7 @@ export class PlayScene extends Phaser.Scene {
     this.joystick?.suspend();
     this.boosterButton?.suspend();
     this.quickPick = QuickPick(cards, {
+      progress: this.progress,
       yoryeok: this.progress.yoryeok,
       getFormImage: (id) => this.formImage(id),
       onPick: (card) => this.pickCard(card),
@@ -307,16 +319,36 @@ export class PlayScene extends Phaser.Scene {
       onEvolve: () => openEvolve(),
     });
   }
-  // [정비] 버튼: 판을 멈추고(성장 카드와 같은 방식: 스틱·부스터 입력을 놓고 발사 요청을 비운다) 정비 화면을 판 중 모드로 연다.
-  // 닫으면 같은 판이 이어진다(closeMaintenance). 판이 끝났거나 성장 카드가 열려 있으면 열지 않는다.
-  openMaintenance() {
-    if (this.ended || this.paused || this.maintenance) return;
-    this.maintenance = { before: snapshotForMaintenance(this.progress) };
+  pauseForDialog() {
     this.paused = true;
     this.fireRequested = false;
     this.joystick?.suspend();
     this.boosterButton?.suspend();
     this.maintButton?.setDisabled(true);
+  }
+  resumeAfterDialog() {
+    this.fireRequested = false;
+    this.paused = false;
+    this.joystick?.resume();
+    this.boosterButton?.resume();
+    this.maintButton?.setDisabled(false);
+  }
+  openAbilityInfo() {
+    if (this.ended || this.paused) return;
+    this.abilityInfo = AbilityInfoView(this.progress.formId, {
+      progress: this.progress,
+      getFormImage: id => this.formImage(id),
+      onClose: () => {
+        this.abilityInfo = null;
+        this.resumeAfterDialog();
+      },
+    });
+    if (this.abilityInfo) this.pauseForDialog();
+  }
+  openMaintenance() {
+    if (this.ended || this.paused || this.maintenance) return;
+    this.maintenance = { before: snapshotForMaintenance(this.progress) };
+    this.pauseForDialog();
     this.showMaintenanceHub();
   }
   // 진화 화면에서 돌아올 때도 이 화면으로 돌아온다.
@@ -338,11 +370,7 @@ export class PlayScene extends Phaser.Scene {
     this.refreshIdentity();
     this.saveProgress(this.progress);
     this.maintenance = null;
-    this.fireRequested = false;
-    this.paused = false;
-    this.joystick?.resume();
-    this.boosterButton?.resume();
-    this.maintButton?.setDisabled(false);
+    this.resumeAfterDialog();
   }
   releaseControls() {
     this.joystick?.destroy();
@@ -546,7 +574,12 @@ export class PlayScene extends Phaser.Scene {
     this.endRun({ name: title, message: '크기 ' + Number(this.player.size.toFixed(1)) + '에 닿아 ' + title + '했습니다.' }, { title, reward });
   }
   // 특수 적 구슬에 맞으면 크기(=체력)가 줄고, 일정 크기 아래면 판 종료.
+  stopBoostSfx() {
+    this.boostVoice?.stop();
+    this.boostVoice = null;
+  }
   applyEnemyHits(hits) {
+    if (hits.length) sfx.play('player-hurt', { volume: 0.9 });
     for (const hit of hits) {
       // 생명력 게이지가 먼저 막고, 모자란 비율만큼만 크기가 줄어든다.
       const { damageRatio } = absorbHit(this.vitality);
@@ -654,22 +687,25 @@ export class PlayScene extends Phaser.Scene {
   // ---- 시험 판: ?stress=abilities[&only=능력키][&lv=0~15][&ms=구간 길이(밀리초)] ----
   // 줄기 16개의 5단계 형태로 차례로 바꿔 가며(여의주 +lv, 속도 곡선 최대 = 템포 3.9 × 1.5) 적 72마리를 플레이어 둘레에 유지하고
   // 자동으로 쏜다. 능력이 실제로 발동한 횟수와 프레임 시간을 window.__stressReport와 콘솔(STRESS_REPORT)에 남긴다. 저장하지 않는다.
+  // ?stress=weapons&w=<무기id>[&ab=<능력키|all>][&lv=0~15][&ms=...]: 같은 판을 그 무기(+lv, 기본 +15)로 돌린다. 능력은 그 무기에서 가장 무거운 조합이 기본이고(설계 6절), ab=all이면 16종을 차례로 돌린다.
   setupStress(params) {
-    const only = params.get('only');
+    const weapon = params.get('stress') === 'weapons' ? (WEAPON_IDS.includes(params.get('w')) ? params.get('w') : 'yeouiju') : null;
+    const heavy = { yeouiju: 'split', fan: 'split', mirror: 'chain', sword: 'explode', beads: 'orbit', gourd: 'vortex', bell: 'split', seal: 'chain' };
+    const only = weapon ? (params.get('ab') ?? params.get('only') ?? heavy[weapon]) : params.get('only');
     const level = clamp(Math.trunc(Number(params.get('lv') ?? 15)) || 0, 0, 15);
     const ms = Math.max(300, Number(params.get('ms') ?? 2500) || 2500);
     const phases = [];
     for (const stem of STEMS) {
-      if (only && stem.ability !== only) continue;
+      if (only && only !== 'all' && stem.ability !== only) continue;
       const form = FORMS.find((f) => f.stem === stem.id && f.stage === 5 && f.entry) ?? FORMS.find((f) => f.stem === stem.id && f.stage === 5);
       if (form) phases.push({ ability: stem.ability, stem: stem.id, form });
     }
     const first = phases[0]?.form ?? FORM_BY_ID.mimul;
-    Object.assign(this.progress, { formId: first.id, stage: first.stage, grade: 'C', treasure: { level } });
+    Object.assign(this.progress, { formId: first.id, stage: first.stage, grade: 'C', treasure: weapon ? { kind: weapon, level } : { level } });
     this.progress.enh = { ...this.progress.enh, speed: 10 };
     window.__stressReport = { done: false };
     return {
-      phases, index: -1, level, ms, phaseStart: 0, angle: 0, last: 0, done: false, allyMeals: 0, simMs: 0,
+      weapon, phases, index: -1, level, ms, phaseStart: 0, angle: 0, last: 0, done: false, allyMeals: 0, simMs: 0,
       base: null, frame: [], upd: [], sim: [], steps: [], orbs: [], perPhase: [],
     };
   }
@@ -725,10 +761,15 @@ export class PlayScene extends Phaser.Scene {
     Object.assign(this.progress, { formId: form.id, stage: form.stage });
     this.applyForm();
     this.recalcPace();
+    if (st.weapon) {
+      this.stressFill();
+      seedWeaponStress(this.combat);
+    }
     st.phaseStart = now;
-    st.base = { ...this.combat.counters };
+    st.base = { ...this.combat.counters, hits: this.combat.wc.hits };
     st.last = 0;
     for (const list of [st.frame, st.upd, st.sim, st.steps, st.orbs]) list.length = 0;
+    if (st.weapon) st.orbs.push(this.combat.orbs.length);
   }
   recordStress(t0, t1) {
     const st = this.stress;
@@ -750,8 +791,9 @@ export class PlayScene extends Phaser.Scene {
       return { avg: +avg.toFixed(2), p95: +sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))].toFixed(2), max: +sorted.at(-1).toFixed(2) };
     };
     st.perPhase.push({
-      ability, form: form.id, stage: form.stage, level: st.level,
+      ability, form: form.id, stage: form.stage, level: st.level, weapon: this.combat.weaponKind,
       triggers: this.combat.counters[ability] - st.base[ability],
+      weaponHits: this.combat.wc.hits - st.base.hits,
       frames: st.upd.length,
       enemies: this.enemies.length,
       orbsMax: st.orbs.reduce((m, v) => Math.max(m, v), 0),
@@ -764,7 +806,7 @@ export class PlayScene extends Phaser.Scene {
     st.done = true;
     this.fireRequested = false;
     const report = {
-      done: true,
+      done: true, weapon: st.weapon,
       level: st.level, tempo: CONFIG.tempo, pace: +this.pace.toFixed(3), tempoTimesPace: +(CONFIG.tempo * this.pace).toFixed(3),
       population: CONFIG.world.population, allyMeals: st.allyMeals,
       abilities: st.perPhase,
@@ -825,10 +867,14 @@ export class PlayScene extends Phaser.Scene {
     // 시험 판은 프레임이 느려도 같은 계산 단계 수(60fps 기준)로 돌려서 수치를 비교할 수 있게 한다.
     const dt = stress ? 1 / 60 : Math.min(delta / 1000, CONFIG.render.maxDelta);
     if (this.ended) {
+      this.stopBoostSfx();
       this.fx.update(dt, null, this.progress.grade);
       return;
     }
-    if (this.paused) return;
+    if (this.paused) {
+      if (this.boostVoice) this.stopBoostSfx();
+      return;
+    }
     if (!this.preview && !stress && shouldPause(this.progress, this.level, performance.now() / 1000)) {
       this.openQuickPick();
       if (this.paused) return;
@@ -842,8 +888,17 @@ export class PlayScene extends Phaser.Scene {
     const simStart = stress ? performance.now() : 0;
     this.simulate(sim, direction);
     if (stress) stress.simMs = performance.now() - simStart;
-    if (this.ended) return;
+    if (this.ended) {
+      this.stopBoostSfx();
+      return;
+    }
     const boosting = this.boostSec > 0;
+    if (boosting && !this.boostVoice) {
+      sfx.play('boost-start', { volume: 0.7 });
+      this.boostVoice = sfx.play('boost-loop', { volume: 0.5, loop: true });
+    } else if (!boosting && this.boostVoice) {
+      this.stopBoostSfx();
+    }
     this.boosterButton?.update(this.booster, CONFIG.booster.maxSec, boosting);
     this.boostTrail(dt, direction, boosting);
     for (const enemy of this.enemies) {
@@ -865,7 +920,7 @@ export class PlayScene extends Phaser.Scene {
       if (enemy.herald) this.drawHeraldMark(fg, enemy, now);
       drawStageMark(fg, enemy, myStage, now);
     }
-    this.fireButton.update(1 - this.combat.cooldown / CONFIG.combat.cooldown);
+    this.fireButton.update(1 - Math.min(1, this.combat.cooldown / this.combat.cooldownMax)); // 무기마다 쿨타임이 다르다(cooldownMax)
     this.follow(dt);
     const { x, y, size } = this.player;
     this.marker.setPosition(x, y + size * 0.64).setScale(size / 46);

@@ -11,6 +11,7 @@
 import { CONFIG } from '../config.js';
 import { QUICK_STAT_NAMES, quickStatNote } from '../systems/levelup.js';
 import { abilityLabel } from '../systems/abilities.js';
+import { AbilityInfoView, withInfoButton } from './AbilityInfoView.js';
 
 const KIND_LABEL = { evolve: '진화', body: '몸집', ability: '능력 +1' };
 const numberFormat = new Intl.NumberFormat('ko-KR', { maximumFractionDigits: 3 });
@@ -76,7 +77,7 @@ function textOf(card) {
 }
 
 export function QuickPick(cards, {
-  yoryeok, getFormImage, onPick, ignoreMs = CONFIG.levelUp.quickIgnoreMs, now = () => performance.now(),
+  yoryeok, progress, getFormImage, onPick, ignoreMs = CONFIG.levelUp.quickIgnoreMs, now = () => performance.now(),
   rerollsLeft = 0, onReroll,
 } = {}) {
   ensureStyles();
@@ -109,9 +110,10 @@ export function QuickPick(cards, {
   layer.append(panel);
 
   let done = false;
+  let info = null;
   const buttons = [];
   const onKey = (event) => {
-    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (info || event.ctrlKey || event.metaKey || event.altKey) return;
     if (event.code === 'KeyR' && canReroll) {
       event.preventDefault();
       event.stopPropagation();
@@ -129,6 +131,7 @@ export function QuickPick(cards, {
   function close() {
     if (done) return;
     done = true;
+    info?.close();
     window.removeEventListener('keydown', onKey, true);
     layer.remove();
   }
@@ -199,7 +202,16 @@ export function QuickPick(cards, {
         if (event.detail === 0) pick(card);
       });
       buttons.push(button);
-      list.append(button);
+      if (card.kind === 'evolve') {
+        list.append(withInfoButton(button, card.form?.name ?? '미지의 진화', () => {
+          if (done || info || now() - openedAt < ignoreMs) return;
+          info = AbilityInfoView(card.form?.id, {
+            progress, getFormImage, mystery: card.unknown, onClose: () => { info = null; },
+          });
+        }));
+      } else {
+        list.append(button);
+      }
     });
     buttons[0]?.focus({ preventScroll: true });
   }

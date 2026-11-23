@@ -2,11 +2,24 @@ const byId = (id) => document.getElementById(id);
 const number = (size) => Number(size.toFixed(1)).toString();
 
 export class Hud {
-  constructor() {
+  constructor(onPortrait) {
     const portrait = new Image();
     portrait.id = 'avatar';
     portrait.alt = '';
     byId('avatar-slot').replaceChildren(portrait);
+    if (onPortrait) {
+      const identity = portrait.closest('.identity');
+      this.portraitEvents = new AbortController();
+      const options = { signal: this.portraitEvents.signal };
+      identity.addEventListener('pointerdown', event => event.stopPropagation(), options);
+      identity.addEventListener('click', onPortrait, options);
+      identity.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) onPortrait();
+      }, options);
+    }
     this.size = byId('size');
     this.fieldSize = byId('field-size');
     this.eaten = byId('eaten');
@@ -90,6 +103,7 @@ export class Hud {
   }
   // 판이 끝나거나 다시 시작될 때: 남은 타이머를 치우고 안내·연출을 끈다(같은 요소를 다음 판 HUD가 이어서 쓴다).
   dispose() {
+    this.portraitEvents?.abort();
     clearTimeout(this.noticeTimer);
     clearTimeout(this.resonanceTimer);
     if (this.heraldNoticeEl) this.heraldNoticeEl.hidden = true;

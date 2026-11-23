@@ -1,24 +1,26 @@
 import { CONFIG } from './config.js';
 import { pixelRatio } from './game/camera.js';
 
-const gallery = new URLSearchParams(location.search).get('gallery') === '1';
-const portrait = window.matchMedia('(orientation: portrait)');
-const rotateGuide = document.getElementById('rotate-guide');
-let fieldGame;
+let portrait;
+let rotateGuide;
+let game;
 let sleptForRotation = false;
+let viewportFrame = 0;
+let settleTimer;
 
 function syncOrientation() {
   if (portrait.matches) {
     if (!rotateGuide.open) rotateGuide.showModal();
-    if (fieldGame?.loop.running) {
-      fieldGame.loop.sleep();
+    if (game?.loop.running) {
+      game.loop.sleep();
       sleptForRotation = true;
     }
   } else {
     if (rotateGuide.open) rotateGuide.close();
     if (sleptForRotation) {
-      fieldGame.loop.wake();
+      game.loop.wake();
       sleptForRotation = false;
+      scheduleViewportRefresh();
     }
   }
 }
@@ -32,14 +34,18 @@ async function enterLandscape() {
   } catch { /* 수동으로 돌려도 같은 화면이 열린다. */ }
 }
 
-if (gallery) {
+function setupGallery() {
   document.body.classList.add('gallery-mode');
   document.title = '요괴 도감 · 용이 되자';
   document.getElementById('gallery').hidden = false;
   document.getElementById('arena').setAttribute('aria-hidden', 'true');
   document.getElementById('nav-text').textContent = '들판으로';
   document.getElementById('nav-link').href = './index.html';
-} else {
+}
+
+function setupField() {
+  portrait = window.matchMedia('(orientation: portrait)');
+  rotateGuide = document.getElementById('rotate-guide');
   // 두 손가락 확대·두 번 탭 확대 막기(iOS Safari는 user-scalable=no와 touch-action을 무시할 때가 있다).
   // 스크롤이 필요한 모달 안의 한 손가락 이동은 그대로 둔다.
   const block = (event) => event.preventDefault();
@@ -57,6 +63,7 @@ if (gallery) {
     }
   }, true);
   portrait.addEventListener('change', syncOrientation);
+  window.addEventListener('pageshow', syncOrientation);
   syncOrientation();
   const firstTap = event => {
     if (!event.isPrimary || event.button !== 0 || event.target.closest('a')) return;
@@ -67,16 +74,46 @@ if (gallery) {
   document.getElementById('rotate-start').addEventListener('click', enterLandscape);
 }
 
-function updateDensity() {
+export function viewportBounds({ visualViewport, innerWidth, innerHeight }) {
+  if (visualViewport?.width > 0 && visualViewport.height > 0) {
+    const { width, height, offsetLeft, offsetTop } = visualViewport;
+    return { width, height, left: offsetLeft, top: offsetTop };
+  }
+  return { width: innerWidth, height: innerHeight, left: 0, top: 0 };
+}
+
+function refreshViewport() {
+  const { width, height, left, top } = viewportBounds(window);
+  const arena = document.getElementById('arena');
+  arena.style.width = width + 'px';
+  arena.style.height = height + 'px';
+  arena.style.left = left + 'px';
+  arena.style.top = top + 'px';
   const ratio = pixelRatio();
   const host = document.getElementById('phaser-host');
   host.style.setProperty('--density', ratio);
   host.style.setProperty('--inverse-density', 1 / ratio);
+  if (game?.scale.canvas) {
+    // RESIZE 모드의 refresh()는 저장된 부모 크기를 쓰므로 변경한 host를 먼저 잰다.
+    game.scale.getParentBounds();
+    game.scale.refresh();
+  }
+}
+
+function scheduleViewportRefresh() {
+  if (!viewportFrame) {
+    viewportFrame = requestAnimationFrame(() => {
+      viewportFrame = 0;
+      refreshViewport();
+    });
+  }
+  // iOS 회전과 주소창 애니메이션은 마지막 resize 이벤트 뒤에도 높이를 바꿀 수 있다.
+  clearTimeout(settleTimer);
+  settleTimer = setTimeout(refreshViewport, 300);
 }
 
 // 시작 화면(저장 칸 고르기). 고른 칸은 지금 슬롯으로 기억되고 PlayScene이 그 칸을 읽는다.
 // ?gallery=1과 시험 주소(?debug, ?stress)는 건너뛴다.
-const skipTitle = gallery || ['debug', 'stress'].some(key => new URLSearchParams(location.search).has(key));
 function showTitle() {
   return import('./ui/TitleView.js').then(({ TitleView }) => new Promise(resolve => TitleView({ onStart: resolve })));
 }
@@ -90,20 +127,28 @@ function fontsReady() {
 }
 
 async function start() {
+  const params = new URLSearchParams(location.search);
+  const gallery = params.get('gallery') === '1';
+  if (gallery) setupGallery();
+  else setupField();
+  window.addEventListener('resize', scheduleViewportRefresh);
+  window.addEventListener('orientationchange', scheduleViewportRefresh);
+  window.addEventListener('pageshow', scheduleViewportRefresh);
+  window.visualViewport?.addEventListener('resize', scheduleViewportRefresh);
+  window.visualViewport?.addEventListener('scroll', scheduleViewportRefresh);
   if (!window.Phaser) throw new Error('Phaser CDN');
   const fonts = fontsReady();
   // 시작 화면이 떠 있는 동안 장면 코드를 미리 불러온다.
   const sceneModule = gallery ? import('./scenes/GalleryScene.js') : import('./scenes/PlayScene.js');
   sceneModule.catch(() => {});
-  if (!skipTitle) await showTitle();
+  if (!gallery && !params.has('debug') && !params.has('stress')) await showTitle();
   while (!gallery && portrait.matches) {
     await new Promise(resolve => portrait.addEventListener('change', resolve, { once: true }));
   }
-  updateDensity();
-  window.addEventListener('resize', updateDensity);
   const Scene = gallery ? (await sceneModule).GalleryScene : (await sceneModule).PlayScene;
   await fonts;
-  const game = new Phaser.Game({
+  refreshViewport();
+  game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'phaser-host',
     backgroundColor: '#dae4d7',
@@ -114,14 +159,12 @@ async function start() {
     audio: { noAudio: true },
     scene: [Scene],
   });
-  if (!gallery) {
-    fieldGame = game;
-    game.events.once('postrender', syncOrientation);
-  }
+  if (!gallery) game.events.once('postrender', syncOrientation);
+  scheduleViewportRefresh();
   // 확인용: 주소에 ?debug가 있을 때만 게임 객체를 노출한다.
-  if (new URLSearchParams(location.search).has('debug')) window.__yokai = game;
+  if (params.has('debug')) window.__yokai = game;
 }
-start().catch((error) => {
+if (typeof window !== 'undefined') start().catch((error) => {
   console.error(error);
   document.getElementById('loading').textContent = window.Phaser
     ? '들판을 열 수 없습니다. 페이지를 새로 고쳐 주세요.'
