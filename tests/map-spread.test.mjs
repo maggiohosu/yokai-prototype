@@ -183,3 +183,18 @@ test('새로 놓인 보충 적은 spawnGraceSec 동안 먹지도 먹히지도 �
   assert.equal(findMeals(buildGrid([big, small], CONFIG.render.enemyCell), undefined, 1).length, 0, '새로 놓인 사냥꾼은 먹지 못한다');
   assert.equal(findMeals(buildGrid([big, small], CONFIG.render.enemyCell), undefined, 5.1).length, 1, '유예가 끝나면 먹는다');
 });
+
+test('보충 묶음은 부족분에 비례해 커진다: 부족이 작으면 기본 묶음 24마리, 크면 여러 배(refillBoost 48)이고, 0이면 고정이다', async () => {
+  const { refillIncrement } = await import('../src/game/world.js');
+  const W = CONFIG.world;
+  assert.equal(W.refillBoost, 48);
+  assert.equal(refillIncrement(0), W.refillBatch);
+  assert.equal(refillIncrement(48), W.refillBatch * 2);
+  assert.equal(refillIncrement(240), W.refillBatch * 6);
+  assert.ok(refillIncrement(5) < refillIncrement(60) && refillIncrement(60) < refillIncrement(300));
+  const saved = W.refillBoost;
+  try {
+    W.refillBoost = 0;
+    assert.equal(refillIncrement(300), W.refillBatch, '0이면 고정 묶음');
+  } finally { W.refillBoost = saved; }
+});

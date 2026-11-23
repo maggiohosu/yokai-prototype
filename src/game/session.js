@@ -26,7 +26,7 @@ export function playerStats(progress) {
 // 이번 먹이로 얻는 요력 = rules.preyValue((먹이 크기 / 내 크기)^지수 × 단계 × 등급 × 보물 처치 × 특수 적 배율). 화폐는 요력 하나.
 // 내 크기(meal.mySize)는 combat.meal이 먹는 순간에 meal에 담는다. 같은 meal은 몇 번을 계산해도 같은 값이다(공명·대요괴 보너스가 이 값을 다시 읽는다).
 export function mealYoryeok(meal) {
-  return preyValue({ size: meal.preySize, stage: meal.stage, grade: meal.grade, special: meal.special, killedByTreasure: meal.killedByTreasure, mySize: meal.mySize });
+  return preyValue({ size: meal.preySize, stage: meal.stage, grade: meal.grade, special: meal.special, killedByTreasure: meal.killedByTreasure, mySize: meal.mySize, myStage: meal.myStage });
 }
 
 export function attachSession(scene, progress, rng = Math.random, save = saveProgress) {

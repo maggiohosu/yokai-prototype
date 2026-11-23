@@ -134,6 +134,24 @@ test('preyValue: base × (먹이 크기 / 내 크기)^2 × 단계 배율, 4·5�
   assert.deepEqual([evolutionCost(2), evolutionCost(3), evolutionCost(4), evolutionCost(5)], [100, 400, 2000, 8000]);
 });
 
+test('preyValue: 나보다 높은 단계 먹이의 단계 배율은 aboveStageCap(48)을 넘지 못한다', () => {
+  const s = CONFIG.score;
+  assert.equal(s.aboveStageCap, 48);
+  const v = (stage, myStage) => preyValue({ size: 10, stage, grade: 'C', mySize: 10, myStage });
+  // 5단계 먹이: 4단계 이하 플레이어는 ×48, 5단계 플레이어는 그대로 ×176
+  assert.equal(v(5, 4), 28 * 48);
+  assert.equal(v(5, 1), 28 * 48);
+  assert.equal(v(5, 5), 28 * 176);
+  // 상한 아래 배율(4단계 ×24)은 그대로, 같은 단계·낮은 단계 먹이도 그대로
+  assert.equal(v(4, 3), 28 * 24);
+  assert.equal(v(4, 4), 28 * 24);
+  assert.equal(v(3, 5), 28 * 16);
+  // 내 단계를 모르면(myStage 없음) 상한 없음
+  assert.equal(preyValue({ size: 10, stage: 5, grade: 'C', mySize: 10 }), 28 * 176);
+  // 무기 처치·특수 적 배율은 그대로 곱해진다
+  assert.equal(preyValue({ size: 24, stage: 5, grade: 'C', mySize: 12, myStage: 3, killedByTreasure: true, special: true }), Math.round(28 * 4 * 48 * 1.5 * 8));
+});
+
 test('preyValue: 먹이 크기는 처음 크기라 보물에 깎여도 같다 — 내 크기만 달라지면 값이 바뀐다', () => {
   const full = { size: 60, stage: 4, grade: 'C', killedByTreasure: true };
   assert.equal(preyValue({ ...full, mySize: 30 }), Math.round(28 * 2 ** 2 * 24 * 1.5));

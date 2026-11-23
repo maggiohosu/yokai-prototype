@@ -14,14 +14,14 @@ const LEGACY = { base: 10, ref: 20 / 3, exp: 1.6, stage: { 1: 1, 2: 4, 3: 16, 4:
 
 const legacyGain = (m) => Math.max(1, Math.round(LEGACY.base * (m.size / LEGACY.ref) ** LEGACY.exp * LEGACY.stage[m.stage] * GRADE_MULT[m.grade]
   * (m.treasure ? CONFIG.score.treasureMult : 1) * (m.special ? CONFIG.special.rewardMult : 1)));
-const newGain = (m) => preyValue({ size: m.size, stage: m.stage, grade: m.grade, special: !!m.special, killedByTreasure: !!m.treasure, mySize: m.mySize });
+const newGain = (m) => preyValue({ size: m.size, stage: m.stage, grade: m.grade, special: !!m.special, killedByTreasure: !!m.treasure, mySize: m.mySize, myStage: m.myStage });
 
 // 한 판의 요력 합: 기본 요력 + 대요괴 보너스 + 공명 보너스(아군이 먹은 것은 기본 요력만 내 것이다).
 function total(run, gainOf) {
   const state = createResonanceState();
   let sum = 0;
   for (const [t, size, stage, grade, special, treasure, ally, herald, dir, mySize] of run.meals) {
-    const m = { size, stage, grade, special, treasure, mySize };
+    const m = { size, stage, grade, special, treasure, mySize, myStage: run.stage };
     const g = gainOf(m);
     sum += g;
     if (ally) continue;
@@ -65,9 +65,21 @@ test('1~3단계는 단계별로도 옛 식의 0.6~1.4배다(단계마다 먹는 
   }
 });
 
-test('4단계 분당 요력은 옛 식의 40~75%다(5단계 배율을 올린 뒤 중앙값끼리 약 67%·판별 중앙값 약 72%: 4단계 판이 잡는 5단계 먹이 값이 커져 목표 상한 60%를 넘는다)', () => {
+test('4단계 분당 요력은 옛 식의 40~65%다(목표 상한 60%를 약간 넘는다: 21판 중앙값끼리 67%·판별 63%, 사용자 결정 ×24 유지. 나보다 높은 단계 먹이는 배율 상한 48이라 5단계 ×176이 4단계 판의 5단계 먹이를 키우지 않는다)', () => {
   const r = ratio([4]);
-  assert.ok(r >= 0.4 && r <= 0.75, `4단계 비율 ${r.toFixed(2)}`);
+  assert.ok(r >= 0.4 && r <= 0.65, `4단계 비율 ${r.toFixed(2)}`);
+});
+
+test('aboveStageCap: 4단계 이하 판의 5단계 먹이는 상한 ×48이라 상한이 없을 때(×176)보다 4단계 비율이 낮고, 5단계 판은 영향이 없다', () => {
+  const cap = CONFIG.score.aboveStageCap;
+  assert.equal(cap, 48);
+  const run4 = INCOME_RUNS.filter((r) => r.stage === 4);
+  assert.ok(run4.some((r) => r.meals.some((m) => m[2] === 5)), '4단계 판 고정 자료에 5단계 먹이가 있다');
+  CONFIG.score.aboveStageCap = Infinity;
+  const uncapped4 = ratio([4]), uncapped5 = ratio([5]);
+  CONFIG.score.aboveStageCap = cap;
+  assert.ok(ratio([4]) < uncapped4, `${ratio([4]).toFixed(2)} < ${uncapped4.toFixed(2)}`);
+  assert.equal(ratio([5]), uncapped5);
 });
 
 test('5단계 배율은 ×176이고 4단계 ×24, 1~3단계 ×1·4·16은 그대로다', () => {

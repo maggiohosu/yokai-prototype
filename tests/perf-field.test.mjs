@@ -552,7 +552,7 @@ async function liveField({ stage, seed, seconds }) {
   return { stage, seed, size: side, target: CONFIG.world.population, r0, n0, r60: R(), n60: scene.enemies.length, meanCount: sum / frames, minCount: min };
 }
 
-if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시작 직후와 60초 뒤 모두 0.9 이상이고 1~5단계 모두 평균 인구가 목표의 95%, 최저가 400 이상이다', { timeout: 600000 }, async t => {
+if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시작 직후와 60초 뒤 모두 0.9 이상이고 1~5단계 모두 평균 인구가 목표의 95%, 최저가 430 이상이다', { timeout: 600000 }, async t => {
   const browser = await launchFieldBrowser();
   try {
     for (const stage of [1, 2, 3, 4, 5]) {
@@ -570,9 +570,9 @@ if (process.env.YOKAI_PERF_URL) test('일반 판 60초: 몰림 지표 R이 시�
         assert.equal(r.n0, r.target);
         assert.ok(r.r0 >= 0.9, `${stage}단계 시작 직후 R ${r.r0}`);
         assert.ok(r.r60 >= 0.9, `${stage}단계 60초 뒤 R ${r.r60}`);
-        // 사용자 지시 '적 수 480 고정': 1~5단계 모두 60초 평균 95%(456) 이상, 최저 400 이상이어야 한다(보충 묶음·한 프레임 보충 상한·새로 놓인 적 유예, plan.md 변경 이력 16).
+        // 사용자 지시 '적 수 480 고정': 1~5단계 모두 60초 평균 95%(456) 이상, 최저 430 이상이어야 한다(보충 묶음·한 프레임 보충 상한·새로 놓인 적 유예, plan.md 변경 이력 16).
         assert.ok(r.meanCount >= r.target * 0.95, `${stage}단계 60초 평균 인구 ${r.meanCount} < 목표 ${r.target}의 95%`);
-        assert.ok(r.minCount >= 400, `${stage}단계 60초 최저 인구 ${r.minCount} < 400`);
+        assert.ok(r.minCount >= 430, `${stage}단계 60초 최저 인구 ${r.minCount} < 430`);
       } finally { await context.close(); }
     }
   } finally { await browser.close(); }

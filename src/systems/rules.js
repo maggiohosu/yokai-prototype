@@ -46,10 +46,13 @@ export function reversalPair(player, enemy) {
 // 먹이 점수 = 요력. 먹이가 내 몸에 비해 클수록, 높은 단계일수록 크게 오른다(변경 이력 18).
 //   size    먹이 크기(보물에 깎이기 전 처음 크기, combat.rewardSizeOf)
 //   mySize  먹는 순간 먹는 쪽(플레이어·적)의 크기. 없거나 0 이하면 sizeRef(시작 크기)로 본다.
-export function preyValue({ size, stage = 1, grade = 'C', special = false, killedByTreasure = false, mySize }) {
+//   myStage 먹는 쪽의 단계. 먹이가 나보다 높은 단계면 단계 배율은 score.aboveStageCap을 넘지 못한다(없으면 상한 없음).
+export function preyValue({ size, stage = 1, grade = 'C', special = false, killedByTreasure = false, mySize, myStage }) {
   const s = CONFIG.score;
   const mine = mySize > 0 ? mySize : s.sizeRef;
-  let v = s.base * Math.pow(size / mine, s.relExp) * (s.stageMult[stage] ?? 1) * (gradeMultiplier(grade) ?? 1);
+  let mult = s.stageMult[stage] ?? 1;
+  if (myStage > 0 && stage > myStage) mult = Math.min(mult, s.aboveStageCap);
+  let v = s.base * Math.pow(size / mine, s.relExp) * mult * (gradeMultiplier(grade) ?? 1);
   if (killedByTreasure) v *= s.treasureMult;
   if (special) v *= CONFIG.special.rewardMult;
   return Math.max(1, Math.round(v));

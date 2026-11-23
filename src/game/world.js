@@ -92,6 +92,12 @@ function drawStage(weights, rng) {
   return last;
 }
 
+// 보충 주기마다 대기열에 더할 마릿수: 묶음(refillBatch)을 부족분에 비례해 키운다(world.refillBoost). 대기열은 부족분을 넘지 않게 PlayScene이 자른다.
+export function refillIncrement(missing) {
+  const boost = world.refillBoost > 0 ? 1 + Math.max(0, missing) / world.refillBoost : 1;
+  return Math.round(world.refillBatch * boost);
+}
+
 // 시작 안전 거리와 시작 고리: 맵이 좁으면(한 변 × safeStartShare가 safeStart보다 작으면) 같은 비율로 줄인다. 한 변 1273 이상에서는 그대로다.
 export function startScale(size = world.size) {
   return Math.min(1, (size * world.safeStartShare) / world.safeStart);

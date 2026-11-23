@@ -4,7 +4,7 @@ import { STEMS } from '../data/stems.js';
 import { abilityLabel } from '../systems/abilities.js';
 import { eatBlocked, isAlly, isShielded } from '../game/status.js';
 import { drawCreature, getFormThumbnail } from '../art/creature.js';
-import { bossRingFor, clamp, colorPicker, drawWorld, growMoveCount, offscreenPad, regionAt, rollSpawnSize, seedField, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
+import { bossRingFor, clamp, colorPicker, drawWorld, growMoveCount, offscreenPad, refillIncrement, regionAt, rollSpawnSize, seedField, shouldCullOnEvolve, spawnPoint, spawnSize, spawnStage } from '../game/world.js';
 import { canEat, eatPair, reversalPair } from '../systems/rules.js';
 import { afterPause, applyQuickCard, createRunLevel, pauseGauge, pickQuickCards, rerollQuickCards, rerollsLeft, shouldPause } from '../systems/levelup.js';
 import { drawStageMark, StageMarks } from '../art/marks.js';
@@ -1146,7 +1146,7 @@ export class PlayScene extends Phaser.Scene {
     if (this.refillTime <= 0) {
       this.refillTime = CONFIG.world.refillInterval;
       const missing = Math.max(0, CONFIG.world.population - this.enemies.length);
-      this.refillPending = Math.min(this.refillPending + CONFIG.world.refillBatch, missing);
+      this.refillPending = Math.min(this.refillPending + refillIncrement(missing), missing);
     }
     if (this.refillPending > 0) {
       const count = Math.min(this.refillPending, CONFIG.render.refillPerFrame, Math.max(0, CONFIG.world.population - this.enemies.length));

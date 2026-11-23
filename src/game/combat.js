@@ -196,7 +196,7 @@ export class Combat {
   meal(enemy, killedByTreasure) {
     const engaged = this.engage(enemy);
     // mySize = 먹는(쓰러뜨리는) 순간의 플레이어 크기. 직접 먹기는 먹어서 자라기 전이다. 요력은 (먹이 크기 / mySize)^지수로 센다(rules.preyValue).
-    return { dir: enemy.dir, ...engaged, preySize: Math.max(engaged.preySize, rewardSizeOf(enemy)), mySize: this.scene.player.size, killedByTreasure, special: !!enemy.special, stage: enemy.stage ?? 1, grade: enemy.grade };
+    return { dir: enemy.dir, ...engaged, preySize: Math.max(engaged.preySize, rewardSizeOf(enemy)), mySize: this.scene.player.size, myStage: this.scene.player.stage ?? 1, killedByTreasure, special: !!enemy.special, stage: enemy.stage ?? 1, grade: enemy.grade };
   }
 
   // 매혹한 요괴(ally)가 먹은 먹이의 식사 기록. 요력은 플레이어에게 가고(session.onEat), 식성·성향·드롭은 기록하지 않는다(설계 4-4).

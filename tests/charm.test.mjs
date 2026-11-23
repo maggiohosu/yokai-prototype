@@ -249,6 +249,7 @@ test('아군이 먹은 먹이의 요력 100%가 플레이어에게 간다: 요�
   assert.equal(meal.x, 10);
   scene.events.emit('eat', meal);
   assert.equal(meal.mySize, w.player.size, '내 크기 = 먹는 순간의 플레이어 크기(아군이 먹어도 요력은 내 몸 기준)');
+  assert.equal(meal.myStage, w.player.stage ?? 1, '내 단계 = 먹는 순간의 플레이어 단계(나보다 높은 단계 먹이의 배율 상한에 쓴다)');
   const expected = preyValue({ size: 30, stage: 2, grade: 'C', special: false, killedByTreasure: false, mySize: meal.mySize });
   assert.equal(mealYoryeok(meal), expected);
   assert.equal(progress.yoryeok, expected, '요력 100%');
